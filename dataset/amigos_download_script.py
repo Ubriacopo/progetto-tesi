@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 from requests.auth import HTTPDigestAuth
 import os, shutil, sys
 
-
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+
 
 # todo doc once done
 def download(authentication: HTTPDigestAuth, base_path: str, output_path: str, filename: str, destination_folder: str):
@@ -36,8 +36,9 @@ def download(authentication: HTTPDigestAuth, base_path: str, output_path: str, f
 
     zipfile.ZipFile(file_path, 'r').extractall(path=destination_folder)
     os.remove(file_path)
+    if Path(output_path + "/" + filename.split(".")[0]).is_dir():
+        move_to_root_folder(output_path, output_path + "/" + filename.split(".")[0])
 
-    move_to_root_folder(output_path, output_path + "/" + filename.split(".")[0])
     logging.info("Downloaded file: {0}".format(file_path))
 
 
@@ -75,7 +76,7 @@ def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
         if two_vars:
             for j in range(k):
                 filename = file_template_name.format(str(i + 1).zfill(2), str(j + 1).zfill(2))
-                download(authentication, base_path, output_path, filename)
+                download(authentication, base_path, output_path, filename, destination_folder)
 
         else:
             filename = file_template_name.format(str(i + 1).zfill(2))
@@ -95,6 +96,17 @@ if __name__ == "__main__":
     logging.info("Resources will be stored in: {0}".format(out_path))
 
     amigos_base_path = "https://www.eecs.qmul.ac.uk/mmv/datasets/amigos/data/"
+
+    metadata = "Metadata_ods.zip"
+    Path(f"{out_path}/metadata").mkdir(exist_ok=True)
+    download(auth, amigos_base_path, output_path=f"{out_path}/metadata",
+             filename=metadata, destination_folder="metadata")
+
+    # Typo da parte di Amigos :)
+    for annotation in ['SelfAsessment_ods.zip', "External_Annotations_ods.zip"]:
+        Path(f"{out_path}/annotation").mkdir(exist_ok=True)
+        download(auth, amigos_base_path, output_path=f"{out_path}/annotation",
+                 filename=annotation, destination_folder="annotation")
 
     # Data
     pre_processed = "Data_Preprocessed_P{0}.zip"
