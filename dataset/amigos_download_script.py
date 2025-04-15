@@ -1,12 +1,13 @@
+import logging
 import os
-import zipfile
+import shutil
 from argparse import ArgumentParser
 from pathlib import Path
-import logging
+
 import requests
+import zipfile_inflate64 as zipfile
 from dotenv import load_dotenv
 from requests.auth import HTTPDigestAuth
-import os, shutil, sys
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
@@ -34,7 +35,7 @@ def download(authentication: HTTPDigestAuth, base_path: str, output_path: str, f
     with open(file_path, "wb") as file:
         [file.write(chunk) for chunk in response]
 
-    zipfile.ZipFile(file_path, 'r').extractall(path=destination_folder)
+    zipfile.ZipFile(file_path, 'r').extractall(path=f"{out_path}/{destination_folder}")
     os.remove(file_path)
     if Path(output_path + "/" + filename.split(".")[0]).is_dir():
         move_to_root_folder(output_path, output_path + "/" + filename.split(".")[0])
@@ -82,7 +83,7 @@ def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
             filename = file_template_name.format(str(i + 1).zfill(2))
             download(authentication, base_path, output_path, filename, destination_folder)
 
-
+#todo fai salvataggio lista file fatti
 if __name__ == "__main__":
     load_dotenv("../.env")
     auth = HTTPDigestAuth(os.getenv("AMIGOS_USERNAME"), os.getenv("AMIGOS_PASSWORD"))

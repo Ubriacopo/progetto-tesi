@@ -14,5 +14,11 @@
 > https://arxiv.org/pdf/2311.03764 <br>
 > https://github.com/wenhui0206/NeuroGPT
 
-> EEGFormer
-> https://arxiv.org/pdf/2401.10278
+> EEGFormer: 
+> https://arxiv.org/pdf/2401.10278 <br>
+> Unoffical implementation: https://github.com/FENRlR/EEGformer
+
+> Brain Bert (FAVOURITE):
+> https://klab.tch.harvard.edu/publications/PDFs/gk8131.pdf <br>
+> Mi piace. Dataset di train era solo SEEG, a noi va bene? BrainBERT (STFT) <br>
+> Demo: https://github.com/czlwang/BrainBERT/blob/master/notebooks/demo.ipynb
