@@ -22,3 +22,6 @@
 > https://klab.tch.harvard.edu/publications/PDFs/gk8131.pdf <br>
 > Mi piace. Dataset di train era solo SEEG, a noi va bene? BrainBERT (STFT) <br>
 > Demo: https://github.com/czlwang/BrainBERT/blob/master/notebooks/demo.ipynb
+
+> Graph EEG: <br> 
+> https://arxiv.org/pdf/2310.02152

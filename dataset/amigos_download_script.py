@@ -1,9 +1,9 @@
+import json
 import logging
 import os
 import shutil
 from argparse import ArgumentParser
 from pathlib import Path
-
 import requests
 import zipfile_inflate64 as zipfile
 from dotenv import load_dotenv
@@ -60,9 +60,11 @@ def move_to_root_folder(root_path, cur_path):
 
 def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
                             output_path: str, file_template_name: str, destination_folder: str,
-                            k: int = 40, two_vars: bool = False):
+                            seen_file_names: list[str], seen_file_names_path: str, k: int = 40, two_vars: bool = False):
     """
 
+    :param seen_file_names_path:
+    :param seen_file_names:
     :param destination_folder:
     :param authentication:
     :param base_path:
@@ -77,43 +79,72 @@ def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
         if two_vars:
             for j in range(k):
                 filename = file_template_name.format(str(i + 1).zfill(2), str(j + 1).zfill(2))
-                download(authentication, base_path, output_path, filename, destination_folder)
+                if not filename in seen_file_names:
+                    download(authentication, base_path, output_path, filename, destination_folder)
+                    # Store the seen configuration
+                    seen_file_names.append(filename)
+                    json.dump(seen_file_names, open(seen_file_names_path, 'w'))
 
         else:
             filename = file_template_name.format(str(i + 1).zfill(2))
-            download(authentication, base_path, output_path, filename, destination_folder)
+            if not filename in seen_file_names:
+                download(authentication, base_path, output_path, filename, destination_folder)
+                # Store the seen configuration
+                seen_file_names.append(filename)
+                json.dump(seen_file_names, open(seen_file_names_path, 'w'))
 
-#todo fai salvataggio lista file fatti
+
 if __name__ == "__main__":
     load_dotenv("../.env")
     auth = HTTPDigestAuth(os.getenv("AMIGOS_USERNAME"), os.getenv("AMIGOS_PASSWORD"))
+    amigos_base_path = "https://www.eecs.qmul.ac.uk/mmv/datasets/amigos/data/"
 
+    # Read arguments of run
     parser = ArgumentParser()
     # Arg to get the destination path of the processing
     parser.add_argument("-p", "--path", dest="output_path", help="Destination path", default="./")
     args = parser.parse_args()
 
+    seen_files: list[str] = []
+    # Ripristina sessione precedente di download se fatta
+    seen_files_path = "./seen-files.tmp.json"
+    if Path(seen_files_path).is_file():
+        seen_files += json.load(open(seen_files_path))
+        logging.info(f"Restored seen files list. Already tried to download {len(seen_files)} files")
+
+
     out_path = args.output_path
     logging.info("Resources will be stored in: {0}".format(out_path))
 
-    amigos_base_path = "https://www.eecs.qmul.ac.uk/mmv/datasets/amigos/data/"
-
     metadata = "Metadata_ods.zip"
-    Path(f"{out_path}/metadata").mkdir(exist_ok=True)
-    download(auth, amigos_base_path, output_path=f"{out_path}/metadata",
-             filename=metadata, destination_folder="metadata")
+    # Download the resource
+    if not metadata in seen_files:
+        # Create folder if not existing
+        Path(f"{out_path}/metadata").mkdir(exist_ok=True)
+        download(auth, amigos_base_path, f"{out_path}/metadata", filename=metadata, destination_folder="metadata")
+
+        # Set the downloaded file as seen
+        seen_files.append(metadata)
+        json.dump(seen_files, open(seen_files_path, 'w'))
 
     # Typo da parte di Amigos :)
     for annotation in ['SelfAsessment_ods.zip', "External_Annotations_ods.zip"]:
-        Path(f"{out_path}/annotation").mkdir(exist_ok=True)
-        download(auth, amigos_base_path, output_path=f"{out_path}/annotation",
-                 filename=annotation, destination_folder="annotation")
+        if not annotation in seen_files:
+            Path(f"{out_path}/annotation").mkdir(exist_ok=True)
+            download(auth, amigos_base_path, output_path=f"{out_path}/annotation",
+                     filename=annotation, destination_folder="annotation")
 
-    # Data
+            seen_files.append(annotation)
+            json.dump(seen_files, open(seen_files_path, 'w'))
+
+            # Data
     pre_processed = "Data_Preprocessed_P{0}.zip"
+
     Path(f"{out_path}/pre_processed").mkdir(exist_ok=True)
-    download_amigos_listing(auth, amigos_base_path, output_path=f"{out_path}/pre_processed",
-                            file_template_name=pre_processed, destination_folder="pre_processed")
+    download_amigos_listing(
+        auth, base_path=amigos_base_path, output_path=f"{out_path}/pre_processed", file_template_name=pre_processed,
+        destination_folder="pre_processed", seen_file_names=seen_files, seen_file_names_path=seen_files_path
+    )
 
     # Experiment divided
     base_exp1 = "Exp1_P{{0}}_{experiment}.zip"
@@ -126,13 +157,18 @@ if __name__ == "__main__":
         Path(out).mkdir(exist_ok=True)
 
         exp1 = base_exp1.format(experiment=experiment)
-        download_amigos_listing(auth, amigos_base_path, output_path=out,
-                                file_template_name=exp1, destination_folder=experiment)
+        download_amigos_listing(
+            auth, base_path=amigos_base_path, output_path=out, file_template_name=exp1,
+            destination_folder=experiment, seen_file_names=seen_files, seen_file_names_path=seen_files_path
+        )
 
         i_exp2 = individual_exp2.format(experiment=experiment)
-        download_amigos_listing(auth, amigos_base_path, output_path=out,
-                                file_template_name=i_exp2, two_vars=True, destination_folder=experiment)
+        download_amigos_listing(
+            auth, base_path=amigos_base_path, output_path=out, file_template_name=i_exp2, two_vars=True,
+            destination_folder=experiment, seen_file_names=seen_files, seen_file_names_path=seen_files_path)
 
         g_exp2 = group_exp2.format(experiment=experiment)
-        download_amigos_listing(auth, amigos_base_path, output_path=out,
-                                file_template_name=g_exp2, two_vars=True, destination_folder=experiment)
+        download_amigos_listing(
+            auth, base_path=amigos_base_path, output_path=out, file_template_name=g_exp2, two_vars=True,
+            destination_folder=experiment, seen_file_names=seen_files, seen_file_names_path=seen_files_path
+        )
