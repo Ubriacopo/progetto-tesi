@@ -51,16 +51,32 @@ def move_to_root_folder(root_path, cur_path):
             shutil.move(os.path.join(cur_path, filename), os.path.join(root_path, filename))
 
         elif os.path.isdir(os.path.join(cur_path, filename)):
-            move_to_root_folder(root_path, os.path.join(cur_path, filename))
+            move_to_root_folder(root_pathz, os.path.join(cur_path, filename))
 
     # remove empty folders
     if cur_path != root_path:
         os.rmdir(cur_path)
 
 
+def download_amigos_resource(filename: str, authentication: HTTPDigestAuth, base_path: str,
+                             output_path: str, destination_folder: str,
+                             seen_file_names: list[str], seen_file_names_path: str,
+                             failed_files: list[dict], failed_files_path: str):
+    if not filename in seen_file_names:
+        try:
+            download(authentication, base_path, output_path, filename, destination_folder)
+            # Store the seen configuration
+        except Exception as e:
+            failed_files.append({"filename": filename, "error": str(e)})
+            json.dump(failed_files, open(failed_files_path, 'w'))
+
+        seen_file_names.append(filename)
+        json.dump(seen_file_names, open(seen_file_names_path, 'w'))
+
 def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
                             output_path: str, file_template_name: str, destination_folder: str,
-                            seen_file_names: list[str], seen_file_names_path: str, k: int = 40, two_vars: bool = False):
+                            seen_file_names: list[str], seen_file_names_path: str, failed_files: list[dict],
+                            failed_files_path: str, k: int = 40, two_vars: bool = False):
     """
 
     :param seen_file_names_path:
@@ -79,19 +95,12 @@ def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
         if two_vars:
             for j in range(k):
                 filename = file_template_name.format(str(i + 1).zfill(2), str(j + 1).zfill(2))
-                if not filename in seen_file_names:
-                    download(authentication, base_path, output_path, filename, destination_folder)
-                    # Store the seen configuration
-                    seen_file_names.append(filename)
-                    json.dump(seen_file_names, open(seen_file_names_path, 'w'))
-
+                download_amigos_resource(filename, authentication, base_path, output_path, destination_folder,
+                                         seen_file_names, seen_file_names_path, failed_files, failed_files_path)
         else:
             filename = file_template_name.format(str(i + 1).zfill(2))
-            if not filename in seen_file_names:
-                download(authentication, base_path, output_path, filename, destination_folder)
-                # Store the seen configuration
-                seen_file_names.append(filename)
-                json.dump(seen_file_names, open(seen_file_names_path, 'w'))
+            download_amigos_resource(filename, authentication, base_path, output_path, destination_folder,
+                                     seen_file_names, seen_file_names_path, failed_files, failed_files_path)
 
 
 if __name__ == "__main__":
@@ -112,6 +121,11 @@ if __name__ == "__main__":
         seen_files += json.load(open(seen_files_path))
         logging.info(f"Restored seen files list. Already tried to download {len(seen_files)} files")
 
+    failed_files: list = []  # List of dictionary with filename + if downloaded
+    failed_files_path = "./failed-files.tmp.json"
+    if Path(failed_files_path).is_file():
+        failed_files += json.load(open(failed_files_path))
+        logging.info(f"Restored failed files list. {len(failed_files)} files failed to process")
 
     out_path = args.output_path
     logging.info("Resources will be stored in: {0}".format(out_path))
@@ -137,13 +151,12 @@ if __name__ == "__main__":
             seen_files.append(annotation)
             json.dump(seen_files, open(seen_files_path, 'w'))
 
-            # Data
     pre_processed = "Data_Preprocessed_P{0}.zip"
-
     Path(f"{out_path}/pre_processed").mkdir(exist_ok=True)
     download_amigos_listing(
         auth, base_path=amigos_base_path, output_path=f"{out_path}/pre_processed", file_template_name=pre_processed,
-        destination_folder="pre_processed", seen_file_names=seen_files, seen_file_names_path=seen_files_path
+        destination_folder="pre_processed", seen_file_names=seen_files, seen_file_names_path=seen_files_path,
+        failed_files=failed_files, failed_files_path=failed_files_path
     )
 
     # Experiment divided
@@ -159,16 +172,23 @@ if __name__ == "__main__":
         exp1 = base_exp1.format(experiment=experiment)
         download_amigos_listing(
             auth, base_path=amigos_base_path, output_path=out, file_template_name=exp1,
-            destination_folder=experiment, seen_file_names=seen_files, seen_file_names_path=seen_files_path
+            destination_folder=experiment,
+            seen_file_names=seen_files, seen_file_names_path=seen_files_path,
+            failed_files=failed_files, failed_files_path=failed_files_path
         )
 
         i_exp2 = individual_exp2.format(experiment=experiment)
         download_amigos_listing(
-            auth, base_path=amigos_base_path, output_path=out, file_template_name=i_exp2, two_vars=True,
-            destination_folder=experiment, seen_file_names=seen_files, seen_file_names_path=seen_files_path)
+            auth, base_path=amigos_base_path, output_path=out, file_template_name=i_exp2,
+            two_vars=True, destination_folder=experiment,
+            seen_file_names=seen_files, seen_file_names_path=seen_files_path,
+            failed_files=failed_files, failed_files_path=failed_files_path
+        )
 
         g_exp2 = group_exp2.format(experiment=experiment)
         download_amigos_listing(
-            auth, base_path=amigos_base_path, output_path=out, file_template_name=g_exp2, two_vars=True,
-            destination_folder=experiment, seen_file_names=seen_files, seen_file_names_path=seen_files_path
+            auth, base_path=amigos_base_path, output_path=out, file_template_name=g_exp2,
+            two_vars=True, destination_folder=experiment,
+            seen_file_names=seen_files, seen_file_names_path=seen_files_path,
+            failed_files=failed_files, failed_files_path=failed_files_path
         )

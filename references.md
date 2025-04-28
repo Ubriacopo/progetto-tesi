@@ -25,3 +25,5 @@
 
 > Graph EEG: <br> 
 > https://arxiv.org/pdf/2310.02152
+
+> https://distill.pub/2021/gnn-intro/
