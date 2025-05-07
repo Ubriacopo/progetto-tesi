@@ -51,7 +51,7 @@ def move_to_root_folder(root_path, cur_path):
             shutil.move(os.path.join(cur_path, filename), os.path.join(root_path, filename))
 
         elif os.path.isdir(os.path.join(cur_path, filename)):
-            move_to_root_folder(root_pathz, os.path.join(cur_path, filename))
+            move_to_root_folder(root_path, os.path.join(cur_path, filename))
 
     # remove empty folders
     if cur_path != root_path:
@@ -59,9 +59,8 @@ def move_to_root_folder(root_path, cur_path):
 
 
 def download_amigos_resource(filename: str, authentication: HTTPDigestAuth, base_path: str,
-                             output_path: str, destination_folder: str,
-                             seen_file_names: list[str], seen_file_names_path: str,
-                             failed_files: list[dict], failed_files_path: str):
+                             output_path: str, destination_folder: str, seen_file_names: list[str],
+                             seen_file_names_path: str, failed_files: list[dict], failed_files_path: str):
     if not filename in seen_file_names:
         try:
             download(authentication, base_path, output_path, filename, destination_folder)
@@ -72,6 +71,7 @@ def download_amigos_resource(filename: str, authentication: HTTPDigestAuth, base
 
         seen_file_names.append(filename)
         json.dump(seen_file_names, open(seen_file_names_path, 'w'))
+
 
 def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
                             output_path: str, file_template_name: str, destination_folder: str,
