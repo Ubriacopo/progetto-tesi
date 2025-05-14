@@ -14,6 +14,6 @@ Once downloaded in order to proceed there are two things to do:
 > git clone https://github.com/Ubriacopo/VATE.git
 
 ## BrainBERT
+> git clone https://github.com/Ubriacopo/BrainBERT.git
 
-- Download the repository.
 - Also download the pre-trained model from Google Drive. See the BrainBERT script to automate.
