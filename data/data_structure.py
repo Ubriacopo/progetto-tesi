@@ -36,7 +36,7 @@ class Media(ABC):
 
     def set_dataset(self, dataset: DatasetFS, store_info=True) -> None:
         """
-        Sets a new dataset to process for the Media object.
+        Sets a new data to process for the Media object.
         """
         self.dataset = dataset
         self.store_info = store_info
@@ -62,7 +62,7 @@ class Media(ABC):
     @abstractmethod
     def merge_info_dataset(self):
         """
-        Merges all Media info in the dataset Dataset as a dict.
+        Merges all Media info in the data Dataset as a dict.
         The main container to merge is self.data_frame
         """
         pass
