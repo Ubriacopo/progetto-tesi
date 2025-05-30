@@ -3,17 +3,18 @@ from matplotlib import pyplot as plt
 from scipy import signal
 from scipy.stats import stats
 
+import VATE.media
 
-def compute_stft(x, fs: float, clip_frequency: int = -1, **kwargs):
+
+# And it's also valid for EEG, where low frequencies (delta, theta, alpha, etc.) are most relevant.
+def compute_stft(x, fs: float, top_clip: int = -1, **kwargs):
     f, t, z_xx = signal.stft(x, fs, **kwargs)
     # f and z_xx are sorted in ascending order
 
-    clip_fs = np.argmax(f > clip_frequency) if clip_frequency > 0 else -1
-
     # Do clipping operation to discard high frequencies that may be noisy or irrelevant
     # (e.g., beyond physiological range).
-    z_xx = np.abs(z_xx[:clip_fs])  # Just take the magnitude
-    f = f[:clip_fs]
+    z_xx = np.abs(z_xx[:top_clip])  # Just take the magnitude
+    f = f[:top_clip]
 
     if np.isnan(z_xx).any():
         raise ValueError('stft returned NaN')
