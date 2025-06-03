@@ -1,0 +1,6 @@
+- Dataset implementation + Dataloader
+- Run download script again
+- Prepare model for distillation
+    - EEG on intermediate layer
+    - VATE on intermediate layer
+    - final label comp contrastive learning (Clustering into classes) (TIPO ABAE)
