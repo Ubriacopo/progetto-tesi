@@ -33,3 +33,6 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 > https://arxiv.org/pdf/2310.02152
 
 > https://distill.pub/2021/gnn-intro/
+
+> Multi-modal distillation
+> https://arxiv.org/abs/2307.07483

@@ -1,6 +1,12 @@
-from VATE.media import Media
+from data.media.media import Media
 
-# Todo make my own media?
+
 class Signal(Media):
-    def merge_info_dataset(self):
+    def get_info(self):
+        pass
+
+    def _inner_load(self, **kwargs):
+        pass
+
+    def _inner_process(self, **kwargs):
         pass
