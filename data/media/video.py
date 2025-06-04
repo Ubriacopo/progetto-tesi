@@ -11,10 +11,9 @@ class Video(Media):
     image_processor = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
     video_model = VivitForVideoClassification.from_pretrained("google/vivit-b-16x2-kinetics400")
 
-    def __init__(self, file_path):
-        super(Video, self).__init__(file_path)
-        self.frames = []
-        self.processed_frames = []
+    def __init__(self, file_path: str, lazy: bool = True):
+        self.frames, self.processed_frames = [], []
+        super(Video, self).__init__(file_path, lazy)
 
     def get_info(self):
         video = cv2.VideoCapture(self.file_path)

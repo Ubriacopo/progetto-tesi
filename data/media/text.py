@@ -14,11 +14,10 @@ class Text(Media):
     # model = SentenceTransformer('all-mpnet-base-v2') -> Requires to retrain VATE tho
     text_model = BertModel.from_pretrained("bert-base-uncased")
 
-    def __init__(self, file_path: str):
-        super().__init__(file_path)
-        # We are lazy loaders.
+    def __init__(self, file_path: str, lazy: bool = True):
         self.text: str | None = None
-        self.processed_text: Tensor | None = None  # TODO No idea what type this is
+        self.processed_text: Tensor | None = None
+        super().__init__(file_path, lazy)
 
     def get_info(self):
         return {"file_path": self.file_path}

@@ -12,12 +12,11 @@ class Audio(Media):
     # MFCC (Mel-Frequency Cepstral Coefficients) è un algoritmo utilizzato nella elaborazione
     # audio per estrarre caratteristiche significative dal segnale audio.
 
-    def __init__(self, file_path: str):
-        super().__init__(file_path)
-        # Initialization is run later
+    def __init__(self, file_path: str, lazy: bool = True):
         self.audio_data: Tensor | None = None
         self.processed_audio_data: Tensor | None = None
         self.sample_rate: int | None = None
+        super().__init__(file_path, lazy)
 
     def get_info(self):
         wave_object = wave.open(self.file_path)
