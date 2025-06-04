@@ -47,6 +47,10 @@ def extract_trial_data(destination_path: str, participant: str, source_path: str
             (Hoping RAM to be much). And rotate the files in case.
             Videos are obviously loaded a batch at the time. (Ill check VATE implementation to see how he who knows did it)
 
+    Considerazione:
+        Load all EEG (40 × 100MB = ~4GB) into RAM at startup — easy with 128GB.
+        So this step while neat is not necessary.
+
     :param destination_path:
     :param participant:
     :param source_path:
