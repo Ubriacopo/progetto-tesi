@@ -119,7 +119,8 @@ class AMIGOSDataset(EEGDataset):
         trial_num = row["Trial_Num"]
 
         signal = Signal(self.signal_collector, uid, self.base_path, trial_num)
-        pass
+
+        return signal()
 
     def source_is_valid(self):
         # Check folder structure to be correct

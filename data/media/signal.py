@@ -15,7 +15,7 @@ class SignalDataCollector:
 
     def load_resource(self, file_path: str, participant_id: str):
         resource = np.load(file_path, allow_pickle=True)
-        df = pd.DataFrame({k: resource[k].unsqueeze() for k in resource.files})
+        df = pd.DataFrame({k: resource[k].squeeze() for k in resource.files})
         df["participant_id"] = participant_id
         self.data = pd.concat([self.data, df], ignore_index=True)
 
@@ -30,16 +30,15 @@ class Signal(Media):
     """
 
     def get_value(self, raw: bool = False):
-        # TODO Fast retrieval
-        #       Probabilmente cosa piu facile sarebbe quella che Signal si tiene il suo valore.
+        # todo processed data
         df = self.collector.data
-        return self.collector.processed_data[df["participant_id"] == self.pid]
+        return df[(df["participant_id"] == self.pid) & (df["VideoIDs"] == self.video_id)]
 
     # TODO Vedi come costruire questo
-    def __init__(self, collector: SignalDataCollector, pid: str, file_path: str, trial: int, lazy: bool = True):
+    def __init__(self, collector: SignalDataCollector, pid: str, file_path: str, video_id: int, lazy: bool = True):
         self.collector = collector
         self.pid = pid  # Participant ID
-        self.trial = trial
+        self.video_id = video_id
         super().__init__(file_path, lazy)
 
     def get_info(self):
