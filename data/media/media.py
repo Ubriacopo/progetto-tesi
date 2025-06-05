@@ -6,6 +6,7 @@ class Media(ABC):
     def __init__(self, file_path: str, lazy: bool = True, **kwargs):
         self.file_path: str = file_path
         self.loaded = False
+        self.processed = False
 
         # If we are lazy we don't load else we do the steps in order.
         # If load fails we cannot process so the chain stops.
@@ -28,8 +29,20 @@ class Media(ABC):
         if not self.loaded:
             raise RuntimeError('Media not loaded')
         self._inner_process(**kwargs)
+        self.processed = True
         return True
 
     @abstractmethod
     def _inner_process(self, **kwargs):
         pass
+
+    @abstractmethod
+    def get_value(self, raw: bool = False):
+        pass
+
+    def __call__(self, *args, **kwargs):
+        if not self.loaded:
+            self.load(**kwargs)
+        if not self.processed:
+            self.process(**kwargs)
+        return self.get_value()
