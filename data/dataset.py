@@ -29,18 +29,6 @@ class EEGDataset(torch.utils.data.Dataset):
     def initialize(self, files_root_path: str):
         pass
 
-    def _extract_video(self):
-        pass
-
-    def _extract_audio(self):
-        pass
-
-    def _extract_text(self):
-        pass
-
-    def _extract_eeg(self):
-        pass
-
     def info(self):
         """
         Prints the dataset description in verbatim
@@ -54,6 +42,14 @@ class EEGDataset(torch.utils.data.Dataset):
         Might not be necessary.
         :return:
         """
+        pass
+
+    @abstractmethod
+    def pickle(self, output_path: str):
+        pass
+
+    @abstractmethod
+    def source_is_valid(self):
         pass
 
     @abstractmethod
@@ -80,6 +76,9 @@ class AMIGOSDataset(EEGDataset):
         self.listing: pd.DataFrame | None = None
         if not self.source_is_valid():
             raise FileNotFoundError("The given dataset doesn't exist or is an invalid instance of AMIGOS.")
+
+    def pickle(self, output_path: str):
+        pass
 
     def scan(self):
         # Scans the experiment data to have all required information to get a sample.

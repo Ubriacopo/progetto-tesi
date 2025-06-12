@@ -1,28 +1,40 @@
 import unittest
 
-from data.media.text import Text
+from data.media.audio import AudioCollector, AudioPreProcessingPipeline
+from data.media.signal import SignalCollector, SignalMediaPreProcessingPipeline, extract_trial_data
+from data.media.video import VideoCollector, VideoPreProcessingPipeline
+from .text import TextCollector, TextProcessingPipeline
 
 
 # TODO: Test all media types
 class MediaTest(unittest.TestCase):
     def test_text(self):
-        media = Text("../../resources/Text_Test.txt", lazy=False)
-
-        media.load()
-        media.process()
-
-        print(media.processed_text)
-
-        self.assertEqual(True, False)  # add assertion here
+        # Text seems ok
+        collector = TextCollector([], TextProcessingPipeline.default())
+        collector.load_additional_resource("./../resources/Text_Test.txt")
+        collector.get_media(0)
+        collector.load_additional_resource("./../resources/Text_Test.txt")
+        collector.load_additional_resource("./../resources/Text_Test.txt")
+        collector.get_media(2)
 
     def test_video(self):
-        pass
+        collector = VideoCollector(VideoPreProcessingPipeline())
+        collector.load_additional_resource("./../resources/Exp1_P01_face/P1_4_face.mov")
+        processed = collector.get_media(0)
+        print(processed)
 
     def test_eeg(self):
-        pass
+        extract_trial_data("./../resources/", "./../resources/Data_Preprocessed_P01.mat")
+        collector = SignalCollector.AMIGOS(SignalMediaPreProcessingPipeline())
+        collector.load_additional_resource("./../resources/Data_Preprocessed_P01.npz")
+        processed = collector.get_media(0)
+        print(processed)
 
     def test_audio(self):
-        pass
+        collector = AudioCollector(AudioPreProcessingPipeline())
+        collector.load_additional_resource("./../resources/Exp1_P01_face/P1_4_face.mov")
+        processed = collector.get_media(0)
+        print(processed)
 
 
 if __name__ == '__main__':

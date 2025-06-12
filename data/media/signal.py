@@ -1,58 +1,25 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from scipy.io import loadmat
-from torch import Tensor
 
-from data.media.media import Media
-
-
-class SignalDataCollector:
-    # Contains all the Signal data loading steps
-    def __init__(self):
-        self.data, self.processed_data = pd.DataFrame(), pd.DataFrame()
-
-    def load_resource(self, file_path: str, participant_id: str):
-        resource = np.load(file_path, allow_pickle=True)
-        df = pd.DataFrame({k: resource[k].squeeze() for k in resource.files})
-        df["participant_id"] = participant_id
-        self.data = pd.concat([self.data, df], ignore_index=True)
+from .media import MediaPreProcessingPipeline, NumpyDataMediaCollector
 
 
-# The signal works on a file but contains more results.
+class SignalCollector(NumpyDataMediaCollector):
+    @staticmethod
+    def AMIGOS(processor: MediaPreProcessingPipeline):
+        return SignalCollector([], processor)
 
 
-class Signal(Media):
-    """
-        I won't for sure be able to read the full dataframe immediately.
-        What I can do is load the entire file. Should I?
-    """
+class SignalMediaPreProcessingPipeline(MediaPreProcessingPipeline):
+    def process_output_shape(self) -> tuple:
+        return (4,)
 
-    def get_value(self, raw: bool = False):
-        # todo processed data
-        df = self.collector.data
-        return df[(df["participant_id"] == self.pid) & (df["VideoIDs"] == self.video_id)]
-
-    # TODO Vedi come costruire questo
-    def __init__(self, collector: SignalDataCollector, pid: str, file_path: str, video_id: int, lazy: bool = True):
-        self.collector = collector
-        self.pid = pid  # Participant ID
-        self.video_id = video_id
-        super().__init__(file_path, lazy)
-
-    def get_info(self):
-        return {"file_path": self.file_path, "frequency": ""}
-
-    def _inner_load(self, **kwargs):
-        df = self.collector.data
-        if df[df["participant_id"] == self.pid].empty:
-            self.collector.load_resource(self.file_path, self.pid)
-
-    def _inner_process(self, **kwargs):
-        df = self.collector.processed_data
-        if df[df["participant_id"] == self.pid].empty:
-            pass  # TODO pre-process here.
+    def process(self, media: list | np.ndarray):
+        pass
 
 
 def extract_trial_data(destination_path: str, source_path: str):
