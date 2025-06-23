@@ -31,6 +31,10 @@ class VideoPreProcessingPipeline(MediaPreProcessingPipeline):
     image_processor = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
     video_model = VivitForVideoClassification.from_pretrained("google/vivit-b-16x2-kinetics400")
 
+    def process_output_shape(self) -> tuple:
+        # todo
+        return ()
+
     @staticmethod
     def get_frames(file: str, max_frames: int = 3000):
         video = cv2.VideoCapture(file)

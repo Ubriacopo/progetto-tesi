@@ -13,6 +13,9 @@ class TextCollector(PandasCsvDataMediaCollector):
 
 
 class TextProcessingPipeline(MediaPreProcessingPipeline):
+    def process_output_shape(self) -> tuple:
+        return ()  # todo
+
     @staticmethod
     def default() -> TextProcessingPipeline:
         return TextProcessingPipeline(

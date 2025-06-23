@@ -11,6 +11,9 @@ class AudioCollector(FileReferenceMediaCollector):
 
 
 class AudioPreProcessingPipeline(MediaPreProcessingPipeline):
+    def process_output_shape(self) -> tuple:
+        pass #todo
+
     def process(self, media: list | str):
         audio_data, sample_rate = torchaudio.load(media)
         bundle = torchaudio.pipelines.HUBERT_BASE
