@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import pandas as pd
-import torch
 
 
 class MediaPreProcessingPipeline(ABC):
@@ -49,9 +48,15 @@ class MediaCollector(ABC):
         m = self.media_collection
         m[RAW_KEY], m[PROCESSED_KEY], m[METADATA_KEY] = raw, processed, meta
 
+    def __len__(self):
+        return self.media_collection[RAW_KEY].shape[0]
+
     def _data_as_tuple(self) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
         m = self.media_collection
         return m[RAW_KEY], m[PROCESSED_KEY], m[METADATA_KEY]
+
+    def get_processed_data(self):
+        return self.media_collection[PROCESSED_KEY]
 
     def get_info(self, index: int) -> dict:
         raw, processed, meta = self._data_as_tuple()

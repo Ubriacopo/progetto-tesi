@@ -1,31 +1,42 @@
-from abc import abstractmethod
+import pickle
+from abc import abstractmethod, ABC
 
 import pandas as pd
 import torch.utils.data
 
-from data.media.signal import SignalDataCollector, Signal
+from data.media.audio import AudioCollector
+from data.media.media import MediaCollector, PROCESSED_KEY
+from data.media.signal import SignalCollector
+from data.media.text import TextCollector
+from data.media.video import VideoCollector
+
+
+class SimpleLoaderDataset(torch.utils.data.Dataset):
+    def __init__(self, folds: list[list]):
+        self.folds = folds
+
+    def __getitem__(self, item: int):
+        # Se manca un testo posso ricevere [num, num, None, num]. Multimodal safe?
+        return tuple(lst[item] if len(lst) > item else None for lst in self.folds)
+
+    def __len__(self):
+        return len(self.folds[0])
 
 
 # TODO: Modality masks. I must allow to pass only some types of data.
-
-class DataListing:
-    pass
-
-
-class AMIGOSDataListing(DataListing):
-    def __init__(self, resource_file: str):
-        self.resource_file = resource_file if not resource_file == "" else "../resources/Metadata_xlsx/Experiment_Data.xlsx"
-        self.listing: pd.DataFrame = pd.read_excel(self.resource_file)
-
-
-class DREAMERDataListing(DataListing):
-    def __init__(self, resource_file: str):
-        self.resource_file = resource_file if not resource_file == "" else "../resources/Metadata_xlsx/Experiment_Data.xlsx"
-
-
 # todo to augment I could work on the different 3 channels of input separately
 # Dataset
-class EEGDataset(torch.utils.data.Dataset):
+class EEGDataset(torch.utils.data.Dataset, ABC):
+    signal_collector: MediaCollector
+    video_collector: MediaCollector
+    audio_collector: MediaCollector
+    text_collector: MediaCollector
+
+    base_path: str
+
+    def __init__(self):
+        self.scan()
+
     def initialize(self, files_root_path: str):
         pass
 
@@ -44,86 +55,63 @@ class EEGDataset(torch.utils.data.Dataset):
         """
         pass
 
-    @abstractmethod
-    def pickle(self, output_path: str):
-        pass
+    def restore(self, reference_path: str):
+        with open(reference_path, 'rb') as handle:
+            train_loader: SimpleLoaderDataset = pickle.load(handle)
+            # TODO: Now we have the processed data. We should just set it to the media collector.
+            #       What about the non processed data? How do i restore that one? Should I?
+            #       I could be just storing the metadata with the processed data?
+            self.video_collector.media_collection[PROCESSED_KEY] = train_loader.folds[0]
+            self.audio_collector.media_collection[PROCESSED_KEY] = train_loader.folds[1]
+            self.text_collector.media_collection[PROCESSED_KEY] = train_loader.folds[2]
+            self.signal_collector.media_collection[PROCESSED_KEY] = train_loader.folds[3]
 
-    @abstractmethod
-    def source_is_valid(self):
-        pass
+    def dump(self, output_path: str):
+        vc, ac, tc, sc = self.video_collector, self.audio_collector, self.text_collector, self.signal_collector
+        # Mah questo però richiede che il dataset sia sempre omogeneo.
+        # Dovrei forse trovare un altro modo?
+        simple = SimpleLoaderDataset(
+            [vc.get_processed_data(), ac.get_processed_data(), tc.get_processed_data(), sc.get_processed_data()]
+        )
 
-    @abstractmethod
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
-        # Returns a video, an audio, a text transcript and an eeg signal
-        # TODO: Need a trascript tool? Or better yet. We know exactly the timing of movie so we can know
-        # the correct script by downloading it.
-        pass
+        with open(output_path, 'wb') as handle:
+            # noinspection PyTypeChecker
+            pickle.dump(simple, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    @abstractmethod
-    def len(self):
-        pass
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        v = self.video_collector.get_media(index)[PROCESSED_KEY]
+        a = self.audio_collector.get_media(index)[PROCESSED_KEY]
+        t = self.text_collector.get_media(index)[PROCESSED_KEY]
+        s = self.signal_collector.get_media(index)[PROCESSED_KEY]
+        return v, a, t, s
+
+    def __len__(self):
+        vc, ac, tc, sc = self.video_collector, self.audio_collector, self.text_collector, self.signal_collector
+        return max(len(vc), len(ac), len(tc), len(sc))
 
 
 # VATE is trained on frontal data. Face_video are most prolly the best to work on with this knowledge.
 # I could also try to exploit the Depth videos?
 # Each dataset has its own rigid data structure
 class AMIGOSDataset(EEGDataset):
-    def __init__(self, base_path: str, signal_collector: SignalDataCollector):
+
+    def __init__(self, base_path: str):
         self.base_path = base_path
-
         # Where signal data is designed to be stored
-        self.signal_collector = signal_collector
-        self.listing: pd.DataFrame | None = None
-        if not self.source_is_valid():
-            raise FileNotFoundError("The given dataset doesn't exist or is an invalid instance of AMIGOS.")
-
-    def pickle(self, output_path: str):
-        pass
+        # TODO: pass pre-processing pipeline
+        self.signal_collector: MediaCollector = SignalCollector.AMIGOS()
+        self.video_collector: MediaCollector = VideoCollector.AMIGOS()
+        self.audio_collector: MediaCollector = AudioCollector.AMIGOS()
+        self.text_collector: MediaCollector = TextCollector.AMIGOS()
+        super().__init__()
 
     def scan(self):
-        # Scans the experiment data to have all required information to get a sample.
-        resource_file = self.base_path + "../Metadata_xlsx/Experiment_Data.xlsx"
-        sheets = pd.read_excel(resource_file, sheet_name=None)
+        # Scans the experiment data to have all required information to get information.
 
-        df = sheets["Short_Video_Order"]
-        # Replace trailing spaces
-        df.columns = df.columns.str.replace(r'[()]', '', regex=True).str.replace(' ', '_')
+        # Scan the processed Signal data:
 
-        num_columns = [col for col in df.columns if "Number" in col]
-        id_columns = [col for col in df.columns if "VideoID" in col]
 
-        df_num = df.melt(id_vars=['Exp1_ID', 'UserID'], value_vars=num_columns,
-                         var_name='Trial', value_name='Video_Number')
-        df_num["Trial_Num"] = df_num['Trial'].str.extract(r'(\d+)')
-        df_num = df_num.drop('Trial', axis=1)
-
-        df_id = df.melt(id_vars=['Exp1_ID', 'UserID'], value_vars=id_columns,
-                        var_name='Trial', value_name='Video_ID')
-        df_id["Trial_Num"] = df_id['Trial'].str.extract(r'(\d+)')
-        df_id = df_id.drop('Trial', axis=1)
-
-        # We want each row to be a specific experiment
-        self.listing = pd.merge(df_num, df_id, on=['Exp1_ID', 'UserID', 'Trial_Num'])
-
-    def len(self):
         pass
-
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
-        # TODO: I need an array of PID + Video indexed
-        row = self.listing.iloc[index]
-        # I have to return: a Video, an Audio, a Text and a Signal data
-
-        # The data of the selected row:
-        uid = row["UserID"]
-        trial_num = row["Trial_Num"]
-
-        signal = Signal(self.signal_collector, uid, self.base_path, trial_num)
-
-        return signal()
-
-    def source_is_valid(self):
-        # Check folder structure to be correct
-        return True
 
 
 class DEAPDataset(EEGDataset):
@@ -133,15 +121,9 @@ class DEAPDataset(EEGDataset):
     def scan(self):
         pass
 
-    def len(self):
-        pass
-
 
 class DREAMERDataset(EEGDataset):
     def scan(self):
-        pass
-
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         pass
 
     def len(self):
