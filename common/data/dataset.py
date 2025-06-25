@@ -1,14 +1,11 @@
 import pickle
 from abc import abstractmethod, ABC
 
-import pandas as pd
 import torch.utils.data
 
-from data.media.audio import AudioCollector
-from data.media.media import MediaCollector, PROCESSED_KEY
-from data.media.signal import SignalCollector
-from data.media.text import TextCollector
-from data.media.video import VideoCollector
+from common.data.media import MediaCollector, PROCESSED_KEY, FileReferenceMediaCollector, PandasCsvDataMediaCollector, \
+    NumpyDataMediaCollector
+from common.data.preprocessing import MediaPreProcessingPipeline
 
 
 class SimpleLoaderDataset(torch.utils.data.Dataset):
@@ -27,18 +24,17 @@ class SimpleLoaderDataset(torch.utils.data.Dataset):
 # todo to augment I could work on the different 3 channels of input separately
 # Dataset
 class EEGDataset(torch.utils.data.Dataset, ABC):
-    signal_collector: MediaCollector
-    video_collector: MediaCollector
-    audio_collector: MediaCollector
-    text_collector: MediaCollector
-
     base_path: str
 
-    def __init__(self):
-        self.scan()
+    def __init__(self, signal_collector: MediaCollector, video_collector: MediaCollector,
+                 audio_collector: MediaCollector, text_collector: MediaCollector, base_path: str):
+        self.signal_collector: MediaCollector = signal_collector
+        self.video_collector: MediaCollector = video_collector
+        self.audio_collector: MediaCollector = audio_collector
+        self.text_collector: MediaCollector = text_collector
 
-    def initialize(self, files_root_path: str):
-        pass
+        self.base_path = base_path
+        self.scan()
 
     def info(self):
         """
@@ -94,23 +90,21 @@ class EEGDataset(torch.utils.data.Dataset, ABC):
 # I could also try to exploit the Depth videos?
 # Each dataset has its own rigid data structure
 class AMIGOSDataset(EEGDataset):
-
-    def __init__(self, base_path: str):
-        self.base_path = base_path
-        # Where signal data is designed to be stored
-        # TODO: pass pre-processing pipeline
-        self.signal_collector: MediaCollector = SignalCollector.AMIGOS()
-        self.video_collector: MediaCollector = VideoCollector.AMIGOS()
-        self.audio_collector: MediaCollector = AudioCollector.AMIGOS()
-        self.text_collector: MediaCollector = TextCollector.AMIGOS()
-        super().__init__()
+    def __init__(self, signal_processor: MediaPreProcessingPipeline,
+                 video_processor: MediaPreProcessingPipeline,
+                 audio_processor: MediaPreProcessingPipeline,
+                 text_processor: MediaPreProcessingPipeline, base_path: str):
+        super().__init__(
+            NumpyDataMediaCollector([], signal_processor),
+            FileReferenceMediaCollector(video_processor),
+            FileReferenceMediaCollector(audio_processor),
+            PandasCsvDataMediaCollector([], text_processor),
+            base_path
+        )
 
     def scan(self):
         # Scans the experiment data to have all required information to get information.
-
         # Scan the processed Signal data:
-
-
         pass
 
 
@@ -128,3 +122,5 @@ class DREAMERDataset(EEGDataset):
 
     def len(self):
         pass
+
+# todo collector dataset

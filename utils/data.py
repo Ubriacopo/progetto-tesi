@@ -1,25 +1,7 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np
 from scipy.io import loadmat
-
-from .media import MediaPreProcessingPipeline, NumpyDataMediaCollector
-
-
-class SignalCollector(NumpyDataMediaCollector):
-    @staticmethod
-    def AMIGOS(processor: MediaPreProcessingPipeline):
-        return SignalCollector([], processor)
-
-
-class SignalMediaPreProcessingPipeline(MediaPreProcessingPipeline):
-    def process_output_shape(self) -> tuple:
-        return (4,)
-
-    def process(self, media: list | np.ndarray):
-        pass
 
 
 def extract_trial_data(destination_path: str, source_path: str):

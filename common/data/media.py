@@ -5,16 +5,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd
 
-
-class MediaPreProcessingPipeline(ABC):
-    @abstractmethod
-    def process(self, media: list | np.ndarray | str):
-        pass
-
-    @abstractmethod
-    def process_output_shape(self) -> tuple:
-        pass
-
+from .preprocessing import MediaPreProcessingPipeline
 
 RAW_KEY = "raw"
 PROCESSED_KEY = "processed"
@@ -75,7 +66,7 @@ class MediaCollector(ABC):
         pass
 
 
-class FileReferenceMediaCollector(MediaCollector, ABC):
+class FileReferenceMediaCollector(MediaCollector):
     # File reference handles 1 item at the time, pretty simple if you ask me!
     def load_additional_resource(self, file_path: str, **kwargs):
         # Add the new row for the resource.
@@ -96,7 +87,7 @@ class FileReferenceMediaCollector(MediaCollector, ABC):
         self._update_data(raw, processed, meta)
 
 
-class NumpyDataMediaCollector(MediaCollector, ABC):
+class NumpyDataMediaCollector(MediaCollector):
     def __init__(self, bonus_info_args: list[str], processor: MediaPreProcessingPipeline):
         super().__init__(processor)
         self.bonus_info_args = bonus_info_args
@@ -126,7 +117,7 @@ class NumpyDataMediaCollector(MediaCollector, ABC):
         self._update_data(raw, processed, meta)
 
 
-class PandasCsvDataMediaCollector(MediaCollector, ABC):
+class PandasCsvDataMediaCollector(MediaCollector):
     def __init__(self, bonus_info_args: list[str], processor: MediaPreProcessingPipeline):
         super().__init__(processor)
         self.bonus_info_args = bonus_info_args

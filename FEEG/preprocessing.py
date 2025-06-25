@@ -1,18 +1,12 @@
-import torchaudio
 import torch
+import torchaudio
 
-from .media import FileReferenceMediaCollector, MediaPreProcessingPipeline
-
-
-class AudioCollector(FileReferenceMediaCollector):
-    @staticmethod
-    def AMIGOS(processor: MediaPreProcessingPipeline):
-        return AudioCollector(processor)
+from common.data.preprocessing import MediaPreProcessingPipeline
 
 
 class AudioPreProcessingPipeline(MediaPreProcessingPipeline):
     def process_output_shape(self) -> tuple:
-        pass #todo
+        pass  # todo
 
     def process(self, media: list | str):
         audio_data, sample_rate = torchaudio.load(media)
