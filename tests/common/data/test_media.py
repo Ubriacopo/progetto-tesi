@@ -1,6 +1,6 @@
 import unittest
 
-from VATE.preprocessing import SignalMediaPreProcessingPipeline, VideoPreProcessingPipeline, AudioPreProcessingPipeline, \
+from models.VATE_local.preprocessing import SignalMediaPreProcessingPipeline, VideoPreProcessingPipeline, AudioPreProcessingPipeline, \
     TextProcessingPipeline
 from common.data.media import NumpyDataMediaCollector, FileReferenceMediaCollector, PandasCsvDataMediaCollector
 from utils.data import extract_trial_data

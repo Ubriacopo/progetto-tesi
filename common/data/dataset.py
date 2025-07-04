@@ -1,7 +1,10 @@
 import pickle
 from abc import abstractmethod, ABC
+from pathlib import Path
 
+import numpy as np
 import torch.utils.data
+from torch.utils.data import Dataset
 
 from common.data.media import MediaCollector, PROCESSED_KEY, FileReferenceMediaCollector, PandasCsvDataMediaCollector, \
     NumpyDataMediaCollector
@@ -35,12 +38,6 @@ class EEGDataset(torch.utils.data.Dataset, ABC):
 
         self.base_path = base_path
         self.scan()
-
-    def info(self):
-        """
-        Prints the dataset description in verbatim
-        """
-        pass
 
     @abstractmethod
     def scan(self):
@@ -86,7 +83,7 @@ class EEGDataset(torch.utils.data.Dataset, ABC):
         return max(len(vc), len(ac), len(tc), len(sc))
 
 
-# VATE is trained on frontal data. Face_video are most prolly the best to work on with this knowledge.
+# VATE_local is trained on frontal data. Face_video are most prolly the best to work on with this knowledge.
 # I could also try to exploit the Depth videos?
 # Each dataset has its own rigid data structure
 class AMIGOSDataset(EEGDataset):
@@ -102,10 +99,49 @@ class AMIGOSDataset(EEGDataset):
             base_path
         )
 
+    # Create the samples from one
+    def handle_resource(self, file: Path, processed_data: np.ndarray):
+        # P1_5_face.mov (Filename of face)
+        # P(10,12,11,15)_B1_face.mov Of experiment congiunto?
+        filename = file.name
+
+    def load_participant_data(self, data_path: Path) -> dict:
+        return_list = {}
+        for f in data_path.iterdir():
+
+            if not f.is_file() or f.suffix != '.npz':
+                continue
+
+            filename = f.stem
+            return_list[filename] = {filename.split('_')[-1]: np.load(f, allow_pickle=True)}
+
+        return return_list
+
     def scan(self):
-        # Scans the experiment data to have all required information to get information.
+        # Scans the experiment data to have all required information to load.
+        # Processing happens on demand
         # Scan the processed Signal data:
-        pass
+
+        # Metadata:
+        metadata_folder = self.base_path + "/metadata/"
+
+        # Video files name: PXX_ (Person number)
+        # Face videos:
+        face_video_folder = self.base_path + "/face/"
+        face_folder = Path(face_video_folder)
+
+        for file in face_folder.iterdir():
+            filename = file.name
+
+        # Pre_Processed data structure:
+        # Mi conviene dividere i file
+
+        # Scan the videos
+        # This yields video, audio and text -> No text actually (Paths not actual data)
+
+        # Scan the processed data (.mat -> .npz) (Paths)
+
+        return
 
 
 class DEAPDataset(EEGDataset):

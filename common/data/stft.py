@@ -3,9 +3,6 @@ from matplotlib import pyplot as plt
 from scipy import signal
 from scipy.stats import stats
 
-import VATE.media
-
-
 # And it's also valid for EEG, where low frequencies (delta, theta, alpha, etc.) are most relevant.
 def compute_stft(x, fs: float, top_clip: int = -1, **kwargs):
     f, t, z_xx = signal.stft(x, fs, **kwargs)

@@ -17,3 +17,6 @@ Once downloaded in order to proceed there are two things to do:
 > git clone https://github.com/Ubriacopo/BrainBERT.git
 
 - Also download the pre-trained model from Google Drive. See the BrainBERT script to automate.
+
+Alternativa da vedere:
+export PYTHONPATH=$PYTHONPATH:./dependencies/VATE:./dependencies/NEUROG
