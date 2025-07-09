@@ -1,7 +1,9 @@
+import gc
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Generator
 
 import cv2
 import ffmpeg
@@ -94,7 +96,7 @@ class AMIGOSCollector:
 
             video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
             eeg_data = participant_data[person]["joined_data"][video_index]
-            self.data_collection.append(DatasetDataCollection(experiment_id, eeg_data, str(v), ""))
+            self.data_collection.append(DatasetDataCollection(experiment_id, eeg_data[0], str(v), ""))
 
         self.scanned = True
 
@@ -102,7 +104,8 @@ class AMIGOSCollector:
 class AMIGOSSampler(DataSampler):
     def __init__(self, fps: int = 15, max_segment_seconds: int = 5):
         self.fps, self.max_segment_seconds = fps, max_segment_seconds
-        self.audio_hz = 16000
+        self.audio_hz = 24000
+        self.fs = 128
 
     def process_video(self, sample: DatasetDataCollection, segments: list[tuple[int, int]]):
         # Downsample
@@ -123,15 +126,19 @@ class AMIGOSSampler(DataSampler):
         original_video = VideoFileClip(sample.mediafile_path)
         for start, stop in segments:
             clip: VideoFileClip = original_video.subclipped(start, stop)
-            yield clip.audio.to_soundarray(self.audio_hz)
+            yield clip.audio.to_soundarray(fps=self.audio_hz)
+
+    def process_eeg(self, sample: DatasetDataCollection, segments: list[tuple[int, int]]) -> Generator:
+        for start, stop in segments:
+            yield sample.eeg_data[start * self.fs:stop * self.fs]
 
     def process_sample(self, sample: DatasetDataCollection):
         # todo: Generate segments from data
-        duration = sample.eeg_data[0].shape[0] / 128  # Downsampled to 128Hz
+        duration = sample.eeg_data.shape[0] / self.fs  # Downsampled to 128Hz
 
         # Questa tecnica è la banale divisione per intervalli regolari.
         # TODO: dividere su euristica di picchi con piccolo overlap
-        starts = np.arange(0, duration, self.max_segment_seconds)
+        starts = np.arange(0, duration, self.max_segment_seconds).astype(int)
         stops = np.minimum(starts + self.max_segment_seconds, duration).astype(int)
 
         segments = list(zip(starts, stops))
@@ -144,38 +151,64 @@ class AMIGOSSampler(DataSampler):
 
         video_generator = self.process_video(sample, segments)
         audio_generator = self.process_audio(sample, segments)
+        eeg_generator = self.process_eeg(sample, segments)
+
         # todo: Text generator
 
-        for video, audio in zip(video_generator, audio_generator):
-            yield {"video": video, "audio": audio, "text": "", "eeg_data": sample.eeg_data}
+        index = 0
+        for video, audio, eeg in zip(video_generator, audio_generator, eeg_generator):
+            yield {
+                "video": video, "audio": audio, "text": "", "eeg_data": eeg,
+                "metadata": {"original_video": sample.mediafile_path, "split": index, "timestamps": segments[index]}
+            }
+
+            index += 1
 
 
-def sample_amigos(base_path: str, entries_per_file: int = 150):
+def sample_amigos(base_path: str, entries_per_file: int = 35):
     collector = AMIGOSCollector(base_path)
     collector.scan()
     # todo log a little bit
     sampler = AMIGOSSampler()
-    video_list, audio_list, text_list, eeg_list = [], [], [], []
+    # todo pad to 5s?
+    video_list, audio_list, text_list, eeg_list, timestamps, filenames = [], [], [], [], [], []
     generated_file_number = 0
 
     Path(base_path + "/compressed/").mkdir(parents=True, exist_ok=True)
     for x in collector.data_collection:
         segments = sampler.process_sample(x)
         for y in segments:
-            v, a, t, eeg = y.values()
+            v, a, t, eeg, meta = y.values()
 
             video_list.append(v)
             audio_list.append(a)
             text_list.append(t)
             eeg_list.append(eeg)
 
+            # TODO Se non faccio padding non puo funzionare per shape di array
+
+            timestamps.append(meta["timestamps"])
+            filenames.append(meta["original_video"])
+            print(f"Video:{len(video_list)}")
             if len(video_list) % entries_per_file == 0:
                 # store the file
-                save_data = {"video": video_list, "audio": audio_list, "text": text_list, "eeg_data": eeg_list}
+                # todo dataclass
+                save_data = {
+                    "video": video_list, "audio": audio_list, "text": text_list, "eeg_data": eeg_list,
+                    "timestamp": timestamps, "filename": filenames
+                }
                 output_path = base_path + "/compressed/" + "AMIGOS_compressed_" + str(generated_file_number) + ".npz"
                 np.savez(output_path, **save_data)
                 generated_file_number += 1
+                # Reset
+                # todo gc collection right
+                video_list, audio_list, text_list, eeg_list, timestamps, filenames = [], [], [], [], [], []
+                gc.collect()
 
-    save_data = {"video": video_list, "audio": audio_list, "text": text_list, "eeg_data": eeg_list}
+    save_data = {
+        "video": video_list, "audio": audio_list, "text": text_list, "eeg_data": eeg_list,
+        "timestamp": timestamps, "filename": filenames
+    }
     output_path = base_path + "/compressed/" + "AMIGOS_compressed_" + str(generated_file_number) + ".npz"
     np.savez(output_path, data=np.array(save_data, dtype=object))
+    video_list, audio_list, text_list, eeg_list, timestamps, filenames = [], [], [], [], [], []
