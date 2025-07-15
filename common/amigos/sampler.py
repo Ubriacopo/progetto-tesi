@@ -8,16 +8,16 @@ import ffmpeg
 import numpy as np
 import pandas as pd
 
-from common.amigos.data_sampler import DataSampler, DatasetDataCollection, extract_trial_data, load_participant_data
+from common.amigos.utils import load_participant_data, extract_trial_data
+from common.ds.sampler import DataSampler
 from utils.data import pad_main_axis
 
 
 @dataclasses.dataclass
 class DatasetDataCollection:
     experiment_id: str
-
     eeg_data: np.ndarray | list[np.ndarray]
-    mediafile_path: str | Path
+    mediafile_path: str | Path  # todo mp3 e mp4 cambiano ora struttua
     frontal_media_path: str
 
 
@@ -26,15 +26,18 @@ class SamplingResult:
     # The two relevant infos
     media_path: str
     data: np.ndarray
-
     # Metadata
     original_filename: str
     split_index: int
-
     start_timestamp: int
     stop_timestamp: int
-
     experiment_id: str
+
+
+@dataclasses.dataclass
+class StoredSamplingResult(SamplingResult):
+    data_file: str
+    data_index: int
 
 
 # todo controlla
@@ -70,7 +73,7 @@ class AMIGOSCollector:
 
             video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
             eeg_data = participant_data[person]["joined_data"][video_index]
-            self.data_collection.append(DatasetDataCollection(experiment_id, eeg_data[0], str(v), ""))
+            self.data_collection.append(DatasetDataCollection(experiment_id, eeg_data[0], str(v.resolve()), ""))
 
         self.scanned = True
         return self.data_collection
@@ -91,11 +94,11 @@ class AMIGOSSampler(DataSampler, ABC):
             length = end - start
             Path(self.output_path + f'{sample.experiment_id}').mkdir(parents=True, exist_ok=True)
             output_path = self.output_path + f'{sample.experiment_id}/{idx}.mp4'
-
+            # todo: ffmpeg -i video.mp4 -q:a 0 -map a audio.mp3 Processa anche audio a parte cosi lo carico e via
             p = ffmpeg.input(sample.mediafile_path, ss=start, t=length, r=self.fps)
             p.output(output_path, c='copy', ar=self.audio_rate).run()
 
-            yield output_path
+            yield str(Path(output_path).resolve())
 
     def process_data(self, sample: DatasetDataCollection, segments: list[tuple[int, int]]):
         for start, stop in segments:
@@ -132,18 +135,6 @@ class SimpleAMIGOSSampler(AMIGOSSampler):
         return list(zip(starts, stops))
 
 
-def __store_df(data_filepath: str, csv_filepath: str, df: pd.DataFrame):
-    np.save(data_filepath, df["data"].to_numpy())
-    df = df.drop("data", axis=1)
-    df["data_file"] = data_filepath
-
-    df.to_csv(csv_filepath, index=True)
-
-    # To avoid having too much data up the RAM
-    del df
-    gc.collect()
-
-
 def do_sample(base_path: str, entries_per_file: int = 200):
     files = AMIGOSCollector(base_path).scan()
     sampler = SimpleAMIGOSSampler(base_path + "sampled/", 5)
@@ -160,22 +151,21 @@ def do_sample(base_path: str, entries_per_file: int = 200):
             npy = np.append(npy, res_df["data"].to_numpy()) if npy is not None else res_df["data"].to_numpy()
             res_df = res_df.drop("data", axis=1)
 
-            res_df["data_file"] = base_path + "sampled/AMIGOS_split_" + str(generated_file_number)
+            file_template = base_path + "sampled/AMIGOS_split_" + str(generated_file_number) + ".npy"
+            res_df["data_file"] = Path(file_template).resolve()
             res_df["data_index"] = len(npy) - 1  # We store the index of the npy file
 
             df = pd.DataFrame(res_df) if df is None else pd.concat([df, res_df], ignore_index=True)
 
             if len(df) % entries_per_file == 0:
-                file_template = base_path + "sampled/AMIGOS_split_" + str(generated_file_number)
-                np.save(file_template + ".npy", npy)
-
+                np.save(file_template, npy)
                 # Reset state of npy variable
                 del npy
                 npy = None
-
                 generated_file_number += 1
 
-    file_template = base_path + "sampled/AMIGOS_split_" + str(generated_file_number)
-    np.save(file_template + ".npy", npy)
+    # Store the descriptor file of this dataset.
+    file_template = base_path + "sampled/AMIGOS_split_" + str(generated_file_number) + ".npy"
+    np.save(file_template, npy)
 
     df.to_csv(base_path + "sampled/AMIGOS_sampled" + ".csv", index=True)
