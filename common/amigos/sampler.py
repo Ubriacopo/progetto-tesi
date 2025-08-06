@@ -1,30 +1,26 @@
 import dataclasses
-import gc
 import re
 import traceback
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 from pathlib import Path
 
-from concurrent.futures import as_completed, ProcessPoolExecutor
 import ffmpeg
 import numpy as np
 import pandas as pd
+import speech_recognition as sr
 from moviepy import VideoFileClip
 
 from common.amigos.utils import load_participant_data, extract_trial_data
 from common.ds.sampler import DataSampler
 from utils.data import pad_main_axis
 
-from concurrent.futures import ThreadPoolExecutor
-
-import speech_recognition as sr
-
 
 @dataclasses.dataclass
 class DatasetDataCollection:
     experiment_id: str
-    eeg_data: np.ndarray | list[np.ndarray]
+    eeg_data: list[np.ndarray] | np.ndarray
     mediafile_path: str | Path  # todo mp3 e mp4 cambiano ora struttua
     frontal_media_path: str
 
@@ -48,7 +44,6 @@ class StoredSamplingResult(SamplingResult):
     data_index: int
 
 
-# todo controlla
 # Questa classe legge i file e li conserva come experiments.
 class AMIGOSCollector:
     def __init__(self, base_path: str):
@@ -58,7 +53,6 @@ class AMIGOSCollector:
         """
         self.base_path: str = base_path
         self.data_collection: list[DatasetDataCollection] = []
-
         self.scanned: bool = False
 
     def scan(self, force: bool = False) -> list[DatasetDataCollection]:

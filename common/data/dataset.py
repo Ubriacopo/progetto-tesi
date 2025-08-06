@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import torch.utils.data
-from torch.utils.data import Dataset
 
 from common.data.media import MediaCollector, PROCESSED_KEY, FileReferenceMediaCollector, PandasCsvDataMediaCollector, \
     NumpyDataMediaCollector
