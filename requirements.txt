@@ -24,3 +24,4 @@ psutil~=7.0.0
 pytz~=2025.2
 moviepy~=2.2.1
 ffmpeg-python~=0.2.0
+SpeechRecognition~=3.14.3
