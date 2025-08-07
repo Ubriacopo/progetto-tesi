@@ -7,13 +7,14 @@ import pandas as pd
 import torchaudio
 from torch.utils.data import Dataset
 
-from common.amigos.sampler import StoredSamplingResult
+from common.amigos.sampler import StoredSamplingResult, SamplingDescriptor
 from common.data.extensions import video_extensions, audio_extensions, text_extensions
 from common.data.video import extract_frames
 from common.ds.transform import Compose
 
+
 # todo make abstract class to recycle the extension tracking
-class AMIGOSDataset(Dataset, ABC):
+class AMIGOSDataset(Dataset):
     def __init__(self, dataset_spec_file: str, video_transform: Compose = None,
                  audio_transform: Compose = None, text_transform: Compose = None,
                  eeg_transform: Compose = None, persist_while_fetching: bool = False):
@@ -32,7 +33,7 @@ class AMIGOSDataset(Dataset, ABC):
         # We can keep the eeg data cached? todo Might be much.
         # TODO Enhancement: Rotational cached eeg data.
         #  I keep only half in memory and read on demand discarding the oldest or something like that.
-        self.cached_eeg = np.array([np.load(f) for f in files])
+        self.cached_eeg = [np.load(f, allow_pickle=True) for f in files]
 
         # Only during init I have to check if samples have txt and audio to see what to serve
         media_path = self.descriptor.iloc[0].to_dict()["media_path"]
@@ -59,35 +60,43 @@ class AMIGOSDataset(Dataset, ABC):
 
     def __getitem__(self, index: int):
         record = self.descriptor.iloc[index].to_dict()
-        entry = StoredSamplingResult(**record)
+        entry = SamplingDescriptor(**record)
 
         video_data = None
         if self.video_enabled:
             (video_ext,) = self.extensions["video"]
-            video_data = extract_frames(cv2.VideoCapture(entry.data_file + video_ext))
+            video_data = extract_frames(cv2.VideoCapture(entry.media_path + video_ext))
             if self.video_transform is not None:
                 video_data = self.video_transform(video_data)
+            if isinstance(video_data, list):
+                video_data = np.array(video_data)
 
         waveform, sample_rate = None, None
         if self.audio_enabled:
             (audio_ext,) = self.extensions["audio"]
-            waveform, sample_rate = torchaudio.load(entry.data_file + audio_ext)
+            waveform, sample_rate = torchaudio.load(entry.media_path + audio_ext)
             if self.audio_transform is not None:
                 waveform, sample_rate = self.audio_transform([waveform, sample_rate])
+            if isinstance(waveform, list):
+                waveform = np.array(waveform)
 
-        text: str | None = None
+        text: str | None | np.ndarray = None
         if self.text_enabled:
             (text_ext,) = self.extensions["text"]
-            with open(entry.data_file + text_ext) as f:
+            with open(entry.media_path + text_ext) as f:
                 text = f.read()
             if self.text_transform is not None:
                 text = self.text_transform(text)
+            if isinstance(text, list):
+                text = np.array(text)
 
         eeg = self.cached_eeg[int(Path(entry.data_file).stem.split("_")[-1])][entry.data_index]
         if self.eeg_transform is not None:
             eeg = self.eeg_transform(eeg)
         # TODO: Vedi se ritornare None in dataset va bnee
-        return video_data, waveform, text, eeg, None
+        # Video Data is a list of frames
+        # Text also should already be tokenized and processed!
+        return video_data, waveform, text, eeg, None  # We return None as last dim as unsupervised learning
 
     def __len__(self):
         return len(self.descriptor)

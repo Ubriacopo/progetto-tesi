@@ -29,7 +29,7 @@ class DatasetDataCollection:
 class SamplingResult:
     # The two relevant infos
     media_path: str
-    data: np.ndarray
+    data: None | np.ndarray
     # Metadata
     original_filename: str
     split_index: int
@@ -40,6 +40,20 @@ class SamplingResult:
 
 @dataclasses.dataclass
 class StoredSamplingResult(SamplingResult):
+    data_file: str
+    data_index: int
+    sample_index: int
+
+
+@dataclasses.dataclass
+class SamplingDescriptor:
+    sample_index: int
+    media_path: str
+    original_filename: str
+    split_index: int
+    start_timestamp: int
+    stop_timestamp: int
+    experiment_id: str
     data_file: str
     data_index: int
 
@@ -255,4 +269,4 @@ def do_sample(base_path: str, output_path: str, sampler: AMIGOSSampler, entries_
     file_template = output_path + "AMIGOS_split_" + str(generated_file_number) + ".npy"
     np.save(file_template, npy)
 
-    df.to_csv(output_path + "AMIGOS_sampled" + ".csv", index=True)
+    df.rename_axis("sample_index").to_csv(output_path + "AMIGOS_sampled" + ".csv", index=True)
