@@ -4,13 +4,13 @@ If a processor does not produce one of these extensions the dataset won't be abl
 """
 
 
-def audio_extensions():
-    return [".wav", ".mp3"]
+def audio_extensions() -> set[str]:
+    return {".wav", ".mp3"}
 
 
-def video_extensions():
-    return [".mp4", ".mkv", ".mov", ".avi"]
+def video_extensions() -> set[str]:
+    return {".mp4", ".mkv", ".mov", ".avi"}
 
 
-def text_extensions():
-    return [".txt"]
+def text_extensions() -> set[str]:
+    return set(".txt")
