@@ -16,16 +16,17 @@ class Compose:
         self.pre, self.aug, self.post = list(pre), list(aug), list(post)
 
     def __call__(self, x: Any, train: bool = True, return_both: bool = False) -> Any | tuple[Any, Any]:
-        # After pre-processing was done we have pre
-        # todo vedi se devi copiare
-        pre = functools.reduce(lambda d, t: t(d), self.pre, x)
-        y = pre
+        y = functools.reduce(lambda d, t: t(d), self.pre, x)
+        return self.transform_but_skip_pre(y, train=train, return_both=return_both)
 
-        if train and self.aug:
-            # Augment
-            pre_copy = pre.clone() if isinstance(pre, torch.Tensor) else pre
+    def transform_but_skip_pre(self, x: Any, train: bool = True, return_both: bool = False) -> Any:
+        y = x
+
+        if train:
+            # Augment only during training
+            pre_copy = x.clone() if isinstance(x, torch.Tensor) else x
             y = functools.reduce(lambda d, t: t(d), self.aug, pre_copy)
 
         y = functools.reduce(lambda d, t: t(d), self.post, y)
         # Return pre and pre + optional(aug) + post. Only pre should be cached
-        return (pre, y) if return_both else y
+        return (y, x) if return_both else y
