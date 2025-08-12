@@ -1,8 +1,12 @@
 import functools
-from abc import ABC
-from typing import Any, Callable, List, Iterable
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Any, Callable, Iterable
 
 import torch
+from torchvision.transforms import Lambda
+
+IDENTITY = Lambda(lambda x: x)
 
 
 # https://github.com/KangHyunWook/Pytorch-implementation-of-Multimodal-emotion-recognition-on-RAVDESS-dataset

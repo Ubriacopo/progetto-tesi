@@ -1,3 +1,4 @@
+tokenizers
 safetensors
 scipy~=1.15.2
 requests~=2.32.3

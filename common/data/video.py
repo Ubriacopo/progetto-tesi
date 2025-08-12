@@ -6,6 +6,7 @@ def resize_frames(frames: list, size: tuple = (224, 224)):
     resized = [cv2.resize(frame, size, interpolation=cv2.INTER_AREA) for frame in frames]
     return np.array(resized)
 
+
 def extract_frames(video: cv2.VideoCapture) -> list:
     frames = []
     while True:

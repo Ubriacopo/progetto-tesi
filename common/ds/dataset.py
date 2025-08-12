@@ -46,7 +46,7 @@ def check_extension(media_path: Path, subset: set[str], multi: bool = False) -> 
     extensions = set([p.suffix for p in list(media_path.parent.glob("0.*"))])
     matches = extensions & subset
 
-    if not multi and len(matches):
+    if not multi and len(matches) > 1:
         raise AssertionError("We only support one extension at a time")
 
     return bool(matches), matches
@@ -147,9 +147,8 @@ class MediaBasedDataset(PersistingDataset, ABC):
         pass
 
     def _restore_from_persistent(self, transform: Compose, cached: DatasetRecord, prop: str) -> DatasetRecord:
-        if transform is not None and hasattr(cached, prop) is not None:
-            attr = cached.__getattribute__(prop)
-            res = transform.transform_but_skip_pre(attr, train=self.train, return_both=False)
+        if transform is not None and hasattr(cached, prop) and cached.__getattribute__(prop) is not None:
+            res = transform.transform_but_skip_pre(cached.__getattribute__(prop), train=self.train, return_both=False)
             cached.__setattr__(prop, res)
         return cached
 
@@ -170,9 +169,9 @@ class MediaBasedDataset(PersistingDataset, ABC):
             if self.use_cache:
                 vd, cache_object["video"] = vd
 
-        ad = self.get_audio(idx)
+        ad = self.get_audio(idx)  # Returns wavelength + freq
         if self.audio_transform is not None and ad is not None:
-            ad = self.audio_transform(ad, train=self.train, return_both=self.use_cache)
+            ad = self.audio_transform(ad[0], train=self.train, return_both=self.use_cache)
             if self.use_cache:
                 ad, cache_object["audio"] = ad
 
@@ -200,7 +199,11 @@ class MediaBasedDataset(PersistingDataset, ABC):
     def persist_on_fetch(self, record: DatasetRecord, output: str):
         o = dict()
         for k, v in dataclasses.asdict(record).items():
-            if v is not None: o[k] = v.detach().cpu()
+            if v is not None:
+                if isinstance(v, list):
+                    # If we have a list
+                    v = torch.stack(v)
+                o[k] = v.detach().cpu()
         save_file(o, f"{output}.safetensors")
 
     def retrieve_from_persistent(self, idx: int) -> DatasetRecord | None:
@@ -209,15 +212,15 @@ class MediaBasedDataset(PersistingDataset, ABC):
         :param idx:
         :return:
         """
-        path = self.get_persistent_path(idx)
+        path = self.get_persistent_path(idx) + ".safetensors"
         if not Path(path).exists() or not Path(path).is_file():
             return None
 
-        with safe_open(path, framework="pt", device="gpu") as file:
+        with safe_open(path, framework="pt") as file:
             record = DatasetRecord(None, None, None, None, None)
             # Has to completely overlap
             for key in file.keys():
-                record.__setattr__(key, file[key])
+                record.__setattr__(key, file.get_tensor(key))
             return record
 
     @abstractmethod
