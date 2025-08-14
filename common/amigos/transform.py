@@ -4,15 +4,15 @@ from tokenizers import Tokenizer
 from torchvision.transforms import v2
 from torchvision.transforms.v2 import ToTensor
 
-from common.ds.dataset import TextEntry
-from common.ds.custom import CustomAudioTransforms
+from common.ds.dataset import AttentionRichObject
+from common.ds.custom import CustomAudioTransforms, CustomVideoTransforms
 from common.ds.transform import Compose, IDENTITY
 
 
 def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
                     stds: tuple[float] | None = (0.229, 0.224, 0.225),
-                    size: tuple[int, int] = (224, 224), fps_map: tuple = (30, 30)) -> Compose:
-    # Nothing beats the old good classics
+                    size: tuple[int, int] = (224, 224),
+                    fps_map: tuple[int, int] = (30, 30)) -> Compose:
     return Compose([
         v2.ToImage(),
         v2.ToDtype(torch.float32, scale=True),
@@ -26,7 +26,7 @@ def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
     ], [
         # These two instructions go together
         v2.ToTensor(),
-        # DownsampleFPS(fps_map[0], fps_map[1]) if fps_map[0] != fps_map[1] else IDENTITY,
+        CustomVideoTransforms.ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
         v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
     ])
 
@@ -47,10 +47,15 @@ def text_transform(tokenizer=Tokenizer.from_pretrained("sentence-transformers/al
     """
     return Compose([], [], [
         v2.Lambda(lambda x: tokenizer.encode(x)),
-        v2.Lambda(lambda x: TextEntry(x.ids, x.attention_mask)),
+        v2.Lambda(lambda x: AttentionRichObject(x.ids, x.attention_mask)),
     ])
 
 
+# todo
+# should pad and also add attention mask? Nope
+# should re-order channels
+# shoudl drop some channels
+# to stft
 def eeg_transform() -> Compose:
     # TODO: Work on this
     return Compose([ToTensor()], [], [])

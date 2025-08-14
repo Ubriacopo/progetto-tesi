@@ -15,18 +15,18 @@ from common.ds.transform import Compose
 
 
 @dataclasses.dataclass
-class TextEntry:
+class AttentionRichObject:
     input_ids: torch.Tensor
     attention_mask: torch.Tensor
 
 
 @dataclasses.dataclass
 class DatasetRecord:
-    eeg: None | torch.Tensor
-    video: None | torch.Tensor
-    audio: None | torch.Tensor
+    eeg: None | AttentionRichObject | torch.Tensor
+    video: None | AttentionRichObject | torch.Tensor
+    audio: None | AttentionRichObject | torch.Tensor
     # Texts to be tokenized with the relative attention mask.
-    text: None | TextEntry | torch.Tensor
+    text: None | AttentionRichObject | torch.Tensor
     present: None | torch.Tensor
 
 
