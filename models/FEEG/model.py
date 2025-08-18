@@ -49,7 +49,14 @@ class EEGAVI(torch.nn.Module):
         # We anchor EEG data now
         self.eeg_merger = MAG2D(eeg_emb_size, y_dim=video_emb_size, beta_shift=0.01, dropout=0)
 
-        self.projector = nn.Sequential()
+        # TODO Revise this and choose a good architecture
+        self.projector = nn.Sequential(
+            nn.LayerNorm(eeg_emb_size),
+            nn.Linear(eeg_emb_size, 2 * eeg_emb_size),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(2 * eeg_emb_size, eeg_emb_size)
+        )
 
     def call_encoder(self, x, embedder: nn.Module | BaseEmbedding, kd_head: KDHead | None = None,
                      ignore_kd: bool = False) -> tuple[None | Tensor, None | Tensor] | None | Tensor:
