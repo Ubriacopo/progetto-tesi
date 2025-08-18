@@ -6,6 +6,16 @@ from torch import einsum
 from transformer import *
 
 
+class KDHead(nn.Module):
+    def __init__(self, input_dimension: int, output_dimension: int):
+        super(KDHead).__init__()
+        # Output shape is teacher shape
+        self.proj = nn.Linear(input_dimension, output_dimension)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.normalize(self.proj(x), p=2, dim=-1)
+
+
 # todo vedi come funziona
 class MultiScale_Bottleneck_Transformer(nn.Module):
     def __init__(self, hid_dim, n_head, dropout, n_bottleneck=8, bottleneck_std=0.15):
