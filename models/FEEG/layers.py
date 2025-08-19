@@ -10,10 +10,10 @@ class KDHead(nn.Module):
     def __init__(self, input_dimension: int, output_dimension: int):
         super(KDHead).__init__()
         # Output shape is teacher shape
-        self.proj = nn.Linear(input_dimension, output_dimension)
+        self.projection = nn.Linear(input_dimension, output_dimension)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.nn.functional.normalize(self.proj(x), p=2, dim=-1)
+        return torch.nn.functional.normalize(self.projection(x), p=2, dim=-1)
 
 
 # todo vedi come funziona
