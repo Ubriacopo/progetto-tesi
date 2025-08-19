@@ -2,7 +2,8 @@ from abc import abstractmethod, ABC
 from typing import Callable
 
 import torch
-from transformers import VivitModel, Wav2Vec2FeatureExtractor, BertModel
+from cbramod.models.cbramod import CBraMod
+from transformers import VivitModel, Wav2Vec2FeatureExtractor, BertModel, WavLMModel
 
 
 class BaseEmbedding(ABC):
@@ -16,12 +17,15 @@ class BaseEmbedding(ABC):
 
     @staticmethod
     def get_ViViT_base():
+        # Wants 32 frames clips (so
         model = VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400")
         return LambdaBaseEmbedding(model, 768, lambda x: x.last_hidden_state)
 
     @staticmethod
     def get_wav2vec_base():
-        model = Wav2Vec2FeatureExtractor.from_pretrained("facebook/wav2vec2-base-960h")
+        # Input must be raw waveform sampled at 16,000 Hz.
+        # If your audio is at 44.1 kHz, 48 kHz, etc., you must resample before feeding it in.
+        model = WavLMModel.from_pretrained("microsoft/wavlm-base")
         return LambdaBaseEmbedding(model, 768, lambda x: x.logits)
 
     @staticmethod
@@ -30,9 +34,17 @@ class BaseEmbedding(ABC):
         return LambdaBaseEmbedding(bert, 768, lambda x: x)
 
     @staticmethod
-    def get_eeg_former_base():
-        eeg_model = None  # todo
-        return LambdaBaseEmbedding(eeg_model, 768, lambda x: x)
+    def get_cbramod_base(device=None, weights_path: str = "../../dependencies/cbramod/pretrained_weights.pth"):
+        model = CBraMod()
+        if device is None:
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        model.load_state_dict(torch.load(weights_path, map_location=device))
+        return LambdaBaseEmbedding(model, 200, lambda x: x)
+
+    def __call__(self, x):
+        res = self.model(x)
+        return self.retrieve_logits(res)
 
 
 class LambdaBaseEmbedding(BaseEmbedding):

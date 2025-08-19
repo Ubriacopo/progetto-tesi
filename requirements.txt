@@ -1,3 +1,4 @@
+torchviz
 tokenizers
 safetensors
 scipy~=1.15.2

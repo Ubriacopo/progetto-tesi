@@ -19,9 +19,9 @@ class EEGAVI(torch.nn.Module):
                  base_text: BaseEmbedding = BaseEmbedding.get_BERT_base(),
                  text_kd_size: int | None = None,
 
-                 base_eeg: BaseEmbedding = BaseEmbedding.get_eeg_former_base(),
+                 base_eeg: BaseEmbedding = BaseEmbedding.get_cbramod_base(),
                  use_kd: bool = True):
-        super(EEGAVI).__init__()
+        super(EEGAVI, self).__init__()
         self.use_kd: bool = use_kd
         self.base_video = base_video
 
@@ -64,8 +64,6 @@ class EEGAVI(torch.nn.Module):
             return None
 
         x = embedder(x)
-        if isinstance(x, BaseEmbedding):
-            x = embedder.retrieve_logits(x)
 
         kd_x = None
         if kd_head is not None and self.use_kd:
