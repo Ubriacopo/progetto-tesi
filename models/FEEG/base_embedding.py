@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 import torch
 from cbramod.models.cbramod import CBraMod
 from torch import nn
-from transformers import VivitModel, WavLMModel, AutoModel
+from transformers import VivitModel, WavLMModel, AutoModel, Wav2Vec2BertModel
 
 
 class FoundationEmbedder(nn.Module, ABC):
@@ -27,8 +27,7 @@ class FoundationEmbedder(nn.Module, ABC):
 
 
 class ViViTFoundationEmbedder(FoundationEmbedder):
-    def __init__(self, output_size: int = 768,
-                 variant: str = "google/vivit-b-16x2-kinetics400", perceiver_default: bool = True):
+    def __init__(self, output_size: int = 768, variant: str = "google/vivit-b-16x2-kinetics400"):
         super().__init__(VivitModel.from_pretrained(variant), output_size)
 
     def reshape_for_perceiver(self, x):
@@ -45,9 +44,9 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
         return x.last_hidden_state
 
 
-class WavLMFoundationEmbedder(FoundationEmbedder):
-    def __init__(self, output_size: int = 768, variant: str = "microsoft/wavlm-base", perceiver_default: bool = True):
-        super().__init__(WavLMModel.from_pretrained(variant), output_size)
+class W2VBertFoundationEmbedder(FoundationEmbedder):
+    def __init__(self, output_size: int = 1024, variant: str = "facebook/w2v-bert-2.0"):
+        super().__init__(Wav2Vec2BertModel.from_pretrained(variant), output_size)
 
     def retrieve_logits(self, x):
         return x.last_hidden_state

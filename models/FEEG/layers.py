@@ -155,7 +155,7 @@ class MaskedCrossAttention(nn.Module):
     # todo adapt
     def __init__(self, dim: int, dim_latent, dim_head=64, heads=8, only_attend_immediate_media=True):
         super().__init__()
-
+        # TODO Non vista la costruzione
         self.scale = dim_head ** -0.5
         self.heads = heads
         inner_dim = dim_head * heads
@@ -191,16 +191,16 @@ class MaskedCrossAttention(nn.Module):
             ), f"media_location.shape is {media_locations.shape} but x.shape is {x.shape}"
         q_object = x
         kv_object = media
-
-        TQ = q_object.shape[1]
-        _, TKV, n = q_object.shape[:3]
+        # q is the wrong shape it seems has to be 3d
+        TQ = q_object.shape[1]  # 22 from Tensor([1,22,4,200])
+        _, TKV, n = kv_object.shape[:3]  # (1,33,64) from Tensor([1,33,64,768])
 
         q_object = self.norm(q_object)
         q = self.to_q(q_object)
         # todo gioca con le forme solo qui non prima
         kv_object = rearrange(kv_object, "b t n d -> b (t n) d")
         k, v = self.to_kv(kv_object).chunk(2, dim=-1)
-
+        # TODO: Checkpoint
         q, k, v = rearrange_many((q, k, v), "b n (h d) -> b h n d", h=self.heads)
         q *= self.scale  # Rescale the query
 
@@ -208,8 +208,8 @@ class MaskedCrossAttention(nn.Module):
         sim = einsum("... i d, ... j d -> ... i j", q, k)
 
         q_time: Optional[Tensor] = None
-        kv_time: Optional[Tensor] = None
-        if media is not None:
+        kv_time: Optional[Tensor] = None  # todo vedi se giusto
+        if kv_object is not None:
             kv_time = torch.arange(TKV, device=x.device) + 1
             if use_cached_media:
                 q_time = repeat(torch.count_nonzero(media_locations, dim=1), "b -> b i", i=TQ)
@@ -240,7 +240,7 @@ class GatedCrossAttentionBlock(nn.Module):
         super().__init__()
         self.attn = MaskedCrossAttention(dim=dim, dim_latent=dim_latent, dim_head=dim_head, heads=heads,
                                          only_attend_immediate_media=only_attend_immediate_media)
-        self.attn_gate = nn.Parameter(torch.tensor([0.0]))
+        self.attn_gate = nn.Parameter(torch.tensor([.1]))
 
         inner_dim = dim * ff_mult
         self.ff = nn.Sequential(
@@ -250,9 +250,10 @@ class GatedCrossAttentionBlock(nn.Module):
             nn.Linear(inner_dim, dim),
         )
 
-        self.ff_gate = nn.Parameter(torch.tensor([0.0]))
+        self.ff_gate = nn.Parameter(torch.tensor([.1]))
 
     def forward(self, q, kv, media_locations=None, use_cached_media=False, ):
+        use_cached_media = True  # To see if it works at 0. Poi sara da fare
         q = self.attn(q, kv, media_locations, use_cached_media, ) * self.attn_gate.tanh() + q
         q = self.ff(q) * self.ff_gate.tanh() + q  # Residual network
         return q
