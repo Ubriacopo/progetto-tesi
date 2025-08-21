@@ -7,3 +7,5 @@ Guarda per reference: https://github.com/openai/CLIP/blob/main/clip/model.py
 https://medium.com/@raj.pulapakura/multimodal-models-and-fusion-a-complete-guide-225ca91f6861
 https://arxiv.org/html/2411.17040v1
 https://arxiv.org/pdf/2402.12030
+- Nella nostra modalita EEG e veramente la modalita più importante di dati?
+  O sono equivlaenti tutti?

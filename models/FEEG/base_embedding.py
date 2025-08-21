@@ -1,56 +1,88 @@
 from abc import abstractmethod, ABC
-from typing import Callable
 
 import torch
 from cbramod.models.cbramod import CBraMod
-from transformers import VivitModel, Wav2Vec2FeatureExtractor, BertModel, WavLMModel
+from torch import nn
+from transformers import VivitModel, WavLMModel, AutoModel
 
 
-class BaseEmbedding(ABC):
-    def __init__(self, model, output_size: int):
-        self.model = model
-        self.output_size = output_size
+class FoundationEmbedder(nn.Module, ABC):
+    def __init__(self, base_model, output_size: int):
+        super().__init__()
+        self.base_model = base_model
+        self.output_size: int = output_size
 
     @abstractmethod
     def retrieve_logits(self, x):
-        pass
+        raise NotImplementedError
 
-    @staticmethod
-    def get_ViViT_base():
-        # Wants 32 frames clips (so
-        model = VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400")
-        return LambdaBaseEmbedding(model, 768, lambda x: x.last_hidden_state)
+    @abstractmethod
+    def reshape_for_perceiver(self, x):
+        raise NotImplementedError
 
-    @staticmethod
-    def get_wav2vec_base():
-        # Input must be raw waveform sampled at 16,000 Hz.
-        # If your audio is at 44.1 kHz, 48 kHz, etc., you must resample before feeding it in.
-        model = WavLMModel.from_pretrained("microsoft/wavlm-base")
-        return LambdaBaseEmbedding(model, 768, lambda x: x.logits)
+    def forward(self, for_perceiver: bool = True, *args, **kwargs) -> torch.Tensor:
+        x = self.base_model(*args, **kwargs)
+        x = self.retrieve_logits(x)
+        return self.reshape_for_perceiver(x) if for_perceiver else x
 
-    @staticmethod
-    def get_BERT_base():
-        bert = BertModel.from_pretrained("google/electra-base-discriminator")
-        return LambdaBaseEmbedding(bert, 768, lambda x: x)
 
-    @staticmethod
-    def get_cbramod_base(device=None, weights_path: str = "../../dependencies/cbramod/pretrained_weights.pth"):
+class ViViTFoundationEmbedder(FoundationEmbedder):
+    def __init__(self, output_size: int = 768,
+                 variant: str = "google/vivit-b-16x2-kinetics400", perceiver_default: bool = True):
+        super().__init__(VivitModel.from_pretrained(variant), output_size)
+
+    def reshape_for_perceiver(self, x):
+        tokens = x[:, 1:, :]  # Drop the [CLS] token
+        b, N, D = tokens.shape  # Shape given by ViViT
+        assert N % self.base_model.config.num_frames == 0, \
+            f"Token count {N} is not divisible by self.frames={self.model.config.num_frames}. " \
+            "Check that self.frames matches ViViT's config.num_frames."
+
+        v = int(N / self.base_model.config.num_frames)  # Num patches for frame
+        return tokens.reshape(b, self.base_model.config.num_frames, 1, v, D)
+
+    def retrieve_logits(self, x):
+        return x.last_hidden_state
+
+
+class WavLMFoundationEmbedder(FoundationEmbedder):
+    def __init__(self, output_size: int = 768, variant: str = "microsoft/wavlm-base", perceiver_default: bool = True):
+        super().__init__(WavLMModel.from_pretrained(variant), output_size)
+
+    def retrieve_logits(self, x):
+        return x.last_hidden_state
+
+    def reshape_for_perceiver(self, x):
+        b, N, D = x.shape
+        return x.reshape(b, 1, N, 1, D)
+
+
+class MiniLMFoundationEmbedder(FoundationEmbedder):
+    def __init__(self, output_size: int = 384, variant="sentence-transformers/all-MiniLM-L6-v2",
+                 perceiver_default: bool = True):
+        super().__init__(AutoModel.from_pretrained(variant), output_size)
+
+    def retrieve_logits(self, x):
+        return x.last_hidden_state
+
+    def reshape_for_perceiver(self, x):
+        b, N, D = x.shape
+        return x.reshape(b, 1, N, 1, D)
+
+
+class CBraModFoundationEmbedder(FoundationEmbedder):
+
+    def __init__(self, output_size: int = 200, device=None,
+                 weights: str = "../../dependencies/cbramod/pretrained_weights.pth", perceiver_default: bool = True):
         model = CBraMod()
         if device is None:
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        model.load_state_dict(torch.load(weights_path, map_location=device))
-        return LambdaBaseEmbedding(model, 200, lambda x: x)
-
-    def __call__(self, x):
-        res = self.model(x)
-        return self.retrieve_logits(res)
-
-
-class LambdaBaseEmbedding(BaseEmbedding):
-    def __init__(self, model, output_size: int, retrieve_logits: Callable[[torch.Tensor], torch.Tensor]):
+        model.load_state_dict(torch.load(weights, map_location=device))
         super().__init__(model, output_size)
-        self.lambda_fn = retrieve_logits
 
     def retrieve_logits(self, x):
-        return self.lambda_fn(x)
+        return x
+
+    def reshape_for_perceiver(self, x):
+        return x

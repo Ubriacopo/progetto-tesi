@@ -1,89 +1,121 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 from torch import nn, Tensor
 
-from models.FEEG.base_embedding import BaseEmbedding
-from models.FEEG.layers import KDHead
-from models.FEEG.mag import MAG3D, MAG2D
+from models.FEEG.base_embedding import FoundationEmbedder, ViViTFoundationEmbedder, WavLMFoundationEmbedder, \
+    MiniLMFoundationEmbedder, CBraModFoundationEmbedder
+from models.FEEG.layers import KDHead, PerceiverResampler, GatedCrossAttentionBlock
 
 
 class EEGAVI(torch.nn.Module):
     def __init__(self,
-                 base_video: BaseEmbedding = BaseEmbedding.get_ViViT_base(),
+                 resampler_depth: int,
+                 base_video: FoundationEmbedder = ViViTFoundationEmbedder(),
                  video_kd_size: int | None = None,
 
-                 base_audio: BaseEmbedding = BaseEmbedding.get_wav2vec_base(),
+                 base_audio: FoundationEmbedder = WavLMFoundationEmbedder(),
                  audio_kd_size: int | None = None,
 
-                 base_text: BaseEmbedding = BaseEmbedding.get_BERT_base(),
+                 base_text: FoundationEmbedder = MiniLMFoundationEmbedder(),
                  text_kd_size: int | None = None,
 
-                 base_eeg: BaseEmbedding = BaseEmbedding.get_cbramod_base(),
+                 base_eeg: FoundationEmbedder = CBraModFoundationEmbedder(),
                  use_kd: bool = True):
         super(EEGAVI, self).__init__()
         self.use_kd: bool = use_kd
-        self.base_video = base_video
 
-        self.video_kd_head: KDHead | None = None
-        video_emb_size = self.base_video.output_size
-        if video_kd_size is not None:
-            self.video_kd_head = KDHead(input_dimension=video_emb_size, output_dimension=video_kd_size)
+        # Video stuff: Todo: Turn into nn.Module?
+        mod = self.build_modality(base_video, resampler_depth, True, video_kd_size)
+        self.base_video: FoundationEmbedder = mod[0]
+        self.video_resampler: PerceiverResampler = mod[1]
+        self.video_kd_head: Optional[KDHead] = mod[2] if len(mod) > 2 else None
 
-        self.base_audio = base_audio
-        audio_emb_size = self.base_audio.output_size
-        self.audio_kd_head: KDHead | None = None
-        if audio_kd_size is not None:
-            self.audio_kd_head = KDHead(input_dimension=self.base_audio.output_size, output_dimension=audio_kd_size)
+        # Audio stuff:
+        mod = self.build_modality(base_audio, resampler_depth, False, audio_kd_size)
+        self.base_audio: FoundationEmbedder = mod[0]
+        self.audio_resampler: PerceiverResampler = mod[1]
+        self.audio_kd_head: Optional[KDHead] = mod[2] if len(mod) > 2 else None
 
-        self.base_text = base_text
-        text_emb_size = self.base_text.output_size
-        self.text_kd_head: KDHead | None = None
-        if text_kd_size is not None:
-            self.text_kd_head = KDHead(input_dimension=self.base_text.output_size, output_dimension=text_kd_size)
+        mod = self.build_modality(base_text, resampler_depth, False, text_kd_size)
+        self.base_text: FoundationEmbedder = mod[0]
+        self.text_resampler: PerceiverResampler = mod[1]
+        self.text_kd_head: Optional[KDHead] = mod[2] if len(mod) > 2 else None
 
         self.base_eeg = base_eeg
-        eeg_emb_size = self.base_eeg.output_size
-        # We anchor video.
-        self.merger = MAG3D(video_emb_size, y_dim=audio_emb_size, z_dim=text_emb_size, beta_shift=0.01, dropout=0)
-        # We anchor EEG data now
-        self.eeg_merger = MAG2D(eeg_emb_size, y_dim=video_emb_size, beta_shift=0.01, dropout=0)
-
+        self.gatedXAttn = GatedCrossAttentionBlock(dim=base_eeg.output_size, dim_latent=self.base_video.output_size, )
         # TODO Revise this and choose a good architecture
-        self.projector = nn.Sequential(
-            nn.LayerNorm(eeg_emb_size),
-            nn.Linear(eeg_emb_size, 2 * eeg_emb_size),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(2 * eeg_emb_size, eeg_emb_size)
-        )
+        self.projector = nn.Sequential()
 
-    def call_encoder(self, x, embedder: nn.Module | BaseEmbedding, kd_head: KDHead | None = None,
-                     ignore_kd: bool = False) -> tuple[None | Tensor, None | Tensor] | None | Tensor:
-        if x is None:
-            return None
+    def build_modality(self, embedder: FoundationEmbedder, resampler_depth: int,
+                       kd: bool = False, kd_size: int = None) -> \
+            (tuple[FoundationEmbedder, PerceiverResampler] |
+             tuple[FoundationEmbedder, PerceiverResampler, nn.Module]):
+        """
 
-        x = embedder(x)
+        :param embedder:
+        :param resampler_depth: How many layers of perceiver attention + sequential are desired for the PerceiverResampler
+        :param kd: If the current modality uses knowledge distillation
+        :param kd_size: To what size to remap the output of the Resampler to match the teacher
+        :return:
+        """
+        resampler = PerceiverResampler(embedder.output_size, resampler_depth)
+        if self.use_kd and kd:
+            # Build KD map
+            assert kd_size is not None, "If using KD you should provide kd_size to map to teacher"
+            kd_head = KDHead(input_dimension=embedder.output_size, output_dimension=kd_size)
+            return embedder, resampler, kd_head
 
-        kd_x = None
-        if kd_head is not None and self.use_kd:
-            kd_x = kd_head(x)
-        return x if not self.use_kd or ignore_kd else x, kd_x
+        return embedder, resampler
 
     def forward(self, x):
+        # As it should be we suppose the data to be processed for each encoder call.
         eeg, video, audio, text = x
+
         # Encode the info
-        ve, kd_ve = self.call_encoder(video, embedder=self.base_video, kd_head=self.video_kd_head)
-        ae, kd_ae = self.call_encoder(audio, embedder=self.base_audio, kd_head=self.audio_kd_head)
-        te, kd_te = self.call_encoder(text, embedder=self.base_text, kd_head=self.text_kd_head)
-        ee: None | Tensor = self.call_encoder(eeg, embedder=self.base_eeg, ignore_kd=True)
+        ve: Optional[torch.Tensor] = None  # ve -> R_ve
+        kd_ve: Optional[torch.Tensor] = None
+        if self.base_video is not None and video is not None:
+            ve = self.base_video(video)
+            ve = self.video_resampler(ve)
 
-        # Merge embeddings (video, text, audio)
-        # TODO: Handle None values in merger
-        avt_embeddings = self.merger(anchor=ve, y=ae, z=te)
-        # Merge embeddings (m1 eeg)
-        avt_eeg_embeddings = self.eeg_merger(anchor=ee, y=avt_embeddings)
-        logits = self.projector(avt_eeg_embeddings)
+            if self.video_kd_head is not None and self.use_kd:
+                kd_ve = self.video_kd_head(video)
 
+        ae: Optional[torch.Tensor] = None
+        kd_ae: Optional[torch.Tensor] = None
+        if self.base_audio is not None and audio is not None:
+            ae = self.base_audio(audio)
+            ae = self.audio_resampler(ae)
+
+            if self.audio_kd_head is not None and self.use_kd:
+                kd_ae = self.audio_kd_head(audio)
+
+        te: Optional[torch.Tensor] = None
+        kd_te: Optional[torch.Tensor] = None
+        if self.base_text is not None and text is not None:
+            te = self.base_text(text)
+            te = self.text_resampler(te)
+
+            if self.text_kd_head is not None and self.use_kd:
+                kd_te = self.text_kd_head(text)
+
+        ee: Optional[Tensor] = self.base_eeg(eeg)
+        # For gated attn
+        embeddings = torch.cat([ve, ae, te], dim=1)
+
+        # Now we do Cross-Attention + Gating
+        ee = self.gatedXAttn(ee, embeddings)
+        logits = self.projector(ee)
         # Final projection head?
         return logits, {"kd_ve": kd_ve, "kd_ae": kd_ae, "kd_te": kd_te}
+
+
+class EEGAVIMAG(torch.nn.Module):
+    def __init__(self):
+        # self.merger = MAG3D(video_emb_size, y_dim=audio_emb_size, z_dim=text_emb_size, beta_shift=0.01, dropout=0)
+        # We anchor EEG data now
+        # self.eeg_merger = MAG2D(eeg_emb_size, y_dim=video_emb_size, beta_shift=0.01, dropout=0)
+        super(EEGAVIMAG, self).__init__()
