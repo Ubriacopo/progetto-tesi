@@ -36,3 +36,6 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 
 > Multi-modal distillation
 > https://arxiv.org/abs/2307.07483
+
+> Library
+>https://mne.tools/stable/auto_tutorials/preprocessing/30_filtering_resampling.html

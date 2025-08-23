@@ -10,3 +10,5 @@ multi‑positive InfoNCE
 > Downweighted on final loss to not destroy EEG deriving information
 
 BLIP‑2 Q‑Former (learned queries) vs FLAMINGO GxAttn (We can use both to see which best)
+
+Rotary Embeddings ?
