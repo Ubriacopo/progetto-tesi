@@ -6,7 +6,7 @@ from einops_exts import rearrange_many
 from torch import nn, einsum
 
 from models.FEEG.layers.base_embedding import FoundationEmbedder
-from models.FEEG.layers.base_layers import KDHead
+from models.FEEG.layers.kd import KDHead
 
 
 class PerceiverAttention(nn.Module):
