@@ -34,11 +34,6 @@ class EEGAVI(nn.Module):
         super().__init__()
 
         self.use_kd: bool = use_kd
-
-        # These are frozen
-        freeze_module(base_video)
-        freeze_module(base_audio)
-        freeze_module(base_text)
         self.video_adapter = PerceiverAdapter(base_video, resampler_depth, target_shape, use_kd, video_kd_size)
         self.audio_adapter = PerceiverAdapter(base_audio, resampler_depth, target_shape, use_kd, audio_kd_size)
         self.text_adapter = PerceiverAdapter(base_text, resampler_depth, target_shape, use_kd, text_kd_size)
@@ -46,8 +41,6 @@ class EEGAVI(nn.Module):
         self.modal_encoder = ModalContextEncoder(target_shape, {"video": 0, "audio": 1, "text": 2})
 
         eeg_out: int = base_eeg.output_size
-
-        freeze_module(base_eeg)
         self.base_eeg = base_eeg
         self.eeg_shape_adapter: Optional[nn.Sequential] = None
         if base_eeg.output_size != target_shape:

@@ -36,9 +36,6 @@ class EmbeddingsBridge(nn.Module):
         return x, kd_values, kd_times
 
 
-# gated cross attention adapted for EEG queries
-
-
 class AuxiliaryEEGEncoder(nn.Module):
     def __init__(self, dim: int, max_time_embedding_size: int, max_channel_embedding_size: int):
         super().__init__()
