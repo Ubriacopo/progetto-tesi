@@ -37,7 +37,6 @@ class EEGAVI(nn.Module):
         self.video_adapter = PerceiverAdapter(base_video, resampler_depth, target_shape, use_kd, video_kd_size)
         self.audio_adapter = PerceiverAdapter(base_audio, resampler_depth, target_shape, use_kd, audio_kd_size)
         self.text_adapter = PerceiverAdapter(base_text, resampler_depth, target_shape, use_kd, text_kd_size)
-
         self.modal_encoder = ModalContextEncoder(target_shape, {"video": 0, "audio": 1, "text": 2})
 
         eeg_out: int = base_eeg.output_size

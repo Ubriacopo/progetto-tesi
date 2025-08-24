@@ -10,18 +10,25 @@ from models.FEEG.layers.kd import KDHead
 
 
 class PerceiverAttention(nn.Module):
-    # Taken from Open-Flamingo
+
     def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
+        """
+        Perceiver Attention take from OpenFlamingo and adapted.
+
+        :param dim: Input latent dimension
+        :param dim_head: Attention head latent size
+        :param heads: Number of attention heads
+        """
         super().__init__()
         self.scale: float = dim_head ** -0.5
         self.heads: int = heads
 
         self.norm_media = nn.LayerNorm(dim)
         self.norm_latents = nn.LayerNorm(dim)
-
-        self.to_q = nn.Linear(dim, dim_head * heads, bias=False)
-        self.to_kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
-        self.to_out = nn.Linear(dim_head * heads, dim, bias=False)
+        # Linear projections to fit the attention shapes
+        self.q = nn.Linear(dim, dim_head * heads, bias=False)
+        self.kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
+        self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
     def forward(self, x, latents):
         """
@@ -31,12 +38,11 @@ class PerceiverAttention(nn.Module):
             latents (torch.Tensor): latent features
                 shape (b, T, n2, D)
         """
-        x = self.norm_media(x)
-        latents = self.norm_latents(latents)
+        x, latents = self.norm_media(x), self.norm_latents(latents)
 
-        q = self.to_q(latents)
-        kv_input = torch.cat((x, latents), dim=-2)
-        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
+        q = self.q(latents)
+        kv = torch.cat((x, latents), dim=-2)
+        k, v = self.kv(kv).chunk(2, dim=-1)
 
         q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b h t n d", h=self.heads)
         q *= self.scale
@@ -48,21 +54,47 @@ class PerceiverAttention(nn.Module):
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h t n d -> b t n (h d)", h=self.heads)
-        return self.to_out(out)
+        return self.out(out)
+
+
+class PerceiverFeedForward(nn.Module):
+    def __init__(self, dim: int, mult: int) -> None:
+        super().__init__()
+        assert mult > 0, "Multiplicator has to be a positive integer"
+        x, y = dim, dim * mult
+        self.net = nn.Sequential(
+            nn.LayerNorm(x),  # Normalize
+            nn.Linear(x, y),  # Map to new shape
+            nn.GELU(),  # Non-linearity
+            nn.Linear(y, x),  # Rebuild the original shape
+        )
+
+    def forward(self, x):
+        return self.net(x)
 
 
 class PerceiverResampler(nn.Module):
-    """
-    The PerceiverResampler comes from the flamingo definition and enrichest the Perceiver architecture.
-    It has fewer computational complexity and allows us to draw information from timed sequences and condense the info
-    where possible. It is good to merge multimodal data later down the stream.
-    """
-
     def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latens: int = 64,
                  max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
+        """
+        The PerceiverResampler comes from the Flamingo definition and enrichest the Perceiver architecture.
+        It has a lower computational complexity and allows us to draw information from timed sequences.
+        It condenses the info where possible.
+        It is good to merge multimodal data later down the stream.
+
+        :param dim: Size of the last dimension of the input (latent space).
+        :param depth: Number of iterations of Perceiver Attention (nested PerceiverAttention + Projection Head).
+        :param dim_head: Size of the heads of Perceiver Attention.
+        :param heads: Number of attention heads.
+        :param num_latens: Number of latent dimensions for the generation of latens that are passed to the attention.
+        :param max_num_media: To create Embeddings for the frames by tagging sequence positioning of media.
+        :param max_num_frames: To create Embeddings for the frames by tagging sequence positioning of frames.
+        :param ff_mult: Multiplier for the feed forward network to remap the input dim.
+        """
         super().__init__()
+
         self.latents = nn.Parameter(torch.randn(num_latens, dim))
-        # todo vedi di capire meglio
+
         self.frame_embeddings: Optional[nn.Parameter] = None
         if max_num_frames is not None:
             self.frame_embeddings = nn.Parameter(torch.randn(max_num_frames, dim))
@@ -76,42 +108,40 @@ class PerceiverResampler(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
-                self._build_projection_head(dim, ff_mult)
+                PerceiverFeedForward(dim=dim, mult=ff_mult)
             ]))
 
         self.norm = nn.LayerNorm(dim)
 
-    def _build_projection_head(self, dim: int, ff_mult: int) -> nn.Sequential:
-        assert isinstance(ff_mult, int) and ff_mult > 0, "Multiplicator has to be a positive integer"
-        return nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * ff_mult),
-            nn.GELU(),
-            nn.Linear(dim * ff_mult, dim),
-        )
-
     def forward(self, x):
+        """
+
+        :param x: Features of the modality in input. It is supposed to be a 5D tensor [b, T, F, v, D] with:
+                    - b: is batch size of the input. (Fixed during training).
+                    - T: is number of time steps.
+                    - F: are the frames fed that compose a single time-step (For ViViT it's 16 for example as it has a temporal stride of 2)
+                    - v: Are the generated patches by the embedder previously.
+                    - D: Is the final embedding space (e.g. 768 for ViViT)
+        :return:
+        """
         b, T, F, v = x.shape[:4]
 
-        # Add to the resampled x the frame embeddings
-        # todo forse non ho capito
         if self.frame_embeddings is not None:
-            frame_embs = repeat(self.frame_embeddings[:F], "F d -> b T F v d", b=b, T=T, v=v)
-            x += frame_embs
+            # Add the frame embeddings to the input to not lose the temporal alignment information
+            x += repeat(self.frame_embeddings[:F], "F d -> b T F v d", b=b, T=T, v=v)
 
         # Flatten the frame and spatial dimensions
         x = rearrange(x, "b T F v d -> b T (F v) d")
-        # Add to the resampled x the time embeddings
-        # todo forse non ho capito
+
         if self.media_time_embeddings is not None:
+            # Add to the resampled x the time embeddings. Mostly won't be used as T tends to be 1.
             x += self.media_time_embeddings[:T]
 
         latents = repeat(self.latents, "n d -> b T n d", b=b, T=T)
 
-        # tuple(Attention, Feed Forward)
         for att, feed_forward in self.layers:
-            latents = att(x, latents) + latents
-            latents = feed_forward(latents) + latents
+            latents = att(x, latents) + latents  # Residual network style.
+            latents = feed_forward(latents) + latents  # Residual network style.
 
         return self.norm(latents)
 
@@ -120,13 +150,13 @@ class PerceiverAdapter(nn.Module):
     def __init__(self, embedder: FoundationEmbedder, resampler_depth: int,
                  target_shape: int, kd: bool = False, kd_size: int = None) -> None:
         """
+        Adapts a modality to be ready for the GatedXAttention with other modalities.
 
-        :param target_shape:
-        :param embedder:
-        :param resampler_depth: How many layers of perceiver attention + sequential are desired for the PerceiverResampler
+        :param embedder: FoundationEmbedder object. This one generates the embeddings of the actual modality.
+        :param resampler_depth: How many layers of perceiver attention + sequential are desired for the PerceiverResampler.
+        :param target_shape: The target shape to map the embedding space of the modality.
         :param kd: If the current modality uses knowledge distillation
         :param kd_size: To what size to remap the output of the Resampler to match the teacher
-        :return:
         """
         super().__init__()
         self.resampler = PerceiverResampler(embedder.output_size, resampler_depth)
@@ -144,6 +174,13 @@ class PerceiverAdapter(nn.Module):
         self.embedder = embedder
 
     def forward(self, x, use_kd: bool = True) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+        """
+        The processed modality in the adapted space.
+
+        :param x: Complex object fit for the self FoundationEmbedder object.
+        :param use_kd: If true the KD module is used (if the head was provided in initialization)
+        :return:
+        """
         if x is None:
             return None  # We can't work when modality is disabled
 

@@ -3,18 +3,21 @@ from abc import abstractmethod, ABC
 import torch
 from cbramod.models.cbramod import CBraMod
 from torch import nn
-from transformers import VivitModel, WavLMModel, AutoModel, Wav2Vec2BertModel
+from transformers import VivitModel, AutoModel, Wav2Vec2BertModel
 
 from models.FEEG.utils import freeze_module
 
 
 class FoundationEmbedder(nn.Module, ABC):
-    """
-    Container class to handle calling a foundation model for embeddings.
-    """
-
     def __init__(self, base_model, output_size: int, freeze: bool):
+        """
+        Container class to handle calling a foundation model for embeddings.
+        :param base_model: Base foundation model.
+        :param output_size: Output size to remap (if necessary) the embeddings.
+        :param freeze: If true, the base model is frozen.
+        """
         super().__init__()
+        self.model_is_frozen: bool = freeze
         if freeze:
             freeze_module(base_model)
 
@@ -30,7 +33,12 @@ class FoundationEmbedder(nn.Module, ABC):
         raise NotImplementedError
 
     def forward(self, for_perceiver: bool = True, *args, **kwargs) -> torch.Tensor:
-        x = self.base_model(*args, **kwargs)
+        if self.model_is_frozen:
+            with torch.no_grad():
+                x = self.base_model(*args, **kwargs)
+        else:
+            x = self.base_model(*args, **kwargs)
+
         x = self.retrieve_patches(x)
         return self.reshape_for_perceiver(x) if for_perceiver else x
 
@@ -42,17 +50,19 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
     def reshape_for_perceiver(self, x):
         tokens = x[:, 1:, :]  # Drop the [CLS] token
         b, N, D = tokens.shape  # Shape given by ViViT
+        tubelet = self.base_model.config.tubelet_size[-1]
         assert N % self.base_model.config.num_frames == 0, \
             f"Token count {N} is not divisible by self.frames={self.model.config.num_frames}. " \
             "Check that self.frames matches ViViT's config.num_frames."
 
-        v = int(N / self.base_model.config.num_frames)  # Num patches for frame
-        return tokens.reshape(b, self.base_model.config.num_frames, 1, v, D)
+        v = int(N / tubelet)  # Num patches for frame
+        return tokens.reshape(b, 1, tubelet, v, D)
 
     def retrieve_patches(self, x):
         return x.last_hidden_state
 
 
+# TODO search a smaller model?
 class W2VBertFoundationEmbedder(FoundationEmbedder):
     def __init__(self, output_size: int = 1024, variant: str = "facebook/w2v-bert-2.0", freeze: bool = True):
         super().__init__(Wav2Vec2BertModel.from_pretrained(variant), output_size, freeze)

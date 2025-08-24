@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-
+# TODO use in ablation or studies
 # Multimodal Adaptation Gate (MAG)
 # https://aclanthology.org/2020.acl-main.214.pdf
 # Our data leverages video more, we try to make it the anchor.

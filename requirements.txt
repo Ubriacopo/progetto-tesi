@@ -1,6 +1,6 @@
+einops-exts
 torchview
 mne
-torchviz
 tokenizers
 safetensors
 scipy~=1.15.2

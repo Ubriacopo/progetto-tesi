@@ -5,39 +5,14 @@ import torch
 from torch import nn
 
 
-# todo vedi se serve
-class EmbeddingsBridge(nn.Module):
-    def __init__(self, source_size: int, target_size: int, kd_size: int, type_embedding: str):
-        """
-        Bridges the embedding layer
-        :param source_size:
-        :param target_size:
-        :param kd_size:
-        :param type_embedding:
-        """
-        super(EmbeddingsBridge, self).__init__()
-        self.adapter = nn.Sequential(
-            nn.LayerNorm(source_size),
-            nn.Linear(source_size, target_size),
-        )
-
-        self.type_embedding = type_embedding
-        self.kd_projection_head = nn.Linear(target_size, kd_size)
-        self.logit_scale_kd = nn.Parameter(torch.tensor(2.6592))
-
-    def forward(self, tokens, positions_idx, type_embeddings, time_embeddings: Callable[[int], torch.Tensor]):
-        x = self.adapter(tokens)
-        x = x + type_embeddings[self.type_embedding] + time_embeddings(positions_idx)
-
-        # KD Branch
-        kd_values = torch.nn.functional.normalize(self.kd_projection_head(x.mean(dim=1)), dim=-1)
-        kd_times = self.logit_scale_kd.exp()
-
-        return x, kd_values, kd_times
-
-
 class AuxiliaryEEGEncoder(nn.Module):
     def __init__(self, dim: int, max_time_embedding_size: int, max_channel_embedding_size: int):
+        """
+        Module to encode EEG channels among the time sequence inside the reduced dimensionality embeddings.
+        :param dim: The latent space dimension
+        :param max_time_embedding_size: Maximum time sequence (thus its largest index in embeddings).
+        :param max_channel_embedding_size: Maximum channel of the input (thus its largest index in embeddings). EEG data varies, being 17-21 the usual values.
+        """
         super().__init__()
         self.time_embeddings = nn.Embedding(max_time_embedding_size, dim)
         self.channel_embeddings = nn.Embedding(max_channel_embedding_size, dim)
@@ -51,10 +26,21 @@ class AuxiliaryEEGEncoder(nn.Module):
 
 
 class ModalContextEncoder(nn.Module):
-    def __init__(self, dim: int, modality_mappings: dict[str, int]):
+    def __init__(self, dim: int, modality_mappings: dict[str, int], weights=None):
+        """
+        Adds to the input embeddings a weight vector indicating the modality of the record.
+        :param dim: Latent space dimension
+        :param modality_mappings: Map string -> index . It maps the modality with the embedding row in the matrix.
+        """
         super().__init__()
         self.norm = nn.LayerNorm(dim)
-        self.modal_embeddings = nn.Embedding(len(modality_mappings), dim)
+
+        max_embedding_rows = max(modality_mappings.values())
+        self.modal_embeddings = nn.Embedding(max_embedding_rows, dim)
+        # Suppose the weights are already trained. We keep it and load it. This is the reason to get a dictionary
+        # instead of a str set as the order and indexes may vary with time.
+        if weights is not None:
+            self.modal_embeddings.load_state_dict(weights)
 
         self.modality_mappings = modality_mappings
 
