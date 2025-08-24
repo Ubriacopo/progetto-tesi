@@ -6,6 +6,7 @@ from einops_exts import rearrange_many
 from torch import nn, einsum
 
 from models.FEEG.layers.base_embedding import FoundationEmbedder
+from models.FEEG.layers.base_layers import SimpleFeedForward
 from models.FEEG.layers.kd import KDHead
 
 
@@ -57,22 +58,6 @@ class PerceiverAttention(nn.Module):
         return self.out(out)
 
 
-class PerceiverFeedForward(nn.Module):
-    def __init__(self, dim: int, mult: int) -> None:
-        super().__init__()
-        assert mult > 0, "Multiplicator has to be a positive integer"
-        x, y = dim, dim * mult
-        self.net = nn.Sequential(
-            nn.LayerNorm(x),  # Normalize
-            nn.Linear(x, y),  # Map to new shape
-            nn.GELU(),  # Non-linearity
-            nn.Linear(y, x),  # Rebuild the original shape
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
 class PerceiverResampler(nn.Module):
     def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latens: int = 64,
                  max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
@@ -108,7 +93,7 @@ class PerceiverResampler(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
-                PerceiverFeedForward(dim=dim, mult=ff_mult)
+                SimpleFeedForward(dim=dim, mult=ff_mult)
             ]))
 
         self.norm = nn.LayerNorm(dim)

@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 
 from einops import rearrange
 import torch
@@ -48,3 +48,53 @@ class ModalContextEncoder(nn.Module):
         if x is None: return None
         idx = torch.tensor(self.modality_mappings[modality], dtype=torch.long, device=x.device)
         return self.norm(x) + self.modal_embeddings(idx).view(1, 1, -1)
+
+
+class SimpleFeedForward(nn.Module):
+    def __init__(self, dim: int, mult: int) -> None:
+        super().__init__()
+        assert mult > 0, "Multiplicator has to be a positive integer"
+        x, y = dim, dim * mult
+        self.net = nn.Sequential(
+            nn.LayerNorm(x),  # Normalize
+            nn.Linear(x, y),  # Map to new shape
+            nn.GELU(),  # Non-linearity
+            nn.Linear(y, x),  # Rebuild the original shape
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class QueryEEGFormer(nn.Module):
+    def __init__(self, in_dim: int, target_dim: int, max_T: int, max_c: int) -> None:
+        super().__init__()
+
+        self.projection: Optional[nn.Linear] = None
+        if in_dim != target_dim:
+            self.projection = nn.Linear(in_dim, target_dim)
+
+        self.time_embeddings = nn.Embedding(max_T, target_dim)
+        self.channel_embeddings = nn.Embedding(max_c, target_dim)
+
+        # Gated so to not overpower CBraMod’s own PE
+        self.alpha_t = nn.Parameter(torch.zeros(1))
+        self.alpha_c = nn.Parameter(torch.zeros(1))
+
+        self.net = nn.Sequential()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, ch, T, D = x.shape
+        if self.projection is not None:
+            x = self.projection(x)
+
+        time_ids = torch.arange(T, device=x.device)
+        channel_ids = torch.arange(ch, device=x.device)
+
+        c = rearrange(self.channel_embeddings(channel_ids), "c D -> () c () D") * self.alpha_c
+        t = rearrange(self.time_embeddings(time_ids), "c D -> () () c D") * self.alpha_t
+
+
+        x = x + c + t
+        x = x.permute(0, 2, 1, 3).reshape(b, T * ch, -1)
+        return x
