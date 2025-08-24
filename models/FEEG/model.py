@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+from einops import rearrange
 from torch import nn, Tensor
 
 from models.FEEG.layers.base_embedding import FoundationEmbedder, ViViTFoundationEmbedder, W2VBertFoundationEmbedder, \
@@ -44,7 +45,8 @@ class EEGAVI(nn.Module):
         self.eeg_shape_adapter: Optional[nn.Sequential] = None
         if base_eeg.output_size != target_shape:
             self.eeg_shape_adapter = nn.Sequential(nn.LayerNorm(eeg_out), nn.Linear(eeg_out, target_shape))
-        self.eeg_aux_encoder = AuxiliaryEEGEncoder(target_shape, 5, 17)
+        # I thought it to be a good idea but: CBraMod already encodes spatial and temporal information! No need to redo it.
+        # self.eeg_aux_encoder = AuxiliaryEEGEncoder(target_shape, 5, 17)
 
         self.gatedXAttn_layers = nn.ModuleList([
             GatedCrossAttentionBlock(dim=target_shape, dim_latent=target_shape)
@@ -82,7 +84,10 @@ class EEGAVI(nn.Module):
         ee: Tensor = self.base_eeg(**eeg, for_perceiver=False)
         if self.eeg_shape_adapter is not None:
             ee = self.eeg_shape_adapter(ee)
-        ee = self.eeg_aux_encoder(ee)
+
+        # ee = self.eeg_aux_encoder(ee)
+        # Given CBraMod’s design, adding LightEEGQueries with new time/channel embeddings is unnecessary and can hurt.
+        ee = rearrange(ee, "b c T D -> b (c T) D")
 
         # For gated attn
         embeddings = torch.cat([x for x in [ve, ae, te] if x is not None], dim=1)

@@ -51,7 +51,6 @@ class MaskedCrossAttention(nn.Module):
             assert (media_locations.shape[1] == qo.shape[1]), \
                 f"media_location.shape is {media_locations.shape} but x.shape is {qo.shape}"
 
-        # TODO: Debug here to follow shapes and be sure.
         Tq = qo.shape[1]  # Time steps of query
         _, Tkv, n = kvo.shape[:3]  # Time steps of kv
 
