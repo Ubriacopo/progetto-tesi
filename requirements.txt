@@ -1,3 +1,4 @@
+torchview
 mne
 torchviz
 tokenizers

@@ -10,9 +10,16 @@ from models.FEEG.layers.cross_attention import GatedCrossAttentionBlock
 from models.FEEG.layers.perceiver_adapter import PerceiverAdapter
 
 
+def freeze_module(m: torch.nn.Module):
+    for p in m.parameters():
+        p.requires_grad = False
+
+
 class EEGAVI(nn.Module):
     def __init__(self,
                  resampler_depth: int,
+                 target_shape: int = 384,
+                 cross_attention_blocks: int = 2,
                  base_video: FoundationEmbedder = ViViTFoundationEmbedder(),
                  video_kd_size: int | None = None,
 
@@ -25,22 +32,40 @@ class EEGAVI(nn.Module):
                  base_eeg: FoundationEmbedder = CBraModFoundationEmbedder(),
                  use_kd: bool = True):
         super().__init__()
+
         self.use_kd: bool = use_kd
-        target_shape = base_video.output_size
-        self.video_adapter = PerceiverAdapter(base_video, resampler_depth, target_shape, True, video_kd_size)
-        self.audio_adapter = PerceiverAdapter(base_audio, resampler_depth, target_shape, True, audio_kd_size)
-        self.text_adapter = PerceiverAdapter(base_text, resampler_depth, target_shape, True, text_kd_size)
 
-        self.modal_encoder = ModalContextEncoder(base_video.output_size, 3, {"video": 0, "audio": 1, "text": 2})
+        # These are frozen
+        freeze_module(base_video)
+        freeze_module(base_audio)
+        freeze_module(base_text)
+        self.video_adapter = PerceiverAdapter(base_video, resampler_depth, target_shape, use_kd, video_kd_size)
+        self.audio_adapter = PerceiverAdapter(base_audio, resampler_depth, target_shape, use_kd, audio_kd_size)
+        self.text_adapter = PerceiverAdapter(base_text, resampler_depth, target_shape, use_kd, text_kd_size)
 
+        self.modal_encoder = ModalContextEncoder(target_shape, {"video": 0, "audio": 1, "text": 2})
+
+        eeg_out: int = base_eeg.output_size
+
+        freeze_module(base_eeg)
         self.base_eeg = base_eeg
+        self.eeg_shape_adapter: Optional[nn.Sequential] = None
+        if base_eeg.output_size != target_shape:
+            self.eeg_shape_adapter = nn.Sequential(nn.LayerNorm(eeg_out), nn.Linear(eeg_out, target_shape))
+        self.eeg_aux_encoder = AuxiliaryEEGEncoder(target_shape, 5, 17)
 
-        # Todo: pass for now hardwired
-        self.aux_eeg_encoder = AuxiliaryEEGEncoder(base_eeg.output_size, 5, 17)
-        self.gatedXAttn = GatedCrossAttentionBlock(dim=base_eeg.output_size, dim_latent=base_video.output_size, )
+        self.gatedXAttn_layers = nn.ModuleList([
+            GatedCrossAttentionBlock(dim=target_shape, dim_latent=target_shape)
+            for _ in range(cross_attention_blocks)
+        ])
 
         # TODO Revise this and choose a good architecture
-        self.projector = nn.Sequential()
+        self.projector = nn.Sequential(
+            nn.LayerNorm(target_shape),
+            nn.Linear(target_shape, target_shape * 2),
+            nn.GELU(),
+            nn.Linear(target_shape * 2, target_shape)
+        )
 
     def forward(self, x, use_kd: bool = True):
         # As it should be we suppose the data to be processed for each encoder call.
@@ -62,13 +87,18 @@ class EEGAVI(nn.Module):
         kd_te: Optional[torch.Tensor] = None if adapted_text is None or not use_kd else adapted_text[1]
         te = self.modal_encoder(te, modality="text")
 
-        ee: Tensor = self.base_eeg(for_perceiver=False, **eeg)
-        ee = self.aux_eeg_encoder(ee)
+        ee: Tensor = self.base_eeg(**eeg, for_perceiver=False)
+        if self.eeg_shape_adapter is not None:
+            ee = self.eeg_shape_adapter(ee)
+        ee = self.eeg_aux_encoder(ee)
 
         # For gated attn
         embeddings = torch.cat([x for x in [ve, ae, te] if x is not None], dim=1)
         # Now we do Cross-Attention + Gating
-        ee = self.gatedXAttn(ee, embeddings)
+
+        for gated_x_attn in self.gatedXAttn_layers:
+            ee = gated_x_attn(ee, embeddings)
+
         logits = self.projector(ee)
         # Final projection head?
         return logits, {"kd_ve": kd_ve, "kd_ae": kd_ae, "kd_te": kd_te}

@@ -147,7 +147,7 @@ class PerceiverAdapter(nn.Module):
         if x is None:
             return None  # We can't work when modality is disabled
 
-        e = self.embedder(**x)
+        e: torch.Tensor = self.embedder(**x)
         e = self.resampler(e)
 
         kd_e: Optional[torch.Tensor] = None

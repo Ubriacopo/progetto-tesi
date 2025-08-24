@@ -54,10 +54,10 @@ class AuxiliaryEEGEncoder(nn.Module):
 
 
 class ModalContextEncoder(nn.Module):
-    def __init__(self, dim: int, modal_num: int, modality_mappings: dict[str, int]):
+    def __init__(self, dim: int, modality_mappings: dict[str, int]):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
-        self.modal_embeddings = nn.Embedding(modal_num, dim)
+        self.modal_embeddings = nn.Embedding(len(modality_mappings), dim)
 
         self.modality_mappings = modality_mappings
 

@@ -89,7 +89,7 @@ class MaskedCrossAttention(nn.Module):
 
 
 class GatedCrossAttentionBlock(nn.Module):
-    def __init__(self, dim: int, dim_latent, dim_head=64, heads=8, ff_mult=4,
+    def __init__(self, dim: int, dim_latent, dim_head=64, heads=6, ff_mult=4,
                  only_attend_immediate_media=True, time_embedding_max_size: Optional[int] = 5,
                  channel_embedding_max_size: Optional[int] = 17):
         super().__init__()
