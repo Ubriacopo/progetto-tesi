@@ -76,7 +76,7 @@ class QueryEEGFormer(nn.Module):
 
         self.time_embeddings: Optional[nn.Embedding] = None
         self.alpha_t: Optional[nn.Parameter] = None
-        if self.use_time:  # CBraMod already encodes time in the embeddings.
+        if use_time:  # CBraMod already encodes time in the embeddings.
             self.time_embeddings = nn.Embedding(max_T, target_dim)
             self.alpha_t = nn.Parameter(torch.zeros(1))
 
@@ -94,9 +94,9 @@ class QueryEEGFormer(nn.Module):
         time_ids = torch.arange(T, device=x.device)
         channel_ids = torch.arange(ch, device=x.device)
 
-        c = rearrange(self.channel_embeddings(channel_ids), "c D -> () c () D") * self.alpha_c
-        t = rearrange(self.time_embeddings(time_ids), "c D -> () () c D") * self.alpha_t
+        x += rearrange(self.channel_embeddings(channel_ids), "c D -> () c () D") * self.alpha_c
+        if self.time_embeddings is not None:
+            x += rearrange(self.time_embeddings(time_ids), "c D -> () () c D") * self.alpha_t
 
-        x = x + c + t
         x = x.permute(0, 2, 1, 3).reshape(b, T * ch, -1)
         return x

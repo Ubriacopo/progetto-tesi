@@ -16,6 +16,12 @@ def freeze_module(m: torch.nn.Module):
         p.requires_grad = False
 
 
+def media_locs_single_item(B, Tq, device):
+    m = torch.zeros(B, Tq, dtype=torch.bool, device=device)
+    m[:, 0] = True  # Item “introduced” at t=0
+    return m
+
+
 class EEGAVI(nn.Module):
     def __init__(self,
                  resampler_depth: int,
@@ -87,14 +93,19 @@ class EEGAVI(nn.Module):
 
         # ee = self.eeg_aux_encoder(ee)
         # Given CBraMod’s design, adding LightEEGQueries with new time/channel embeddings is unnecessary and can hurt.
+        b, c, T, D = ee.shape
         ee = rearrange(ee, "b c T D -> b (c T) D")
 
+        # TODO: Non sono mica sicuro sia corretto
+        # Works only because at the moment we have only 1 media at each timestep.
+        # If we had multiple it'd be different.
+        media_locations = media_locs_single_item(b, T, ee.device)
         # For gated attn
         embeddings = torch.cat([x for x in [ve, ae, te] if x is not None], dim=1)
         # Now we do Cross-Attention + Gating
 
         for gated_x_attn in self.gatedXAttn_layers:
-            ee = gated_x_attn(ee, embeddings)
+            ee = gated_x_attn(ee, embeddings, media_locations=media_locations)
 
         logits = self.projector(ee)
         # Final projection head?

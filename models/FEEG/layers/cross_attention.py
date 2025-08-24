@@ -8,6 +8,7 @@ from torch import nn, einsum, Tensor
 from models.FEEG.layers.base_layers import SimpleFeedForward
 
 
+
 class MaskedCrossAttention(nn.Module):
     def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 8, only_attend_immediate_media=True):
         """
@@ -53,8 +54,6 @@ class MaskedCrossAttention(nn.Module):
 
         Tq = qo.shape[1]  # Time steps of query
         _, Tkv, n = kvo.shape[:3]  # Time steps of kv
-
-        # TODO For now media_locations is always None. Fix it and see to fit with flamingo
         # Build the query object.
         q = self.q(self.norm(qo))
 
