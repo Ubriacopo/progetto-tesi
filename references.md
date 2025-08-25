@@ -39,3 +39,6 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 
 > Library
 >https://mne.tools/stable/auto_tutorials/preprocessing/30_filtering_resampling.html
+ 
+> Good review on attention
+> https://benjaminwarner.dev/2022/07/14/tinkering-with-attention-pooling

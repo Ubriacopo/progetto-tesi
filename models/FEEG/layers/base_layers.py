@@ -1,28 +1,9 @@
-from typing import Callable, Optional
+from typing import Optional
 
-from einops import rearrange
 import torch
+from einops import rearrange
 from torch import nn
-
-
-class AuxiliaryEEGEncoder(nn.Module):
-    def __init__(self, dim: int, max_time_embedding_size: int, max_channel_embedding_size: int):
-        """
-        Module to encode EEG channels among the time sequence inside the reduced dimensionality embeddings.
-        :param dim: The latent space dimension
-        :param max_time_embedding_size: Maximum time sequence (thus its largest index in embeddings).
-        :param max_channel_embedding_size: Maximum channel of the input (thus its largest index in embeddings). EEG data varies, being 17-21 the usual values.
-        """
-        super().__init__()
-        self.time_embeddings = nn.Embedding(max_time_embedding_size, dim)
-        self.channel_embeddings = nn.Embedding(max_channel_embedding_size, dim)
-
-    def forward(self, x):
-        b, c, T, D = x.shape
-        x = rearrange(x, "b c T D -> b (c T) D")
-        time_ids = torch.arange(T, device=x.device).repeat_interleave(c)
-        channel_ids = torch.arange(c, device=x.device).repeat(T)
-        return x + self.time_embeddings.weight[time_ids] + self.channel_embeddings.weight[channel_ids]
+from torch.nn.functional import softmax
 
 
 class ModalContextEncoder(nn.Module):
@@ -100,3 +81,20 @@ class QueryEEGFormer(nn.Module):
 
         x = x.permute(0, 2, 1, 3).reshape(b, T * ch, -1)
         return x
+
+
+class SelfAttentionPooling(nn.Module):
+    def __init__(self, input_dimension: int) -> None:
+        """
+        Original Paper: Self-Attention Encoding and Pooling for Speaker Recognition
+        https://gist.github.com/pohanchi/c77f6dbfbcbc21c5215acde4f62e4362
+        It gives each token of the input an attention weight for relevance.
+
+        :param input_dimension: Hidden size
+        """
+        super().__init__()
+        self.W = nn.Linear(input_dimension, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        attn = softmax(self.W(x).squeeze(-1)).unsqueeze(-1)
+        return torch.sum(x * attn, dim=1)

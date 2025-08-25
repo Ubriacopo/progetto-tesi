@@ -6,7 +6,7 @@ from torch import nn, Tensor
 
 from models.FEEG.layers.base_embedding import FoundationEmbedder, ViViTFoundationEmbedder, W2VBertFoundationEmbedder, \
     MiniLMFoundationEmbedder, CBraModFoundationEmbedder
-from models.FEEG.layers.base_layers import AuxiliaryEEGEncoder, ModalContextEncoder
+from models.FEEG.layers.base_layers import ModalContextEncoder
 from models.FEEG.layers.cross_attention import GatedCrossAttentionBlock
 from models.FEEG.layers.perceiver_adapter import PerceiverAdapter
 

@@ -174,7 +174,12 @@ class PerceiverAdapter(nn.Module):
 
         kd_e: Optional[torch.Tensor] = None
         if self.kd_head is not None:
-            kd_e = self.kd_head(e)
+            kd_e = rearrange(e, "b T n d -> b (T n) d")
+            # Simple Global Average Pooling.
+            # If we want we could introduce an attention pooling block (We have SelfAttentionPooling)
+            # TODO: Try different configurations for this.
+            kd_e = kd_e.mean(dim=1)
+            kd_e = self.kd_head(kd_e)
 
         if self.reshaper is not None:
             e = self.reshaper(e)
