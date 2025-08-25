@@ -1,4 +1,4 @@
 import sys
 import os
 
-sys.path.insert(0,os.path.abspath("../dependencies/VATE"))
+sys.path.insert(0, os.path.abspath("../dependencies/vate"))

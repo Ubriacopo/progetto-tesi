@@ -82,7 +82,7 @@ class EEGDataset(torch.utils.data.Dataset, ABC):
         return max(len(vc), len(ac), len(tc), len(sc))
 
 
-# VATE_local is trained on frontal data. Face_video are most prolly the best to work on with this knowledge.
+# vate is trained on frontal data. Face_video are most prolly the best to work on with this knowledge.
 # I could also try to exploit the Depth videos?
 # Each dataset has its own rigid data structure
 class AMIGOSDataset(EEGDataset):

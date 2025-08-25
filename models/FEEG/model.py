@@ -94,7 +94,7 @@ class EEGAVI(nn.Module):
         # ee = self.eeg_aux_encoder(ee)
         # Given CBraMod’s design, adding LightEEGQueries with new time/channel embeddings is unnecessary and can hurt.
         b, c, T, D = ee.shape
-        ee = rearrange(ee, "b c T D -> b (c T) D")
+        ee = rearrange(ee, "b c T D -> b (T c) D")
 
         # TODO: Non sono mica sicuro sia corretto
         # Works only because at the moment we have only 1 media at each timestep.
