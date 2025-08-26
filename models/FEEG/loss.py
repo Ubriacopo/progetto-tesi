@@ -2,7 +2,58 @@ import torch
 from torch import Tensor
 from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with_logits
 
+# TODO: This is for sure a term of my loss but I have to balance for the EEG data.
+#       I need to ensure that EEG stays relevant:
+"""
+# Contrastive learning on the cross-attention output
+final_eeg_pooled = final_sequential_output.mean(dim=1)  # (1, 384)
+L_eeg_specific = contrastive_loss(final_eeg_pooled, positive_pairs, negative_pairs)
 
+# Encourage temporally adjacent EEG segments to be similar
+eeg_t1, eeg_t2 = split_temporal_segments(final_sequential_output)
+L_eeg_specific = MSE(eeg_t1, eeg_t2) + temporal_smoothness_penalty
+
+# If you have EEG-specific labels (emotion, cognitive load, etc.)
+eeg_task_pred = eeg_classifier(final_sequential_output.mean(dim=1))  # Pool over sequence
+L_eeg_specific = CrossEntropy(eeg_task_pred, eeg_labels)
+
+# Use the output that has been modulated by other modalities
+final_eeg_repr = final_sequential_output  # (1, 85, 384)
+eeg_reconstructed = eeg_decoder(final_eeg_repr)
+L_eeg_specific = MSE(eeg_reconstructed, original_eeg_input)
+
+
+# Assuming your EEG sequence represents time steps
+# Split the 85-token sequence into two halves or overlapping windows
+eeg_repr = final_sequential_output  # (1, 85, 384)
+
+# Method A: Split sequence
+eeg_first_half = eeg_repr[:, :42, :]   # (1, 42, 384)
+eeg_second_half = eeg_repr[:, 43:, :]  # (1, 42, 384)
+L_temporal = MSE(eeg_first_half.mean(dim=1), eeg_second_half.mean(dim=1))
+
+# Method B: Adjacent time windows
+eeg_windows_t = eeg_repr[:, :-1, :]    # (1, 84, 384)
+eeg_windows_t1 = eeg_repr[:, 1:, :]    # (1, 84, 384)
+L_temporal = MSE(eeg_windows_t, eeg_windows_t1)
+
+# If L_eeg_specific IS the reconstruction loss
+L_total = α * L_siglip + β * L_eeg_reconstruction
+
+# If you want both reconstruction AND another EEG-specific task
+L_eeg_reconstruction = MSE(reconstructed_eeg, original_eeg)
+L_eeg_specific = temporal_consistency_loss  # or some other EEG task
+L_total = α * L_siglip + β * L_eeg_specific + γ * L_eeg_reconstruction
+
+# Phase 1: Establish EEG importance
+L = α * L_siglip + β * L_eeg_reconstruction  # β high
+
+# Phase 2: Encourage specialization  
+L = α * L_siglip + β * L_eeg_reconstruction  # β decreases over time
+
+# Phase 3: Pure multimodal learning
+L = α * L_siglip  # β → 0
+"""
 def sigLIP(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
     """
     We will use this one.

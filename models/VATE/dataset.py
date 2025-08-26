@@ -63,8 +63,20 @@ def video_transform(fps_map: tuple[int, int] = (30, 30), size: tuple[int, int] =
     ])
 
 
+# todo
+def audio_transform() -> Compose:
+    return Compose([])
+
+
+# todo
+def text_transform() -> Compose:
+    return Compose([])
+
+
 def default_AMIGOS(base: str) -> AMIGOSDataset:
     return AMIGOSDataset(
         base,
-        video_transform=video_transform()
+        video_transform=video_transform(),
+        audio_transform=audio_transform(),
+        text_transform=text_transform(),
     )

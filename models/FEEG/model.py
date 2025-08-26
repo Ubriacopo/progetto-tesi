@@ -10,7 +10,18 @@ from models.FEEG.layers.base_layers import ModalContextEncoder
 from models.FEEG.layers.cross_attention import GatedCrossAttentionBlock
 from models.FEEG.layers.perceiver_adapter import PerceiverAdapter
 
-
+# TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
+# TODO: Sequence length: Your EEG has 85 tokens - is this sufficient temporal resolution? (ViViT has 3306)
+# TODO: Perceiver resampler might be overkill. I can just do Linear Projection + LN -> Provare modelli diversi?
+#       Questo discorso vale nel momento in cui non ho mai fusioni. Se invece ho ad esmpio clip di 3 secondi con più di 32 frame:
+"""
+    # Your pipeline becomes:
+    video_chunks = chunk_video(variable_video, chunk_size=32)
+    video_features = torch.cat([vivit_encoder(chunk) for chunk in video_chunks], dim=1)
+    video_adapted = perceiver_adapter(video_features)  # (1, 64, 384) - fixed!
+    
+    Chiaramente qui si ha un senso per il perceiver resampler.
+"""
 def freeze_module(m: torch.nn.Module):
     for p in m.parameters():
         p.requires_grad = False
