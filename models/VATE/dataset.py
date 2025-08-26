@@ -8,6 +8,7 @@ from common.ds.custom import CustomVideoTransforms
 from common.ds.transform import Compose, IDENTITY
 
 
+# todo move?
 class FrameResamplingNaive:
     def __init__(self, max_frames: int = 32, method: str | None = "pad"):
         self.max_frames: int = max_frames
@@ -46,10 +47,15 @@ class CallViViTModelAndProcessor:
         return item  # The item has been embedded.
 
 
+class FaceCrop:
+    # todo: Non necessario al momento poiche AMIGOS è già FACE ma servirà poi (se usiamo anche altri video che forse ha senso)
+    def __call__(self, video, *args, **kwargs):
+        pass
+
+
 def video_transform(fps_map: tuple[int, int] = (30, 30), size: tuple[int, int] = (224, 224)) -> Compose:
     return Compose([
-        v2.Resize((size[0] + int(.145 * size[0]), size[1] + int(.145 * size[1]))),
-        v2.CenterCrop(size)
+        v2.Resize(size),
     ], [], [
         CustomVideoTransforms.ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
         FrameResamplingNaive(),

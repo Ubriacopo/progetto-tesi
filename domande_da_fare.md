@@ -15,3 +15,6 @@
 - Nella nostra modalita EEG e veramente la modalita più importante di dati?
   O sono equivlaenti tutti?
 - Per il momento sto usando il vostro modello pre-trained. Va bene o dovrei allenarne un altro?
+- Fine tuning VIVT su AffectNet/FER?
+- What is my goal?
+- Also bones of posture fed to my modeL?
