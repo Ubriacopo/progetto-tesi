@@ -16,7 +16,7 @@ class EEGAVIKDTrainer:
         self.loss_fn = loss_fn
         self.optimizer: torch.optim.Optimizer = Adam(self.model.parameters(), lr=learning_rate)
 
-    # todo train loader deve contenre anche records per teacher
+    # todo train loader deve contenre anche records per teacher: StackDataset
     def train(self, train_loader: DataLoader, epochs: int = 20):
         self.model.train()
         for epoch in range(epochs):

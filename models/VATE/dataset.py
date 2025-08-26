@@ -1,4 +1,64 @@
-# TODO
+import torch
+from torchvision.transforms import v2
+from torchvision.transforms.v2 import ToTensor
+from transformers import VivitImageProcessor, VivitForVideoClassification
 
-def default_AMIGOS(base: str):
-    pass
+from common.amigos.dataset import AMIGOSDataset
+from common.ds.custom import CustomVideoTransforms
+from common.ds.transform import Compose, IDENTITY
+
+
+class FrameResamplingNaive:
+    def __init__(self, max_frames: int = 32, method: str | None = "pad"):
+        self.max_frames: int = max_frames
+        assert method in ["pad", None], "Given method must be either pad or none. Others are not supported."
+        self.method: str | None = method
+
+    def __call__(self, video: list[torch.Tensor] | torch.Tensor, **kwargs):
+        if len(video) > self.max_frames:
+            return video[:self.max_frames]
+
+        if self.method == "pad":
+            difference = self.max_frames - len(video)
+            if isinstance(video, list):
+                video = ToTensor()(video)
+            t, x, y = video.shape  # Expect frames to be first channel
+            video = torch.vstack((video, torch.zeros(difference, t, x, y)))
+            return video
+
+        print("Warning: Sequence length fixing method not used. Variable length is returned.")
+        return video
+
+
+class CallViViTModelAndProcessor:
+    def __init__(self, model: str = "google/vivit-b-16x2-kinetics400"):
+        self.processor = VivitImageProcessor.from_pretrained(model)
+        self.model = VivitForVideoClassification.from_pretrained(model)
+
+    def __call__(self, video: list[torch.Tensor] | torch.Tensor, **kwargs):
+        if isinstance(video, torch.Tensor):
+            video = [video]
+
+        item = self.processor(video, return_tensors="pt")
+        with torch.no_grad():
+            item = self.model(**item).logits.squeeze(0)
+
+        return item  # The item has been embedded.
+
+
+def video_transform(fps_map: tuple[int, int] = (30, 30), size: tuple[int, int] = (224, 224)) -> Compose:
+    return Compose([
+        v2.Resize((size[0] + int(.145 * size[0]), size[1] + int(.145 * size[1]))),
+        v2.CenterCrop(size)
+    ], [], [
+        CustomVideoTransforms.ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
+        FrameResamplingNaive(),
+        CallViViTModelAndProcessor()
+    ])
+
+
+def default_AMIGOS(base: str) -> AMIGOSDataset:
+    return AMIGOSDataset(
+        base,
+        video_transform=video_transform()
+    )

@@ -5,11 +5,12 @@ import pandas as pd
 import torch
 
 from common.amigos.sampler import SamplingDescriptor
-from common.ds.dataset import DatasetRecord, MediaBasedDataset
+from common.ds.dataset import MediaBasedDataset
 from common.ds.transform import Compose
 from common.ds.utils import BoundedMap
 
 
+# todo fix a little bit?
 # Al momento usabile perchè non persiste. Ma non va bene approccio?
 class AMIGOSDataset(MediaBasedDataset):
     def get_persistent_path(self, index: int) -> str:
@@ -19,6 +20,7 @@ class AMIGOSDataset(MediaBasedDataset):
         path.parent.mkdir(parents=True, exist_ok=True)
         return str(path.resolve())
 
+    # TODO by not feeding a compose the modality is disabled -> should introduce as rule sounds good
     def __init__(self, dataset_spec_file: str,
                  cache_folder: str = None,
                  use_cache: bool = False,

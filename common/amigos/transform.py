@@ -20,6 +20,8 @@ def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
         v2.Resize((size[0] + int(.145 * size[0]), size[1] + int(.145 * size[1]))),
         v2.CenterCrop(size)
     ], [
+        # todo augmentations have to be aligned between two models. or does it? MHMM
+        #       Could I leverage the fact that samples are augmented to learn more?
         v2.RandomHorizontalFlip(),
         v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.02),
         v2.RandomGrayscale(p=0.15),
