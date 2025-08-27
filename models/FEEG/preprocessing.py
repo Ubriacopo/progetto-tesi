@@ -1,10 +1,8 @@
 import torch
 import torchaudio
 
-from common.data.preprocessing import MediaPreProcessingPipeline
 
-
-class AudioPreProcessingPipeline(MediaPreProcessingPipeline):
+class AudioPreProcessingPipeline:
     def process_output_shape(self) -> tuple:
         pass  # todo
 

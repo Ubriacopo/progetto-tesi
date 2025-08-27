@@ -28,7 +28,7 @@ class EEGAVIKDTrainer:
                     logits = self.teacher(teacher_x)
 
                 outputs, kd_objects = self.model(x)
-                # TODO: I can apply CLIP-loss
+                # TODO: I can apply CLIP-loss -> it became SigLIP + EEG reconstruction loss
                 loss = self.loss_fn(outputs, x)
 
                 loss.backward()

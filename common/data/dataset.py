@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torchaudio
-from moviepy import ImageSequenceClip
 
 from common.data.extensions import text_extensions, video_extensions, audio_extensions
 from common.data.sampler import SamplingDescriptor
