@@ -22,6 +22,8 @@ from models.FEEG.layers.perceiver_adapter import PerceiverAdapter
     
     Chiaramente qui si ha un senso per il perceiver resampler.
 """
+
+
 def freeze_module(m: torch.nn.Module):
     for p in m.parameters():
         p.requires_grad = False
@@ -52,8 +54,13 @@ class EEGAVI(nn.Module):
         super().__init__()
 
         self.use_kd: bool = use_kd
+        # TODO Sostituire con ISAB+PMA
+        # Free embedders = no ISAB needed. Frozen embedders = ISAB can be a useful adapter for long patchy sequences.
         self.video_adapter = PerceiverAdapter(base_video, resampler_depth, target_shape, use_kd, video_kd_size)
+        # TODO Sostituire con PMA
         self.audio_adapter = PerceiverAdapter(base_audio, resampler_depth, target_shape, use_kd, audio_kd_size)
+
+        # TODO Sostituire con PMA
         self.text_adapter = PerceiverAdapter(base_text, resampler_depth, target_shape, use_kd, text_kd_size)
         self.modal_encoder = ModalContextEncoder(target_shape, {"video": 0, "audio": 1, "text": 2})
 
@@ -62,6 +69,7 @@ class EEGAVI(nn.Module):
         self.eeg_shape_adapter: Optional[nn.Sequential] = None
         if base_eeg.output_size != target_shape:
             self.eeg_shape_adapter = nn.Sequential(nn.LayerNorm(eeg_out), nn.Linear(eeg_out, target_shape))
+
         # I thought it to be a good idea but: CBraMod already encodes spatial and temporal information! No need to redo it.
         # self.eeg_aux_encoder = AuxiliaryEEGEncoder(target_shape, 5, 17)
 
