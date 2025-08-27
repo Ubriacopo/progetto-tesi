@@ -10,6 +10,7 @@ from common.data.video.transforms import ResampleFps
 
 
 # todo next fix these
+# One trian one val
 def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
                     stds: tuple[float] | None = (0.229, 0.224, 0.225),
                     size: tuple[int, int] = (224, 224),
@@ -19,14 +20,13 @@ def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
         v2.ToDtype(torch.float32, scale=True),
         # Just so that 256 -> 224 (We keep the proportion, no real reasoning behind it)
         v2.Resize((size[0] + int(.145 * size[0]), size[1] + int(.145 * size[1]))),
-        v2.CenterCrop(size)
-    ], [
+        v2.CenterCrop(size),
         # todo augmentations have to be aligned between two models. or does it? MHMM
         #       Could I leverage the fact that samples are augmented to learn more?
         v2.RandomHorizontalFlip(),
         v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.02),
         v2.RandomGrayscale(p=0.15),
-    ], [
+
         # These two instructions go together
         v2.ToTensor(),
         ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
@@ -37,7 +37,9 @@ def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
 def audio_transform(frequency_mapping: tuple[int, int]) -> Compose:
     # https://www.kaggle.com/code/aisuko/audio-classification-with-hubert
     ogf, nwf = frequency_mapping
-    return Compose([ToMono(), ToTensor()], [], [
+    return Compose([
+        ToMono(),
+        ToTensor(),
         at.Resample(orig_freq=ogf, new_freq=nwf) if ogf != nwf else IDENTITY
     ])
 
@@ -48,7 +50,7 @@ def text_transform(tokenizer=Tokenizer.from_pretrained("sentence-transformers/al
     :param tokenizer: This has to be the same as the one that will be used by the model downstream.
     :return: Ideally has to return a TextEntry
     """
-    return Compose([], [], [
+    return Compose([
         v2.Lambda(lambda x: tokenizer.encode(x)),
     ])
 
@@ -60,4 +62,4 @@ def text_transform(tokenizer=Tokenizer.from_pretrained("sentence-transformers/al
 # to stft
 def eeg_transform() -> Compose:
     # TODO: Work on this
-    return Compose([ToTensor()], [], [])
+    return Compose([ToTensor()],)
