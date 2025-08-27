@@ -12,7 +12,7 @@ from requests.auth import HTTPDigestAuth
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 
-# todo doc once done
+# todo: Doc once done
 def download(authentication: HTTPDigestAuth, base_path: str, output_path: str, filename: str, destination_folder: str):
     """
 
