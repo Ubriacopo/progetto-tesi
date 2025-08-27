@@ -1,5 +1,4 @@
 import dataclasses
-import re
 import traceback
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
@@ -12,19 +11,13 @@ import pandas as pd
 import speech_recognition as sr
 from moviepy import VideoFileClip
 
-from common.data.amigos.utils import load_participant_data, extract_trial_data
+from common.data.amigos.collector import AMIGOSCollector, AMIGOSDatasetDataCollection
+from common.data.collector import DatasetDataCollection
 from common.data.sampler import DataSampler
 from utils.data import pad_main_axis
 
 
-@dataclasses.dataclass
-class DatasetDataCollection:
-    experiment_id: str
-    eeg_data: list[np.ndarray] | np.ndarray
-    mediafile_path: str | Path  # todo mp3 e mp4 cambiano ora struttua
-    frontal_media_path: str
-
-
+# TODO Review this file after changes
 @dataclasses.dataclass
 class SamplingResult:
     # The two relevant infos
@@ -59,44 +52,6 @@ class SamplingDescriptor:
 
 
 # Questa classe legge i file e li conserva come experiments.
-class AMIGOSCollector:
-    def __init__(self, base_path: str):
-        """
-        todo describe
-        :param base_path:
-        """
-        self.base_path: str = base_path
-        self.data_collection: list[DatasetDataCollection] = []
-        self.scanned: bool = False
-
-    def scan(self, force: bool = False) -> list[DatasetDataCollection]:
-        if self.scanned and not force:
-            return self.data_collection  # Scan is not performed again
-
-        processed_data = Path(self.base_path + "pre_processed_py/")
-
-        if not processed_data.exists():
-            for f in Path(self.base_path + "pre_processed").iterdir():
-                extract_trial_data(self.base_path + "pre_processed_py/", str(f))
-
-        participant_data = load_participant_data(Path(self.base_path + "pre_processed_py/"))
-        face_video_folder = self.base_path + "face/"
-        face_folder = Path(face_video_folder)
-
-        for v in face_folder.iterdir():
-            # [0] -> P40 [1] -> 18 [2] -> face(.mov) (Stemmed)
-            person, video_id, _ = v.stem.split("_")
-            # Add missing prefix zero to match the np data
-            person = re.sub(r'([A-Z])(\d)\b', r'\g<1>0\2', person)
-
-            experiment_id = person + "_" + video_id
-
-            video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
-            eeg_data = participant_data[person]["joined_data"][video_index]
-            self.data_collection.append(DatasetDataCollection(experiment_id, eeg_data[0], str(v.resolve()), ""))
-
-        self.scanned = True
-        return self.data_collection
 
 
 class AMIGOSSampler(DataSampler, ABC):
@@ -111,10 +66,10 @@ class AMIGOSSampler(DataSampler, ABC):
         return '.mp4', '.wav'
 
     @abstractmethod
-    def process_split_media(self, idx: int, times: tuple, sample: DatasetDataCollection) -> str:
+    def process_split_media(self, idx: int, times: tuple, sample: AMIGOSDatasetDataCollection) -> str:
         pass
 
-    def process_split_data(self, times: tuple, sample: DatasetDataCollection):
+    def process_split_data(self, times: tuple, sample: AMIGOSDatasetDataCollection):
         start, end = times
 
         eeg = sample.eeg_data[start * self.fs:end * self.fs]
@@ -125,14 +80,15 @@ class AMIGOSSampler(DataSampler, ABC):
     def compute_segments(self, sample: DatasetDataCollection) -> list[tuple[int, int]]:
         pass
 
-    def _process_split(self, sample: DatasetDataCollection, index: int, segment: tuple[int, int]):
+    def _process_split(self, sample: AMIGOSDatasetDataCollection, index: int, segment: tuple[int, int]):
         start, stop = segment
         # When processing a split we have to handle both media + data
         data = self.process_split_data(segment, sample)
         media = self.process_split_media(index, segment, sample)
-        return SamplingResult(media, data, sample.mediafile_path, index, start, stop, sample.experiment_id)
+        return SamplingResult(media, data, sample.mediafile_path, index, start, stop,
+                              sample.entry_id)  # entry_id is experiment_id
 
-    def process_sample(self, sample: DatasetDataCollection, concurrent: bool = True):
+    def process_sample(self, sample: AMIGOSDatasetDataCollection, concurrent: bool = True):
         # How long the media lasts
         segments = self.compute_segments(sample)
         # 0s interval might happen on last one? TODO: Sarebbe compito di implementation
@@ -150,13 +106,13 @@ class AMIGOSSampler(DataSampler, ABC):
 
 
 class FastTextlessAMIGOSampler(AMIGOSSampler, ABC):
-    def process_split_media(self, idx: int, times: tuple, sample: DatasetDataCollection) -> str:
+    def process_split_media(self, idx: int, times: tuple, sample: AMIGOSDatasetDataCollection) -> str:
         try:
             start, end = times
-            output_path = self.output_path + f'{sample.experiment_id}/{idx}'
+            output_path = self.output_path + f'{sample.entry_id}/{idx}'
 
             length = end - start
-            Path(self.output_path + f'{sample.experiment_id}').mkdir(parents=True, exist_ok=True)
+            Path(self.output_path + f'{sample.entry_id}').mkdir(parents=True, exist_ok=True)
             p = ffmpeg.input(sample.mediafile_path, ss=start, t=length)
             p.output(output_path + ".mp4", map='0:v', r=self.fps, loglevel="quiet").run()
             p = ffmpeg.input(sample.mediafile_path, ss=start, t=length)
@@ -177,13 +133,13 @@ class MoviepyAMIGOSSampler(AMIGOSSampler, ABC):
         super().__init__(output_path, max_duration, fps, audio_rate, data_fs)
         self.process_text = process_text
 
-    def process_split_media(self, idx: int, times: tuple, sample: DatasetDataCollection) -> str:
+    def process_split_media(self, idx: int, times: tuple, sample: AMIGOSDatasetDataCollection) -> str:
         try:
             video = VideoFileClip(sample.mediafile_path)
             start, end = times
 
-            output_path = self.output_path + f'{sample.experiment_id}/{idx}'
-            Path(self.output_path + f'{sample.experiment_id}').mkdir(parents=True, exist_ok=True)
+            output_path = self.output_path + f'{sample.entry_id}/{idx}'
+            Path(self.output_path + f'{sample.entry_id}').mkdir(parents=True, exist_ok=True)
 
             clip = video.subclipped(start, end)
             clip.with_fps(self.fps).write_videofile(output_path + ".mp4")
@@ -220,7 +176,7 @@ class MoviepyAMIGOSSampler(AMIGOSSampler, ABC):
 
 
 class TimedSegmentsAMIGOSSampler(AMIGOSSampler, ABC):
-    def compute_segments(self, sample: DatasetDataCollection) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: AMIGOSDatasetDataCollection) -> list[tuple[int, int]]:
         # From EEG Signal we can understand how long the video really is. (As we know Hz)
         duration = sample.eeg_data.shape[0] / self.fs
 

@@ -47,8 +47,6 @@ class SimpleMediaBasedDataset(torch.utils.data.Dataset, ABC):
     """
     Media based data. Medias are processed from files (could be overlapping by overriding the logic to get the data).
     For now, it simply loads video as frames, audio as wave + sr, transcript as text and eeg data by end defined logic.
-    Being persisting once a record is called (in use_cache mode) it is persisted somewhere defined by the child class.
-    All entries to be stored are assumed to be instanced as torch.Tensor
     """
 
     def __init__(self, train: bool = True, video_transform: Compose = None,
@@ -145,6 +143,17 @@ class SpecMediaBasedDataset(SimpleMediaBasedDataset, ABC):
     def __init__(self, dataset_spec_file: str,
                  train: bool = True, video_transform: Compose = None,
                  audio_transform: Compose = None, text_transform: Compose = None, eeg_transform: Compose = None):
+        """
+        Media based dataset that uses a specification file (descriptor) (csv).
+        It contains the condensed access info to all data relative to the dataset.
+
+        :param dataset_spec_file:
+        :param train:
+        :param video_transform:
+        :param audio_transform:
+        :param text_transform:
+        :param eeg_transform:
+        """
         self.spec_file_path: str = dataset_spec_file
 
         self.spec = pd.read_csv(self.spec_file_path)
