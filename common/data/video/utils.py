@@ -31,3 +31,5 @@ def downsample_video(video: cv2.VideoCapture, fps: int) -> list:
 
     video.release()
     return frames
+
+

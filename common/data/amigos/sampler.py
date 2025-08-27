@@ -12,8 +12,8 @@ import pandas as pd
 import speech_recognition as sr
 from moviepy import VideoFileClip
 
-from common.amigos.utils import load_participant_data, extract_trial_data
-from common.ds.sampler import DataSampler
+from common.data.amigos.utils import load_participant_data, extract_trial_data
+from common.data.sampler import DataSampler
 from utils.data import pad_main_axis
 
 
@@ -265,7 +265,7 @@ def do_sample(base_path: str, output_path: str, sampler: AMIGOSSampler, entries_
                 npy = None
                 generated_file_number += 1
 
-    # Store the descriptor file of this dataset.
+    # Store the descriptor file of this data.
     file_template = output_path + "AMIGOS_split_" + str(generated_file_number) + ".npy"
     np.save(file_template, npy)
 

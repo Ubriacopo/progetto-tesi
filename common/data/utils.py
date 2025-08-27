@@ -26,11 +26,11 @@ class BoundedMap(OrderedDict):
 
 def dataset_information(dataset: Dataset, image_size: tuple[int, int]) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Returns the mean and variance of the dataset.
+    Returns the mean and variance of the data.
     I followed the example shown here: https://kozodoi.me/blog/20210308/compute-image-stats
-    :param image_size: The size of the images of the dataset in input
+    :param image_size: The size of the images of the data in input
     :param dataset: Dataset to measure mean and standard deviation of
-    :return: the mean and standard deviation of the dataset
+    :return: the mean and standard deviation of the data
     """
     sums = torch.tensor([0.0, 0.0, 0.0])
     square_sums = torch.tensor([0.0, 0.0, 0.0])

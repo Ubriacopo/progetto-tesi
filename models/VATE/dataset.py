@@ -3,9 +3,9 @@ from torchvision.transforms import v2
 from torchvision.transforms.v2 import ToTensor
 from transformers import VivitImageProcessor, VivitForVideoClassification
 
-from common.amigos.dataset import AMIGOSDataset
-from common.ds.custom import CustomVideoTransforms
-from common.ds.transform import Compose, IDENTITY
+from common.data.amigos.dataset import AMIGOSDataset
+from common.data.video.transforms import ResampleFps
+from common.data.transform import Compose, IDENTITY
 
 
 # todo move?
@@ -57,7 +57,7 @@ def video_transform(fps_map: tuple[int, int] = (30, 30), size: tuple[int, int] =
     return Compose([
         v2.Resize(size),
     ], [], [
-        CustomVideoTransforms.ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
+        ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
         FrameResamplingNaive(),
         CallViViTModelAndProcessor()
     ])
