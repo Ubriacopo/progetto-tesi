@@ -14,6 +14,7 @@ from common.data.sampler import SamplingDescriptor
 from common.data.transform import Compose
 from common.data.video.utils import extract_frames
 
+# todo ds usando sample_container
 
 @dataclasses.dataclass
 class DatasetRecord:

@@ -1,26 +1,23 @@
-import dataclasses
 import re
 from pathlib import Path
+from typing import Iterator
 
 import numpy as np
+from moviepy import VideoFileClip
 
 from common.data.amigos.utils import extract_trial_data, load_participant_data
-from common.data.collector import DatasetDataCollection, DataCollector
+from common.data.audio.audio import Audio
+from common.data.eeg.eeg import EEG
+from common.data.loader import EEGDatasetDataCollection, DataLoader
+from common.data.video.video import Video
 
 
-@dataclasses.dataclass
-class AMIGOSDatasetDataCollection(DatasetDataCollection):
-    entry_id: str
-    eeg_data: list[np.ndarray] | np.ndarray
-    mediafile_path: str | Path
-
-
-class AMIGOSCollector(DataCollector):
+class AMIGOSLoader(DataLoader):
     def __init__(self, base_path: str):
         super().__init__()
         self.base_path: str = base_path
 
-    def _scan(self, *args, **kwargs) -> list[DatasetDataCollection]:
+    def scan(self) -> Iterator[EEGDatasetDataCollection]:
         processed_data = Path(self.base_path + "pre_processed_py/")
 
         if not processed_data.exists():
@@ -41,7 +38,12 @@ class AMIGOSCollector(DataCollector):
 
             video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
             eeg_data = participant_data[person]["joined_data"][video_index]
-            self.data.append(AMIGOSDatasetDataCollection(experiment_id, eeg_data[0], str(v.resolve())))
 
-        self.scanned = True
-        return self.data
+            media_path: str = str(v.resolve())
+            clip = VideoFileClip(media_path)
+            vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size)
+            aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps)
+
+            yield EEGDatasetDataCollection(
+                entry_id=experiment_id, eeg=EEG(data=eeg_data[0], file_path=None, fs=128), vid=vid, aud=aud
+            )
