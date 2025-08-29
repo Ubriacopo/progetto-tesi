@@ -14,22 +14,3 @@ def extract_frames(video: cv2.VideoCapture) -> list:
         if not r: break
         frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     return frames
-
-
-def downsample_video(video: cv2.VideoCapture, fps: int) -> list:
-    # Fix the fps
-    interval = int(round(video.get(cv2.CAP_PROP_FPS) / fps))
-
-    frames, idx = [], 0
-    while True:
-        r, frame = video.read()
-        if not r: break
-
-        if idx % interval == 0:
-            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        idx += 1
-
-    video.release()
-    return frames
-
-

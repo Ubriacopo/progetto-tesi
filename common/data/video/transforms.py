@@ -10,18 +10,18 @@ from common.data.video import Video
 
 
 @dataclasses.dataclass
-class SampleVideoFrames:
+class ResampleVideoFrames:
     fps_map: tuple[int, int]
 
     def __call__(self, x: list[torch.Tensor] | Video | EEGDatasetDataPoint):
         if isinstance(x, EEGDatasetDataPoint) or isinstance(x, Video):
-            return SampleVideoDataPoint(self.fps_map)(x)
+            return ResampleVideoDataPoint(self.fps_map)(x)
         else:  # Tensor Object path
-            return SampleVideoTensor(self.fps_map)(x)
+            return ResampleVideoTensor(self.fps_map)(x)
 
 
 @dataclasses.dataclass
-class SampleVideoDataPoint:
+class ResampleVideoDataPoint:
     fps_map: tuple[int, int]
 
     def __call__(self, x: Video | EEGDatasetDataPoint):
@@ -35,7 +35,7 @@ class SampleVideoDataPoint:
 
 
 @dataclasses.dataclass
-class SampleVideoTensor:
+class ResampleVideoTensor:
     fps_map: tuple[int, int]
 
     def __call__(self, x: list[torch.Tensor] | torch.Tensor, **kwargs):

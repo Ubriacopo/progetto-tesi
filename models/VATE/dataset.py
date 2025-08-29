@@ -4,7 +4,7 @@ from torchvision.transforms.v2 import ToTensor
 from transformers import VivitImageProcessor, VivitForVideoClassification
 
 from common.data.amigos.dataset import AMIGOSDataset
-from common.data.video.transforms import SampleVideoTensor
+from common.data.video.transforms import ResampleVideoTensor
 from common.data.transform import Compose, IDENTITY
 
 
@@ -57,7 +57,7 @@ def video_transform(fps_map: tuple[int, int] = (30, 30), size: tuple[int, int] =
     return Compose([
         v2.Resize(size),
     ], [], [
-        SampleVideoTensor(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
+        ResampleVideoTensor(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
         FrameResamplingNaive(),
         CallViViTModelAndProcessor()
     ])
