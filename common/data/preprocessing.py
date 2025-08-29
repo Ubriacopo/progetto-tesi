@@ -89,7 +89,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
         Path(x_out_folder).mkdir(parents=True, exist_ok=True)
         x_segments = [self.preprocess_segment(x, idx, segment, x_out_folder) for idx, segment in enumerate(segments)]
 
-        eeg_out_path: str = self.output_path + f'{original_sample_id}.fif'
+        eeg_out_path: str = self.output_path + f'{original_sample_id}_raw.fif'
 
         x.eeg.data.save(eeg_out_path, overwrite=True, split_size="2GB")
         for x_segment in x_segments:
