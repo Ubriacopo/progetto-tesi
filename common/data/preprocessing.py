@@ -6,8 +6,9 @@ from typing import Optional
 
 import pandas as pd
 
-from common.data.eeg import EEGToMneRawFromChannels
-from common.data.loader import DatasetDataPoint, DataLoader, EEGDatasetDataPoint
+from common.data.eeg.transforms import EEGToMneRawFromChannels
+from common.data.loader import DataLoader
+from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint
 from common.data.sampler import Segmenter
 from common.data.transform import Compose
 

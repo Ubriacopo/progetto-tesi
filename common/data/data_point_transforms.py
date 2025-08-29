@@ -2,7 +2,7 @@ import dataclasses
 
 from moviepy import VideoFileClip, AudioFileClip
 
-from common.data.loader import EEGDatasetDataPoint
+from common.data.data_point import EEGDatasetDataPoint
 
 
 @dataclasses.dataclass

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from common.data.amigos.loader import AMIGOSLoader
 from common.data.data_point_transforms import ResizeEEGDataPointMedia, SubclipMedia
-from common.data.eeg import EEGMneAddAnnotation
+from common.data.eeg.transforms import EEGMneAddAnnotation
 from common.data.preprocessing import EEGSegmenterPreprocessor
 from common.data.sampler import Segmenter, FixedIntervalsSegmenter
 from common.data.transform import Compose

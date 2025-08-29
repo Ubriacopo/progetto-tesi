@@ -3,7 +3,8 @@ from abc import abstractmethod, ABC
 
 import numpy as np
 
-from common.data.loader import EEGDatasetDataPoint
+from common.data.data_point import EEGDatasetDataPoint
+
 
 # TODO Rimuovere
 @dataclasses.dataclass

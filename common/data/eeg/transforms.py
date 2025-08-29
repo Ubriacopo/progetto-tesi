@@ -2,8 +2,8 @@ import dataclasses
 
 import mne
 
-from common.data.eeg import EEG
-from common.data.loader import EEGDatasetDataPoint
+from .eeg import EEG
+from common.data.data_point import EEGDatasetDataPoint
 
 
 @dataclasses.dataclass

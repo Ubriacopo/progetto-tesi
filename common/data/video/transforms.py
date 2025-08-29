@@ -4,9 +4,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from moviepy import VideoFileClip
+from torchvision.transforms import v2
 
-from common.data.loader import EEGDatasetDataPoint
-from common.data.video import Video
+from common.data.data_point import EEGDatasetDataPoint
+from .video import Video
 
 
 @dataclasses.dataclass
@@ -27,10 +28,11 @@ class ResampleVideoDataPoint:
     def __call__(self, x: Video | EEGDatasetDataPoint):
         v = x.vid if isinstance(x, EEGDatasetDataPoint) else x
         d: VideoFileClip = v.data
-        assert isinstance(d, VideoFileClip), \
-            "Inside of Video data we suppose (for the moment) to only have VideoFileClip data"
-        v.data = d.with_fps(self.fps_map[1])
 
+        if not isinstance(d, VideoFileClip):
+            raise TypeError("Inside of Video data we suppose (for the moment) to only have VideoFileClip data")
+
+        v.data = d.with_fps(self.fps_map[1])
         return x
 
 
@@ -63,3 +65,36 @@ class ResampleVideoTensor:
         out = list(out.unbind(0))
 
         return out
+
+
+@dataclasses.dataclass
+class ResizeVideo:
+    new_size: tuple[int, int] | int
+
+    def __call__(self, x: list[torch.Tensor] | EEGDatasetDataPoint | Video):
+        if isinstance(x, EEGDatasetDataPoint) or isinstance(x, Video):
+            o = x.vid if isinstance(x, EEGDatasetDataPoint) else x
+
+            if o.data is None:
+                start, stop = o.interval
+                o.data = VideoFileClip(o.file_path).subclipped(start, stop)
+
+            clip: VideoFileClip = o.data
+            o.data = clip.resized(height=self.new_size[0])
+            o.resolution = o.data.size
+
+            return x
+
+        else:
+            return v2.Resize(self.new_size)(x)
+
+
+class ToVideoFileClip:
+    def __call__(self, x: EEGDatasetDataPoint | Video):
+        o = x.vid if isinstance(x, EEGDatasetDataPoint) else x
+
+        if o.file_path is None:
+            raise ValueError("To transform a Video into VideoFileClip we require a reference file")
+
+        o.data = VideoFileClip(o.file_path)
+        return x

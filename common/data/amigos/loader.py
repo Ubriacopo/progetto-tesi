@@ -7,8 +7,9 @@ from moviepy import VideoFileClip
 
 from common.data.amigos.utils import extract_trial_data, load_participant_data
 from common.data.audio.audio import Audio
-from common.data.eeg.eeg import EEG
-from common.data.loader import EEGDatasetDataPoint, DataLoader
+from common.data.eeg import EEG
+from common.data.loader import DataLoader
+from common.data.data_point import EEGDatasetDataPoint
 from common.data.video.video import Video
 
 
