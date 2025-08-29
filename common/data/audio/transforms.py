@@ -7,5 +7,7 @@ class ToMono:
     """
 
     def __call__(self, x: torch.Tensor, **kwargs):
-        assert isinstance(x, torch.Tensor), "Input must be a torch.Tensor"
+        if not isinstance(x, torch.Tensor):
+            raise TypeError("Expected a torch.Tensor")
+
         return torch.mean(x, dim=0, keepdim=True)

@@ -13,7 +13,8 @@ class EEGToMneRawFromChannels:
 
     def __call__(self, x: EEGDatasetDataPoint | EEG, verbose: bool = False):
         e: EEG = x.eeg if isinstance(x, EEGDatasetDataPoint) else x
-        assert e.data is not None, "Data has to be loaded"
+        if e.data is None:
+            raise ValueError("EEG data has to be loaded to transform to mne")
 
         info = mne.create_info(ch_names=self.channel_names, ch_types=self.channel_types, sfreq=e.fs)
         raw = mne.io.RawArray(e.data, info=info, verbose=verbose)
@@ -27,9 +28,13 @@ class EEGMneAddAnnotation:
         e: EEG = x.eeg if isinstance(x, EEGDatasetDataPoint) else x
 
         raw: mne.io.BaseRaw = e.data
-        assert isinstance(raw, mne.io.BaseRaw), "To call this pipeline you have to turn to MNE object first"
+
+        if not isinstance(raw, mne.io.BaseRaw):
+            raise TypeError("To call this pipeline you have to turn to MNE object first ")
+
         description = x.entry_id if isinstance(x, EEGDatasetDataPoint) else description
-        assert description is not None, "A valid descriptor to identify the annotation is required"
+        if description is None:
+            raise TypeError("A valid descriptor to identify the annotation is required")
 
         start, stop = e.interval
         new_annotation = mne.Annotations(onset=[start], duration=[stop - start], description=x.entry_id, orig_time=None)
