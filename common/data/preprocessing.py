@@ -6,7 +6,7 @@ from typing import Optional
 
 import pandas as pd
 
-from common.data.eeg.utils import EEGNMERawTransform
+from common.data.eeg import EEGToMneRawFromChannels
 from common.data.loader import DatasetDataPoint, DataLoader, EEGDatasetDataPoint
 from common.data.sampler import Segmenter
 from common.data.transform import Compose
@@ -79,7 +79,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
             x.eeg.data = x.eeg.data.T  # Transpose
 
         assert x.eeg.data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
-        x = EEGNMERawTransform(channel_names=self.ch_names, channel_types=self.ch_types)(x)
+        x = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(x)
         if self.sample_pipeline is not None:
             x = self.sample_pipeline(x)
 

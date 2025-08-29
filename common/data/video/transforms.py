@@ -1,37 +1,65 @@
+import dataclasses
+
 import numpy as np
 import torch
 import torch.nn.functional as F
+from moviepy import VideoFileClip
+
+from common.data.loader import EEGDatasetDataPoint
+from common.data.video import Video
 
 
-class ResampleFps:
-    def __init__(self, fps_map: tuple[int, int]):
-        """
+@dataclasses.dataclass
+class SampleVideoFrames:
+    fps_map: tuple[int, int]
 
-        :param fps_map: Tuple containing the original fps and the target fps to map the video to.
-        """
-        self.og_fps, self.new_fps = fps_map
+    def __call__(self, x: list[torch.Tensor] | Video | EEGDatasetDataPoint):
+        if isinstance(x, EEGDatasetDataPoint) or isinstance(x, Video):
+            return SampleVideoDataPoint(self.fps_map)(x)
+        else:  # Tensor Object path
+            return SampleVideoTensor(self.fps_map)(x)
 
-    def __call__(self, video: list[torch.Tensor] | torch.Tensor, **kwargs):
-        if isinstance(video, list):
-            check_reference = video[0]
+
+@dataclasses.dataclass
+class SampleVideoDataPoint:
+    fps_map: tuple[int, int]
+
+    def __call__(self, x: Video | EEGDatasetDataPoint):
+        v = x.vid if isinstance(x, EEGDatasetDataPoint) else x
+        d: VideoFileClip = v.data
+        assert isinstance(d, VideoFileClip), \
+            "Inside of Video data we suppose (for the moment) to only have VideoFileClip data"
+        v.data = d.with_fps(self.fps_map[1])
+
+        return x
+
+
+@dataclasses.dataclass
+class SampleVideoTensor:
+    fps_map: tuple[int, int]
+
+    def __call__(self, x: list[torch.Tensor] | torch.Tensor, **kwargs):
+        if isinstance(x, list):
+            check_reference = x[0]
             if isinstance(check_reference, np.ndarray):
-                video = np.array(video)
-                video = torch.Tensor(video)
+                # Turn list into np array to tensor (freezes if I do directly with torch).
+                x = torch.Tensor(np.array(x))
             elif isinstance(check_reference, torch.Tensor):
-                video = torch.stack(video, dim=0)
+                x = torch.stack(x, dim=0)
             else:
                 raise TypeError("Given data is not valid")
 
-        if video.dim() != 4:
+        if x.dim() != 4:
             raise ValueError("Video must be 4D (T,C,H,W) or (T,H,W,C)")
 
-        channels_last = video.shape[-1] in (1, 3)
-        video = video.permute(3, 0, 1, 2) if channels_last else video.permute(1, 0, 2, 3)
+        channels_last = x.shape[-1] in (1, 3)
+        x = x.permute(3, 0, 1, 2) if channels_last else x.permute(1, 0, 2, 3)
 
-        c, t, h, w = video.shape
-        new_t = max(1, int(round(t * self.new_fps / self.og_fps)))
+        c, t, h, w = x.shape
+        new_t = max(1, int(round(t * self.fps_map[0] / self.fps_map[1])))
 
-        out = F.interpolate(video.unsqueeze(0), size=(new_t, h, w), mode="trilinear", align_corners=False).squeeze(
-            0)
+        out = F.interpolate(x.unsqueeze(0), size=(new_t, h, w), mode="trilinear", align_corners=False).squeeze(0)
         out = out.permute(1, 2, 3, 0) if channels_last else out.permute(1, 0, 2, 3)
-        return list(out.unbind(0))
+        out = list(out.unbind(0))
+
+        return out

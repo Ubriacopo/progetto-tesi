@@ -6,7 +6,7 @@ from torchvision.transforms.v2 import ToTensor
 
 from common.data.audio.transforms import ToMono
 from common.data.transform import Compose, IDENTITY
-from common.data.video.transforms import ResampleFps
+from common.data.video.transforms import SampleVideoTensor
 
 
 # todo next fix these
@@ -29,7 +29,7 @@ def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
 
         # These two instructions go together
         v2.ToTensor(),
-        ResampleFps(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
+        SampleVideoTensor(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
         v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
     ])
 

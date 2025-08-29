@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from common.data.amigos.loader import AMIGOSLoader
-from common.data.eeg.utils import EEGNMEAddAnnotationTransform
+from common.data.data_point_transforms import ResizeEEGDataPointMedia, SubclipMedia
+from common.data.eeg import EEGMneAddAnnotation
 from common.data.preprocessing import EEGSegmenterPreprocessor
-from common.data.sample_container import ResizeVideo, SubclipMedia
 from common.data.sampler import Segmenter, FixedIntervalsSegmenter
 from common.data.transform import Compose
 
@@ -21,8 +21,8 @@ class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
             sample_pipeline=None,
             split_pipeline=Compose([
                 SubclipMedia(),
-                EEGNMEAddAnnotationTransform(),
-                ResizeVideo((260, 260))
+                EEGMneAddAnnotation(),
+                ResizeEEGDataPointMedia((260, 260))
             ])
         )
 

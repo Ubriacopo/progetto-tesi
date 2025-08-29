@@ -1,50 +1,5 @@
 import mne
 
-from common.data.loader import EEGDatasetDataPoint
-
-
-# todo sistemare
-class EEGNMERawTransform:
-    def __init__(self, montage_name: str = None,
-                 channel_names: list[str] = None, channel_types: list[str] = None, ):
-        assert channel_names is not None and channel_types is not None, "Montage name is not supported yet"
-
-        self.channel_names: list[str] = channel_names
-        self.channel_types: list[str] = channel_types
-        self.montage_name: str = montage_name  # TODO Vedi se usare questo
-
-    def __call__(self, x: EEGDatasetDataPoint, verbose: bool = False):
-        assert x.eeg.data is not None, "Data has to be loaded"
-        info = mne.create_info(ch_names=self.channel_names, ch_types=self.channel_types, sfreq=x.eeg.fs)
-
-        """
-        TODO Se serve
-            if montage_name:
-        try:
-            montage = mne.channels.make_standard_montage(montage_name)
-            raw.set_montage(montage, match_case=False, on_missing="ignore", verbose=False)
-        except Exception:
-            pass  # montage optional
-        """
-        raw = mne.io.RawArray(x.eeg.data, info=info, verbose=verbose)
-        x.eeg.data = raw
-        return x
-
-
-class EEGNMEAddAnnotationTransform:
-    def __call__(self, x: EEGDatasetDataPoint):
-        raw: mne.io.BaseRaw = x.eeg.data
-        start, stop = x.eeg.interval
-        # start = start / x.eeg.fs
-        # stop = stop / x.eeg.fs
-
-        new_annotation = mne.Annotations(onset=[start], duration=[stop - start], description=x.entry_id, orig_time=None)
-        existing = getattr(raw, 'annotations', None)
-
-        merged = new_annotation if existing is None else existing + new_annotation
-        raw.set_annotations(merged)
-        return x
-
 
 def save_raw_fif(raw: mne.io.BaseRaw, path: str):
     # compressed FIF to save disk space
