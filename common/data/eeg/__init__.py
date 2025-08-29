@@ -1,2 +1,2 @@
-from eeg import EEG
-from transforms import *
+from .eeg import EEG
+from .transforms import *

@@ -1,6 +1,6 @@
 import mne
 
-from common.data.loader import EEGDatasetDataCollection
+from common.data.loader import EEGDatasetDataPoint
 
 
 # todo sistemare
@@ -13,7 +13,7 @@ class EEGNMERawTransform:
         self.channel_types: list[str] = channel_types
         self.montage_name: str = montage_name  # TODO Vedi se usare questo
 
-    def __call__(self, x: EEGDatasetDataCollection, verbose: bool = False):
+    def __call__(self, x: EEGDatasetDataPoint, verbose: bool = False):
         assert x.eeg.data is not None, "Data has to be loaded"
         info = mne.create_info(ch_names=self.channel_names, ch_types=self.channel_types, sfreq=x.eeg.fs)
 
@@ -32,7 +32,7 @@ class EEGNMERawTransform:
 
 
 class EEGNMEAddAnnotationTransform:
-    def __call__(self, x: EEGDatasetDataCollection):
+    def __call__(self, x: EEGDatasetDataPoint):
         raw: mne.io.BaseRaw = x.eeg.data
         start, stop = x.eeg.interval
         # start = start / x.eeg.fs

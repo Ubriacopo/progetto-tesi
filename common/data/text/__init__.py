@@ -1,2 +1,2 @@
-from text import Text
-from transforms import *
+from .text import Text
+from .transforms import *

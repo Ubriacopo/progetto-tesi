@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 
 import numpy as np
 
-from common.data.loader import EEGDatasetDataCollection
+from common.data.loader import EEGDatasetDataPoint
 
 # TODO Rimuovere
 @dataclasses.dataclass
@@ -28,12 +28,12 @@ class Segmenter(ABC):
         self.max_length: int = max_length
 
     @abstractmethod
-    def compute_segments(self, sample: EEGDatasetDataCollection) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: EEGDatasetDataPoint) -> list[tuple[int, int]]:
         pass
 
 
 class FixedIntervalsSegmenter(Segmenter):
-    def compute_segments(self, sample: EEGDatasetDataCollection) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: EEGDatasetDataPoint) -> list[tuple[int, int]]:
         # Good indicator of duration.
         length = len(sample.eeg.data) / sample.eeg.fs
 

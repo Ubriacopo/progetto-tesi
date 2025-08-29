@@ -1,6 +1,6 @@
 import dataclasses
 from abc import abstractmethod, ABC
-from typing import Optional, Generator, Iterator
+from typing import Optional, Iterator
 
 from common.data.audio.audio import Audio
 from common.data.eeg.eeg import EEG
@@ -8,11 +8,28 @@ from common.data.text.text import Text
 from common.data.video.video import Video
 
 
+class DatasetDataPoint(ABC):
+    @abstractmethod
+    def to_dict(self) -> dict:
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_identifier() -> str:
+        pass
+
+
 @dataclasses.dataclass
-class EEGDatasetDataCollection:
+class EEGDatasetDataPoint(DatasetDataPoint):
+    @staticmethod
+    def get_identifier() -> str:
+        return "entry_id"
+
     entry_id: str  # We suppose every entry has a unique way of identifying itself
     # EEG dataset supposes to have for an entry a list of recordings. Other data types are optional.
     eeg: EEG
+    # TODO: What about multiple medias? (front-rgp-etc). -> sarebbe array di Video etc
+    #       Da fare dopo ora ci va bene così
     vid: Optional[Video] = None
     txt: Optional[Text] = None
     aud: Optional[Audio] = None
@@ -34,5 +51,5 @@ class DataLoader(ABC):
     """
 
     @abstractmethod
-    def scan(self) -> Iterator[EEGDatasetDataCollection]:
+    def scan(self) -> Iterator[EEGDatasetDataPoint]:
         pass

@@ -1,3 +1,3 @@
-from video import Video
-from transforms import *
-from utils import *
+from .video import Video
+from .transforms import *
+from .utils import *

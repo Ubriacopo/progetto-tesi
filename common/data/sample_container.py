@@ -5,7 +5,7 @@ from moviepy import VideoFileClip, AudioFileClip
 
 from common.data.audio import Audio
 from common.data.eeg.eeg import EEG
-from common.data.loader import EEGDatasetDataCollection
+from common.data.loader import EEGDatasetDataPoint
 from common.data.video.video import Video
 
 
@@ -24,7 +24,7 @@ class ResizeVideo:
     def __init__(self, new_size: tuple[int, int] | int):
         self.new_size = new_size
 
-    def __call__(self, x: EEGDatasetDataCollection):
+    def __call__(self, x: EEGDatasetDataPoint):
         clip: VideoFileClip = x.vid.data
         if clip is None:
             # Make the clip if this is the first clipping experience.
@@ -39,7 +39,7 @@ class ResizeVideo:
 
 
 class SubclipMedia:
-    def __call__(self, x: EEGDatasetDataCollection):
+    def __call__(self, x: EEGDatasetDataPoint):
         vid: VideoFileClip = x.vid.data
         aud: AudioFileClip = x.aud.data
 

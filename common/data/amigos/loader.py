@@ -8,7 +8,7 @@ from moviepy import VideoFileClip
 from common.data.amigos.utils import extract_trial_data, load_participant_data
 from common.data.audio.audio import Audio
 from common.data.eeg.eeg import EEG
-from common.data.loader import EEGDatasetDataCollection, DataLoader
+from common.data.loader import EEGDatasetDataPoint, DataLoader
 from common.data.video.video import Video
 
 
@@ -17,7 +17,7 @@ class AMIGOSLoader(DataLoader):
         super().__init__()
         self.base_path: str = base_path
 
-    def scan(self) -> Iterator[EEGDatasetDataCollection]:
+    def scan(self) -> Iterator[EEGDatasetDataPoint]:
         processed_data = Path(self.base_path + "pre_processed_py/")
 
         if not processed_data.exists():
@@ -44,6 +44,6 @@ class AMIGOSLoader(DataLoader):
             vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size)
             aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps)
 
-            yield EEGDatasetDataCollection(
+            yield EEGDatasetDataPoint(
                 entry_id=experiment_id, eeg=EEG(data=eeg_data[0], file_path=None, fs=128), vid=vid, aud=aud
             )
