@@ -1,9 +1,10 @@
 from torchvision.transforms import v2
 
 from common.data.dataset import EEGPdSpecMediaDataset
-from common.data.transform import Compose
+from common.data.transform import Compose, KwargsCompose
 import common.data.eeg.transforms as eegtfs
-from common.data.video.transforms import ResampleVideoFrames, ToVideoFileClip, VideoFileToTensor
+from common.data.video.transforms import ResampleFrames
+from common.data.video.video import RegularFrameResampling
 
 
 class AMIGOSDataset(EEGPdSpecMediaDataset):
@@ -13,16 +14,16 @@ class AMIGOSDataset(EEGPdSpecMediaDataset):
 if __name__ == "__main__":
     dataset = AMIGOSDataset(
         dataset_spec_file="../../../resources/AMIGOS/processed/spec.csv",
-        eeg_transform=Compose([
+        eeg_transform=KwargsCompose([
             eegtfs.MneToTensor(),
             v2.Lambda(lambda x: x.to("cuda"))  # Change device
         ]),
-        video_transform=Compose([
+        video_transform=KwargsCompose([
             # todo: una callback loadmediafrompathspec (VIDEO ha uno, AUDIO ha uno), toTesnor -> poi lavoriamo solo su tensori
             #       Penso sia più pulito. Dataset diventà più lightweight perchè permette di caricare. + se manca la fn a testa la aggiungo io (facciamosubclassing)
-            ResampleVideoFrames((25, 16)),
+            RegularFrameResampling(32),
         ]),
-        audio_transform=Compose([])
+        audio_transform=KwargsCompose([])
     )
     o = dataset[0]
     i = dataset[15]

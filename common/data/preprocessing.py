@@ -79,7 +79,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
         original_sample_id = x.entry_id
 
         if x.eeg.data.shape[0] != len(self.ch_names):
-            x.eeg.data = x.eeg.data.T  # Transpose
+            x.eeg.data = x.eeg.data.max_length  # Transpose
 
         assert x.eeg.data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
         x = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(x)

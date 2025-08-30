@@ -1,31 +1,50 @@
 import dataclasses
 
-import numpy as np
 import torch
 import torch.nn.functional as F
+import torchcodec
 from moviepy import VideoFileClip
+from torchcodec.decoders import VideoDecoder
 from torchvision.transforms import v2
 
 from common.data.data_point import EEGDatasetDataPoint
 from .video import Video
 
 
+
 @dataclasses.dataclass
-class ResampleVideoFrames:
+class ResampleFrames:
     fps_map: tuple[int, int]
 
-    def __call__(self, x: list[torch.Tensor] | Video | EEGDatasetDataPoint):
-        o = x if not isinstance(x, EEGDatasetDataPoint) else x.vid
-        if isinstance(o, Video) and isinstance(o.data, VideoFileClip):
-            ResampleVideoDataPoint(self.fps_map)(o)
-            return x
+    def __call__(self, x: list[torch.Tensor], fps: int = None, *args, **kwargs) -> tuple[list[torch.Tensor], dict]:
+        if not isinstance(x, list):
+            raise TypeError("ResampleFrames only supports list of torch.Tensors")
+        if len(x) == 0:
+            raise ValueError("Empty frame list cannot be handled")
+        if not isinstance(x[0], torch.Tensor):
+            raise TypeError("ResampleFrames only supports torch.Tensors not:", type(x[0]))
 
-        if isinstance(o, Video):
-            o.data = ResampleVideoTensor(o.data)
-            return x
+        x = torch.stack(x, dim=0)
+        if x.dim() != 4:
+            raise ValueError("Video must be 4D (T,C,H,W) or (T,H,W,C)")
 
-        # Tensor Object path
-        return ResampleVideoTensor(self.fps_map)(x)
+        channels_last = x.shape[-1] in (1, 3)
+        x = x.permute(3, 0, 1, 2) if channels_last else x.permute(1, 0, 2, 3)
+
+        c, t, h, w = x.shape
+
+        source_fps = self.fps_map[0] if fps is None else fps
+        target_fps = self.fps_map[1]
+        new_t = max(1, int(round(t * source_fps / target_fps)))
+
+        out = F.interpolate(x.unsqueeze(0), size=(c, new_t, h, w), mode="bilinear", align_corners=True).squeeze(0)
+        out = out.permute(1, 2, 3, 0) if channels_last else out.permute(1, 0, 2, 3)
+        out = list(out.unbind(0))
+
+        # Update context information to pass down the line.
+        kwargs["fps"] = target_fps
+        kwargs["original_fps"] = source_fps
+        return out, kwargs
 
 
 @dataclasses.dataclass
@@ -41,37 +60,6 @@ class ResampleVideoDataPoint:
 
         v.data = d.with_fps(self.fps_map[1])
         return x
-
-
-@dataclasses.dataclass
-class ResampleVideoTensor:
-    fps_map: tuple[int, int]
-
-    def __call__(self, x: list[torch.Tensor] | torch.Tensor, **kwargs):
-        if isinstance(x, list):
-            check_reference = x[0]
-            if isinstance(check_reference, np.ndarray):
-                # Turn list into np array to tensor (freezes if I do directly with torch).
-                x = torch.Tensor(np.array(x))
-            elif isinstance(check_reference, torch.Tensor):
-                x = torch.stack(x, dim=0)
-            else:
-                raise TypeError("Given data is not valid")
-
-        if x.dim() != 4:
-            raise ValueError("Video must be 4D (T,C,H,W) or (T,H,W,C)")
-
-        channels_last = x.shape[-1] in (1, 3)
-        x = x.permute(3, 0, 1, 2) if channels_last else x.permute(1, 0, 2, 3)
-
-        c, t, h, w = x.shape
-        new_t = max(1, int(round(t * self.fps_map[0] / self.fps_map[1])))
-
-        out = F.interpolate(x.unsqueeze(0), size=(new_t, h, w), mode="trilinear", align_corners=False).squeeze(0)
-        out = out.permute(1, 2, 3, 0) if channels_last else out.permute(1, 0, 2, 3)
-        out = list(out.unbind(0))
-
-        return out
 
 
 @dataclasses.dataclass

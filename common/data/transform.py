@@ -17,5 +17,15 @@ class Compose:
         """
         self.transforms: Iterable[nn.Module] = transforms
 
-    def __call__(self, x):
-        return functools.reduce(lambda d, t: t(d), self.transforms, x)
+    def __call__(self, x, *args, **kwargs):
+        return functools.reduce(lambda d, t: t(d, *args, **kwargs), self.transforms, x)
+
+
+class KwargsCompose(Compose):
+    def __call__(self, x, *args, **kwargs):
+        for t in self.transforms:
+            x = t(x, *args, **kwargs)
+            if isinstance(x, tuple) and len(x) == 2:
+                x, kwargs = x
+
+        return x, kwargs

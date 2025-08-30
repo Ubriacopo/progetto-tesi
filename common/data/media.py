@@ -40,10 +40,14 @@ class Media(ABC):
 
         return cls(**restored)
 
-    def to_dict(self) -> dict:
+    def to_dict(self, metadata_only: bool = False) -> dict:
         attrs = [f.name for f in dataclasses.fields(self)]
         metadata = {attr: getattr(self, attr) for attr in attrs if attr != "data" and attr != "file_path"}
         metadata = sanitize_for_ast(metadata)
+
+        if metadata_only:
+            return metadata
+
         return {f"{self.modality_prefix()}_file_path": self.file_path, f"{self.modality_prefix()}_metadata": metadata}
 
 
