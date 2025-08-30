@@ -5,8 +5,29 @@ from torchvision.transforms import v2
 from torchvision.transforms.v2 import ToTensor
 
 from common.data.audio.transforms import ToMono
-from common.data.transform import Compose, IDENTITY
-from common.data.video.transforms import ResampleVideoTensor
+from common.data.transform import Compose, IDENTITY, KwargsCompose
+from common.data.video import RegularFrameResampling
+
+
+def train_video_transform(size: tuple[int, int] = (224, 224),
+                          grayscale_p: float = 0.1,
+
+                          max_frames: int = 32,
+
+                          means: tuple[float] | None = (0.485, 0.456, 0.406),
+                          stds: tuple[float] | None = (0.229, 0.224, 0.225), ) -> KwargsCompose:
+    return KwargsCompose([
+        v2.Resize(size),
+        # Augmentation
+        v2.RandomHorizontalFlip(),
+        v2.RandomGrayscale(p=grayscale_p),
+
+        RegularFrameResampling(max_frames),
+        # Normalization
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
+        # TODO: Call the embedder if needed here.
+    ])
 
 
 # todo next fix these
@@ -29,7 +50,6 @@ def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
 
         # These two instructions go together
         v2.ToTensor(),
-        ResampleVideoTensor(fps_map) if fps_map[0] != fps_map[1] else IDENTITY,
         v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
     ])
 
@@ -62,4 +82,4 @@ def text_transform(tokenizer=Tokenizer.from_pretrained("sentence-transformers/al
 # to stft
 def eeg_transform() -> Compose:
     # TODO: Work on this
-    return Compose([ToTensor()],)
+    return Compose([ToTensor()], )

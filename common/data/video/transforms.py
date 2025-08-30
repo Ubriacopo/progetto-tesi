@@ -8,13 +8,12 @@ from .video import Video
 
 
 class VideoToTensor:
-    def __call__(self, x: Video, device: str = "cpu", *args, **kwargs) -> tuple[list[torch.Tensor], dict] | None:
-        frames: list[torch.Tensor] = x.data
+    def __call__(self, x: Video, device: str = "cpu", *args, **kwargs) -> tuple[torch.Tensor, dict] | None:
+        frames: torch.Tensor = x.data
         if x.data is None:
-            decoder = VideoDecoder(x.file_path, device=device)
-            frames = list(decoder[:].unbind(0))
+            frames = VideoDecoder(x.file_path, device=device)[:]
         elif isinstance(x.data, VideoFileClip):
-            frames = list([torch.tensor(frame) for frame in x.data.iter_frames()])
+            frames = torch.stack([torch.tensor(frame) for frame in x.data.iter_frames()])
 
         metadata = x.to_dict(metadata_only=True)
         return frames, kwargs | metadata
@@ -26,27 +25,21 @@ class RegularFrameResampling:
     pad: bool = True
     device = "cpu"
 
-    def __call__(self, x: list[torch.Tensor], fps: int, *args, **kwargs) -> tuple[list[torch.Tensor], dict]:
-        if fps is None:
-            raise ValueError("Original fps can't be None")
-
-        T = len(x)  # Original sequence length (Frames count)
-        c, h, w = x[0].shape
+    def __call__(self, x: torch.Tensor, *args, **kwargs) -> tuple[torch.Tensor, dict]:
+        T, c, h, w = x.shape
 
         if T > self.max_length:
             i = torch.arange(self.max_length, device=self.device)
             idx = torch.div(i * (T - 1), (self.max_length - 1), rounding_mode="floor").to(torch.long)
 
-            x = torch.stack(x, 0)
-            x = list(x[idx].unbind(0))
             kwargs["frames_indexes"] = idx
-            return x, kwargs
+            return x[idx], kwargs
 
         if self.pad:
             # Video is not long enough so we need to pad
             pad = torch.zeros(self.max_length - T, c, h, w)
             # Add the missing frames
-            x += list(pad.unbind(0))
+            x = torch.cat([x, pad])
             kwargs["mask"] = torch.cat([torch.ones(T), pad], dim=0)
             return x, kwargs
 

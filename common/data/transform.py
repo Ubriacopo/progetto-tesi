@@ -33,8 +33,9 @@ class KwargsCompose(Compose):
 
     def __call__(self, x, *args, **kwargs):
         for t in self.transforms:
-            x = t(x, *args, **kwargs)
+            x = t(x)
             if isinstance(x, tuple) and len(x) == 2:
-                x, kwargs = x
+                x, upd_kwargs = x
+                kwargs = kwargs | upd_kwargs
 
         return x, kwargs

@@ -1,6 +1,7 @@
 from torchvision.transforms import v2
 
 import common.data.eeg.transforms as eegtfs
+from common.data.amigos.transform import train_video_transform
 from common.data.dataset import EEGPdSpecMediaDataset
 from common.data.transform import KwargsCompose
 from common.data.video.transforms import RegularFrameResampling
@@ -16,11 +17,7 @@ if __name__ == "__main__":
         eeg_transform=KwargsCompose([
             v2.Lambda(lambda x: x.to("cuda"))  # Change device
         ]),
-        video_transform=KwargsCompose([
-            # todo: una callback loadmediafrompathspec (VIDEO ha uno, AUDIO ha uno), toTesnor -> poi lavoriamo solo su tensori
-            #       Penso sia più pulito. Dataset diventà più lightweight perchè permette di caricare. + se manca la fn a testa la aggiungo io (facciamosubclassing)
-            RegularFrameResampling(32),
-        ]),
+        video_transform=train_video_transform(),
         audio_transform=KwargsCompose([])
     )
     o = dataset[0]
