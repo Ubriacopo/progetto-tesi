@@ -15,6 +15,8 @@ class AudioToTensor:
             aud = AudioFileClip(x.file_path)
 
         x = aud.to_soundarray()
+        x = torch.from_numpy(x).float()
+        x = x.T
         return x, kwargs | metadata
 
 

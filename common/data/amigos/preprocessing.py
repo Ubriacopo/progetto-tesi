@@ -19,6 +19,7 @@ class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
             output_path=output_path,
             segmenter=FixedIntervalsSegmenter(max_length),
             sample_pipeline=None,
+            # todo magari dividere per modality? cosi sara piu pulito
             split_pipeline=Compose([
                 SubclipMedia(),
                 EEGMneAddAnnotation(),

@@ -26,31 +26,21 @@ def train_video_transform(size: tuple[int, int] = (224, 224),
         # Normalization
         v2.ToDtype(torch.float32, scale=True),
         v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
-        # TODO: Call the embedder if needed here.
+        # TODO: Call the embedder if needed here somewhere.
     ])
 
 
-# todo next fix these
-# One trian one val
-def video_transform(means: tuple[float] | None = (0.485, 0.456, 0.406),
-                    stds: tuple[float] | None = (0.229, 0.224, 0.225),
-                    size: tuple[int, int] = (224, 224),
-                    fps_map: tuple[int, int] = (30, 30)) -> Compose:
-    return Compose([
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),
-        # Just so that 256 -> 224 (We keep the proportion, no real reasoning behind it)
-        v2.Resize((size[0] + int(.145 * size[0]), size[1] + int(.145 * size[1]))),
-        v2.CenterCrop(size),
-        # todo augmentations have to be aligned between two models. or does it? MHMM
-        #       Could I leverage the fact that samples are augmented to learn more?
-        v2.RandomHorizontalFlip(),
-        v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.02),
-        v2.RandomGrayscale(p=0.15),
+# todo:
+# frequenze audio anche queste poosso fare resampling prima di salvare?
+def train_audio_transform(frequency_mapping: tuple[int, int] = (44100, 16000)) -> KwargsCompose:
 
-        # These two instructions go together
-        v2.ToTensor(),
-        v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
+    # https://www.kaggle.com/code/aisuko/audio-classification-with-hubert
+    ogf, nwf = frequency_mapping
+
+    return KwargsCompose([
+        ToMono(),
+        ToTensor(),
+        at.Resample(orig_freq=ogf, new_freq=nwf) if ogf != nwf else IDENTITY
     ])
 
 

@@ -1,4 +1,5 @@
 import functools
+from traceback import print_stack
 from typing import Iterable, Callable
 
 from torch import nn
@@ -33,9 +34,15 @@ class KwargsCompose(Compose):
 
     def __call__(self, x, *args, **kwargs):
         for t in self.transforms:
-            x = t(x)
-            if isinstance(x, tuple) and len(x) == 2:
-                x, upd_kwargs = x
-                kwargs = kwargs | upd_kwargs
+            try:
+                x = t(x)
+                if isinstance(x, tuple) and len(x) == 2:
+                    x, upd_kwargs = x
+                    kwargs = kwargs | upd_kwargs
+            except Exception as e:
+                print_stack()
+                print("We had an exception when calling transform [", t.__class__.__name__, "]")
+
+                raise e # Propagate the exception further
 
         return x, kwargs
