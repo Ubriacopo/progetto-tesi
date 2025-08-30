@@ -1,4 +1,21 @@
+from typing import Optional
+
 import torch
+from moviepy import AudioFileClip
+
+from .audio import Audio
+
+
+class AudioToTensor:
+    def __call__(self, x: Audio, *args, **kwargs):
+        aud: Optional[AudioFileClip] = x.data
+        metadata = x.to_dict(metadata_only=True)
+
+        if x.data is None:
+            aud = AudioFileClip(x.file_path)
+
+        x = aud.to_soundarray()
+        return x, kwargs | metadata
 
 
 class ToMono:

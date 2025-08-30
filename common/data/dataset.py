@@ -9,11 +9,13 @@ import torchaudio
 from torch import device
 
 from common.data.audio import Audio
+from common.data.audio.transforms import AudioToTensor
 from common.data.data_point import EEGDatasetDataPoint
 from common.data.eeg import EEG
 from common.data.eeg.mne_utils import find_segment_by_descriptor
+from common.data.eeg.transforms import EEGToTensor
 from common.data.text import Text
-from common.data.transform import Compose, KwargsCompose
+from common.data.transform import KwargsCompose
 from common.data.video import Video, VideoToTensor
 
 
@@ -42,43 +44,40 @@ class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
         self.txt_transform: Optional[KwargsCompose] = text_transform
 
     def load_vid(self, x: Video, idx: int) -> tuple[torch.Tensor, dict] | None:
-        if x is None: return None
+        if x is None:
+            return None
 
         x, metadata = VideoToTensor()(x)
         x, metadata = self.vid_transform(x, **metadata)
+
         return x, metadata
 
-    def load_aud(self, x: Audio, idx: int) -> Optional[Audio]:
+    def load_aud(self, x: Audio, idx: int) -> tuple[torch.Tensor, dict] | None:
         if x is None:
             return None
 
-        x.data = torchaudio.load(x.file_path)
-        x.data = self.aud_transform(x)
+        x, metadata = AudioToTensor()(x)
+        x, metadata = self.aud_transform(x, **metadata)
 
-        return x
+        return x, metadata
 
-    def load_txt(self, x: Text, idx: int) -> Optional[Text]:
-        if x is None:
-            return None
+    def load_txt(self, x: Text, idx: int) -> tuple[torch.Tensor, dict] | None:
+        if x is None: return None
 
         with open(x.file_path) as f:
             x.data = f.read()
 
-        x.data = self.txt_transform(x)
-        return x
+        metadata = x.to_dict(metadata_only=True)
+        x, metadata = self.txt_transform(x, **metadata)
 
-    def load_eeg(self, x: EEG, idx: int, eid: str) -> Optional[EEG]:
+        return x, metadata
+
+    def load_eeg(self, x: EEG, idx: int, eid: str) -> tuple[torch.Tensor, dict] | None:
         if x is None:
             raise RuntimeError("EEG data is None but that cannot happen.")
 
-        fif = mne.io.read_raw_fif(x.file_path)
-        segments = find_segment_by_descriptor(fif, eid)
-        if len(segments) == 0 or len(segments) > 1:
-            raise RuntimeError(f"Found {len(segments)} EEG for {eid}. There is something wrong with {eid}.")
-
-        _, onset, duration = segments[0]
-        x.data = fif.copy().crop(tmin=onset, tmax=onset + duration)
-        x.data = self.eeg_transform(x)
+        x, metadata = EEGToTensor()(x, entry_id=eid)
+        x, metadata = self.eeg_transform(x, **metadata)
 
         return x
 

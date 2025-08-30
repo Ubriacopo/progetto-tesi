@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import pandas as pd
+import torch
 
 from common.data.audio import Audio
 from common.data.eeg import EEG
@@ -45,13 +46,13 @@ class EEGDatasetDataPoint(DatasetDataPoint):
 
     entry_id: str  # We suppose every entry has a unique way of identifying itself
     # EEG dataset supposes to have for an entry a list of recordings. Other data types are optional.
-    eeg: EEG
+    eeg: EEG | tuple[torch.Tensor, dict]
 
     # TODO: What about multiple medias? (front-rgp-etc). -> sarebbe array di Video etc
     #       Da fare dopo ora ci va bene così
-    vid: Optional[Video] = None
-    txt: Optional[Text] = None
-    aud: Optional[Audio] = None
+    vid: Optional[Video | tuple[torch.Tensor, dict]] = None
+    txt: Optional[Text | tuple[torch.Tensor, dict]] = None
+    aud: Optional[Audio | tuple[torch.Tensor, dict]] = None
 
     def to_dict(self) -> dict:
         d = {"entry_id": self.entry_id, } | self.eeg.to_dict()

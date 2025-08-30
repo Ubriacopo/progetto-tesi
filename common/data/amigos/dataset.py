@@ -14,7 +14,6 @@ if __name__ == "__main__":
     dataset = AMIGOSDataset(
         dataset_spec_file="../../../resources/AMIGOS/processed/spec.csv",
         eeg_transform=KwargsCompose([
-            eegtfs.MneToTensor(),
             v2.Lambda(lambda x: x.to("cuda"))  # Change device
         ]),
         video_transform=KwargsCompose([
