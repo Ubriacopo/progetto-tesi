@@ -1,23 +1,8 @@
-import dataclasses
 from abc import abstractmethod, ABC
 
 import numpy as np
 
 from common.data.data_point import EEGDatasetDataPoint
-
-
-# TODO Rimuovere
-@dataclasses.dataclass
-class SamplingDescriptor:
-    sample_index: int
-    media_path: str
-    original_filename: str
-    split_index: int
-    start_timestamp: int
-    stop_timestamp: int
-    experiment_id: str
-    data_file: str
-    data_index: int
 
 
 class Segmenter(ABC):
@@ -48,9 +33,3 @@ class FixedIntervalsSegmenter(Segmenter):
         stops = stops[~overlapping]
 
         return list(zip(starts, stops))
-
-
-class DataSampler(ABC):
-    @abstractmethod
-    def process_sample(self, sample):
-        pass
