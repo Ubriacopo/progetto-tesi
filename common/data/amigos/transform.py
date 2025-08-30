@@ -33,21 +33,10 @@ def train_video_transform(size: tuple[int, int] = (224, 224),
 # todo:
 # frequenze audio anche queste poosso fare resampling prima di salvare?
 def train_audio_transform(frequency_mapping: tuple[int, int] = (44100, 16000)) -> KwargsCompose:
-
     # https://www.kaggle.com/code/aisuko/audio-classification-with-hubert
     ogf, nwf = frequency_mapping
 
     return KwargsCompose([
-        ToMono(),
-        ToTensor(),
-        at.Resample(orig_freq=ogf, new_freq=nwf) if ogf != nwf else IDENTITY
-    ])
-
-
-def audio_transform(frequency_mapping: tuple[int, int]) -> Compose:
-    # https://www.kaggle.com/code/aisuko/audio-classification-with-hubert
-    ogf, nwf = frequency_mapping
-    return Compose([
         ToMono(),
         ToTensor(),
         at.Resample(orig_freq=ogf, new_freq=nwf) if ogf != nwf else IDENTITY
@@ -70,6 +59,8 @@ def text_transform(tokenizer=Tokenizer.from_pretrained("sentence-transformers/al
 # should re-order channels
 # shoudl drop some channels
 # to stft
-def eeg_transform() -> Compose:
+def train_eeg_transform() -> KwargsCompose:
     # TODO: Work on this
-    return Compose([ToTensor()], )
+    return KwargsCompose([
+        v2.Lambda(lambda x: x.to("cuda"))
+    ])
