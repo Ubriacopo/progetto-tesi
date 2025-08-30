@@ -1,6 +1,15 @@
+from __future__ import annotations
+
+import ast
 import dataclasses
 from abc import abstractmethod, ABC
+from collections.abc import Mapping, Sequence
 from typing import Any, Optional
+
+import numpy as np
+import torch
+
+_AST_OK = (str, bytes, bool, int, float, type(None))
 
 
 @dataclasses.dataclass
@@ -8,13 +17,67 @@ class Media(ABC):
     data: Any
     file_path: Optional[str]
 
-    # Metadata is relative to media type.
-
+    @classmethod
     @abstractmethod
-    def modality_prefix(self) -> str:
+    def modality_prefix(cls) -> str:
         pass
+
+    @classmethod
+    def restore_from_dict(cls, data: dict) -> Optional[Media]:
+        fields = [f.name for f in dataclasses.fields(cls)]
+        prefix = cls.modality_prefix(cls) + "_"
+
+        # An example would be when text is missing.
+        if prefix + "metadata" not in data:
+            return None
+
+        # Expand my metadata (related to cls)
+        local_data = data | ast.literal_eval(data[prefix + "metadata"]) | {"file_path": data[prefix + "file_path"]}
+
+        restored = {
+            attr: (local_data[attr] if attr in local_data else None) for attr in fields
+        }
+
+        return cls(**restored)
 
     def to_dict(self) -> dict:
         attrs = [f.name for f in dataclasses.fields(self)]
         metadata = {attr: getattr(self, attr) for attr in attrs if attr != "data" and attr != "file_path"}
-        return {f"{self.modality_prefix()}_path": self.file_path, f"{self.modality_prefix()}_metadata": metadata}
+        metadata = sanitize_for_ast(metadata)
+        return {f"{self.modality_prefix()}_file_path": self.file_path, f"{self.modality_prefix()}_metadata": metadata}
+
+
+def sanitize_for_ast(obj):
+    # primitives already fine
+    if isinstance(obj, _AST_OK):
+        return obj
+
+    # Numpy scalars -> Python scalars
+    if isinstance(obj, np.generic):
+        return obj.item()
+    # Numpy arrays -> Nested lists (0-d -> scalar)
+    if isinstance(obj, np.ndarray):
+        return obj.item() if obj.ndim == 0 else obj.tolist()
+    # Torch tensors -> Nested lists (0-d -> scalar)
+    if isinstance(obj, torch.Tensor):
+        return obj.item() if obj.ndim == 0 else obj.tolist()
+
+    # Dataclass -> To Dict First
+    if dataclasses.is_dataclass(obj):
+        return sanitize_for_ast(dataclasses.asdict(obj))
+
+    # Mappings
+    if isinstance(obj, Mapping):
+        return {(k if isinstance(k, _AST_OK) else str(k)): sanitize_for_ast(v) for k, v in obj.items()}
+
+    # Sequences (but not str/bytes which were caught above)
+    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
+        typ = tuple if isinstance(obj, tuple) else list
+        return typ(sanitize_for_ast(x) for x in obj)
+
+    # Sets
+    if isinstance(obj, set):
+        return {sanitize_for_ast(x) for x in obj}
+
+    # Default is str representation
+    return str(obj)

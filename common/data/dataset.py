@@ -4,15 +4,24 @@ from pathlib import Path
 from typing import Optional
 
 import cv2
+import mne.io
 import numpy as np
 import pandas as pd
 import torch
 import torchaudio
+from torch import device
 
+from common.data.audio import Audio
+from common.data.data_point import EEGDatasetDataPoint
+from common.data.eeg import EEG
+from common.data.eeg.mne_utils import find_segment_by_descriptor
 from common.data.extensions import text_extensions, video_extensions, audio_extensions
 from common.data.sampler import SamplingDescriptor
+from common.data.text import Text
 from common.data.transform import Compose
+from common.data.video import Video
 from common.data.video.utils import extract_frames
+
 
 # todo ds usando sample_container
 
@@ -57,7 +66,9 @@ class SimpleMediaBasedDataset(torch.utils.data.Dataset, ABC):
         self.vid_transform: Optional[Compose] = video_transform
         self.aud_transform: Optional[Compose] = audio_transform
         self.txt_transform: Optional[Compose] = text_transform
-        assert eeg_transform is not None, "EEG transform must be defined"
+        if eeg_transform is None:
+            raise ValueError("EEG transform must be defined")
+
         self.eeg_transform: Optional[Compose] = eeg_transform
 
         self.train: bool = train
@@ -180,3 +191,89 @@ class SpecMediaBasedDataset(SimpleMediaBasedDataset, ABC):
 
     def get_media_path(self, idx: int) -> str:
         return self.get_entry(idx).media_path
+
+
+class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
+    def __init__(self, dataset_spec_file: str, eeg_transform: Compose, selected_device: device = None,
+                 video_transform: Compose = None, audio_transform: Compose = None, text_transform: Compose = None):
+        super().__init__()
+        # Auto device selection.
+        if selected_device is None:
+            selected_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device: device = selected_device
+
+        df = pd.read_csv(dataset_spec_file, index_col=False)
+        self.objects = [EEGDatasetDataPoint.from_dict(d) for d in df.to_dict(orient="records")]
+
+        if eeg_transform is None:
+            raise ValueError("EEG transform must be defined")
+        self.eeg_transform: Optional[Compose] = eeg_transform
+        self.vid_transform: Optional[Compose] = video_transform
+        self.aud_transform: Optional[Compose] = audio_transform
+        self.txt_transform: Optional[Compose] = text_transform
+
+    def load_vid(self, x: Video, idx: int) -> Optional[Video]:
+        if x is None:
+            return None
+
+        # VideoDecoder(x.file_path, device=self.device) doesn't work
+        x.data = extract_frames(cv2.VideoCapture(x.file_path))
+        x.data = self.vid_transform(x)
+
+        return x
+
+    def load_aud(self, x: Audio, idx: int) -> Optional[Audio]:
+        if x is None:
+            return None
+
+        x.data = torchaudio.load(x.file_path)
+        x.data = self.aud_transform(x)
+
+        return x
+
+    def load_txt(self, x: Text, idx: int) -> Optional[Text]:
+        if x is None:
+            return None
+
+        with open(x.file_path) as f:
+            x.data = f.read()
+
+        x.data = self.txt_transform(x)
+        return x
+
+    def load_eeg(self, x: EEG, idx: int, eid: str) -> Optional[EEG]:
+        if x is None:
+            raise RuntimeError("EEG data is None but that cannot happen.")
+
+        fif = mne.io.read_raw_fif(x.file_path)
+        segments = find_segment_by_descriptor(fif, eid)
+        if len(segments) == 0 or len(segments) > 1:
+            raise RuntimeError(f"Found {len(segments)} EEG for {eid}. There is something wrong with {eid}.")
+
+        _, onset, duration = segments[0]
+        x.data = fif.copy().crop(tmin=onset, tmax=onset + duration)
+        x.data = self.eeg_transform(x)
+
+        return x
+
+    def __getitem__(self, idx: int) -> EEGDatasetDataPoint:
+        template = self.objects[idx]
+        # For the moment to avoid caching the stuff in data we do this workaround.
+        # We will se if there is some sort of caching required somewhere.
+        x = EEGDatasetDataPoint(
+            entry_id=template.entry_id,
+            vid=dataclasses.replace(template.vid, data=None) if template.vid is not None else None,
+            aud=dataclasses.replace(template.aud, data=None) if template.aud is not None else None,
+            txt=dataclasses.replace(template.txt, data=None) if template.txt is not None else None,
+            eeg=dataclasses.replace(template.eeg, data=None) if template.eeg is not None else None,
+        )
+
+        x.vid = self.load_vid(x.vid, idx)
+        x.aud = self.load_aud(x.aud, idx)
+        x.txt = self.load_txt(x.txt, idx)
+        x.eeg = self.load_eeg(x.eeg, idx, x.entry_id)
+
+        return x
+
+    def __len__(self):
+        return len(self.objects)

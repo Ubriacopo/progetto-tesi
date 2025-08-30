@@ -16,8 +16,9 @@ def load_raw_fif(path: str) -> mne.io.BaseRaw:
 # todo use dataclasses?
 def find_segment_by_descriptor(raw: mne.io.BaseRaw, segment_annotation_identifier):
     ann = raw.annotations
+
     return [
-        [description, onset, duration]
+        (description, onset, duration)
         for description, onset, duration in zip(ann.description, ann.onset, ann.duration)
         if re.search(segment_annotation_identifier, description)
     ]

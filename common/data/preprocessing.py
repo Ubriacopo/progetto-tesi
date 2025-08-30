@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 from common.data.eeg.transforms import EEGToMneRawFromChannels
@@ -32,7 +33,8 @@ class Preprocessor(ABC):
                 existing_df = pd.read_csv(existing_path)
 
             docs: list[DatasetDataPoint] = []
-            # todo if multitreading do it here on samples
+
+            # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
             for i in loader.scan():
                 key = i.get_identifier()
                 if existing_df is not None and existing_df[key].str.contains(i.entry_id).any():
@@ -98,7 +100,11 @@ class EEGSegmenterPreprocessor(Preprocessor):
         return x_segments
 
     def preprocess_segment(self, x: EEGDatasetDataPoint, idx: int,
-                           segment: tuple[int | float, int | float], out_folder: str) -> EEGDatasetDataPoint:
+                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray], out_folder: str) \
+            -> EEGDatasetDataPoint:
+        if isinstance(segment[0], np.ndarray):
+            segment = (segment[0].item(), segment[1].item())
+
         nid = x.entry_id + "_" + str(idx)
         y = EEGDatasetDataPoint(
             entry_id=nid,

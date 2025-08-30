@@ -15,10 +15,17 @@ class ResampleVideoFrames:
     fps_map: tuple[int, int]
 
     def __call__(self, x: list[torch.Tensor] | Video | EEGDatasetDataPoint):
-        if isinstance(x, EEGDatasetDataPoint) or isinstance(x, Video):
-            return ResampleVideoDataPoint(self.fps_map)(x)
-        else:  # Tensor Object path
-            return ResampleVideoTensor(self.fps_map)(x)
+        o = x if not isinstance(x, EEGDatasetDataPoint) else x.vid
+        if isinstance(o, Video) and isinstance(o.data, VideoFileClip):
+            ResampleVideoDataPoint(self.fps_map)(o)
+            return x
+
+        if isinstance(o, Video):
+            o.data = ResampleVideoTensor(o.data)
+            return x
+
+        # Tensor Object path
+        return ResampleVideoTensor(self.fps_map)(x)
 
 
 @dataclasses.dataclass
@@ -98,3 +105,10 @@ class ToVideoFileClip:
 
         o.data = VideoFileClip(o.file_path)
         return x
+
+
+class VideoFileToTensor:
+    def __call__(self, x: Video) -> list[torch.Tensor]:
+        if not isinstance(x, Video):
+            raise TypeError("Input object must be of type Video")
+        return list([torch.tensor(frame) for frame in x.data.iter_frames()])

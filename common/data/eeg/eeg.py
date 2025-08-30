@@ -11,5 +11,3 @@ class EEG(Media):
 
     fs: float
     interval: Optional[tuple[int, int]] = None
-
-

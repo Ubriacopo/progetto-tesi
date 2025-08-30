@@ -1,6 +1,9 @@
+from __future__ import annotations
 import dataclasses
 from abc import ABC, abstractmethod
 from typing import Optional
+
+import pandas as pd
 
 from common.data.audio import Audio
 from common.data.eeg import EEG
@@ -15,6 +18,11 @@ class DatasetDataPoint(ABC):
 
     @staticmethod
     @abstractmethod
+    def from_dict(o: dict) -> DatasetDataPoint:
+        pass
+
+    @staticmethod
+    @abstractmethod
     def get_identifier() -> str:
         pass
 
@@ -22,12 +30,23 @@ class DatasetDataPoint(ABC):
 @dataclasses.dataclass
 class EEGDatasetDataPoint(DatasetDataPoint):
     @staticmethod
+    def from_dict(o: dict) -> EEGDatasetDataPoint:
+        return EEGDatasetDataPoint(
+            entry_id=o["entry_id"],
+            eeg=EEG.restore_from_dict(o),
+            vid=Video.restore_from_dict(o),
+            aud=Audio.restore_from_dict(o),
+            txt=Text.restore_from_dict(o),
+        )
+
+    @staticmethod
     def get_identifier() -> str:
         return "entry_id"
 
     entry_id: str  # We suppose every entry has a unique way of identifying itself
     # EEG dataset supposes to have for an entry a list of recordings. Other data types are optional.
     eeg: EEG
+
     # TODO: What about multiple medias? (front-rgp-etc). -> sarebbe array di Video etc
     #       Da fare dopo ora ci va bene così
     vid: Optional[Video] = None

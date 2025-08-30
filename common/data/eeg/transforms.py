@@ -1,9 +1,10 @@
 import dataclasses
 
 import mne
+import torch
 
-from .eeg import EEG
 from common.data.data_point import EEGDatasetDataPoint
+from .eeg import EEG
 
 
 @dataclasses.dataclass
@@ -43,3 +44,17 @@ class EEGMneAddAnnotation:
         merged = new_annotation if existing is None else existing + new_annotation
         raw.set_annotations(merged)
         return x
+
+
+@dataclasses.dataclass
+class MneToTensor:
+    take_eeg: bool = True
+    take_ecg: bool = False
+
+    def __call__(self, x: EEGDatasetDataPoint | EEG) -> torch.Tensor:
+        e: EEG = x.eeg if isinstance(x, EEGDatasetDataPoint) else x
+        raw: mne.io.BaseRaw = e.data
+
+        picks = mne.pick_types(raw.info, eeg=self.take_eeg, ecg=self.take_ecg)
+        o = torch.from_numpy(raw.get_data(picks))
+        return o
