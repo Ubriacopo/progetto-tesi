@@ -6,10 +6,9 @@ import torch
 import torchaudio
 from transformers import BertTokenizer, BertModel, VivitImageProcessor, VivitForVideoClassification
 
-from common.data.preprocessing import MediaPreProcessingPipeline
 
 # todo vedi che pipeline sono riciclabili
-class TextProcessingPipeline(MediaPreProcessingPipeline):
+class TextProcessingPipeline:
     def process_output_shape(self) -> tuple:
         return ()  # todo
 
@@ -30,7 +29,7 @@ class TextProcessingPipeline(MediaPreProcessingPipeline):
             return self.model(embeddings).pooler_output.squeeze(0)
 
 
-class AudioPreProcessingPipeline(MediaPreProcessingPipeline):
+class AudioPreProcessingPipeline:
     def process_output_shape(self) -> tuple:
         pass
 
@@ -45,7 +44,7 @@ class AudioPreProcessingPipeline(MediaPreProcessingPipeline):
         return item[-1][0].mean(0)
 
 
-class SignalMediaPreProcessingPipeline(MediaPreProcessingPipeline):
+class SignalMediaPreProcessingPipeline:
     def process_output_shape(self) -> tuple:
         return (4,)
 
@@ -53,7 +52,7 @@ class SignalMediaPreProcessingPipeline(MediaPreProcessingPipeline):
         pass
 
 
-class VideoPreProcessingPipeline(MediaPreProcessingPipeline):
+class VideoPreProcessingPipeline:
     image_processor = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
     video_model = VivitForVideoClassification.from_pretrained("google/vivit-b-16x2-kinetics400")
 

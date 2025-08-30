@@ -1,6 +1,6 @@
 import dataclasses
 from abc import ABC
-from typing import Optional
+from typing import Optional, Tuple
 
 import pandas as pd
 import torch
@@ -100,3 +100,58 @@ class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
 
     def __len__(self):
         return len(self.objects)
+
+
+class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
+    def __init__(self, dataset_spec_file: str,
+                 eeg_transform: list[KwargsCompose],
+                 selected_device: device = None,
+                 video_transform: list[KwargsCompose] = None,
+                 audio_transform: list[KwargsCompose] = None,
+                 text_transform: list[KwargsCompose] = None, ):
+        super().__init__(
+            dataset_spec_file,
+            eeg_transform[0], selected_device,
+            video_transform[0] if video_transform is not None and len(video_transform) > 0 else None,
+            audio_transform[0] if audio_transform is not None and len(audio_transform) > 0 else None,
+            text_transform[0] if text_transform is not None and len(text_transform) > 0 else None
+        )
+
+        self.egg_modality_transforms = eeg_transform[1:]
+        self.vid_modality_transforms = video_transform[1:] if video_transform is not None else []
+        self.aud_modality_transforms = audio_transform[1:] if audio_transform is not None else []
+        self.txt_modality_transforms = text_transform[1:] if text_transform is not None else []
+        self.output_modalities = (max(
+            len(self.egg_modality_transforms),
+            len(self.vid_modality_transforms),
+            len(self.aud_modality_transforms),
+            len(self.txt_modality_transforms))
+        )
+    # TODO Get rid of the metadata dict? Just pass the tensor?
+    def __getitem__(self, idx: int) -> Tuple:
+        x = super().__getitem__(idx)
+        outputs = []
+        for mod in range(self.output_modalities):
+            vid = x.vid
+            if mod < len(self.vid_modality_transforms):
+                data, metadata = x.vid
+                vid = self.vid_modality_transforms[mod](data)
+
+            aud = x.aud
+            if mod < len(self.aud_modality_transforms):
+                data, metadata = x.aud
+                aud = self.aud_modality_transforms[mod](data)
+
+            txt = x.txt
+            if mod < len(self.txt_modality_transforms):
+                data, metadata = x.txt
+                txt = self.txt_modality_transforms[mod](data)
+
+            eeg = x.eeg
+            if mod < len(self.egg_modality_transforms):
+                data, metadata = x.eeg
+                eeg = self.egg_modality_transforms[mod](data)
+
+            outputs.append(dataclasses.replace(x, vid=vid, aud=aud, txt=txt, eeg=eeg))
+
+        return tuple(outputs)

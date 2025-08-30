@@ -18,3 +18,5 @@
 - Fine tuning VIVT su AffectNet/FER?
 - What is my goal?
 - Also bones of posture fed to my modeL?
+- When doing KD I feed an input x to two networks (teacher, student) When I do augmentations (like flipping images) should I do it for both? Or only for student?
+- 

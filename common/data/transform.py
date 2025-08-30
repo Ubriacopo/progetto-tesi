@@ -2,6 +2,7 @@ import functools
 from traceback import print_stack
 from typing import Iterable, Callable
 
+import torch
 from torch import nn
 from torchvision.transforms import Lambda
 
@@ -21,7 +22,8 @@ class Compose:
     def __call__(self, x, *args, **kwargs):
         return functools.reduce(lambda d, t: t(d, *args, **kwargs), self.transforms, x)
 
-
+# todo ma è veramente utile? beh si dai
+# TODO per random custom random augmentations non ho altro modo
 class KwargsCompose(Compose):
     """
         Special compose that allows to update the kwargs running down the call stream.
@@ -31,18 +33,19 @@ class KwargsCompose(Compose):
             If a transform has multiple outputs they have to be put according to the metadata limitation.
             ex. I return x and y -> (x,y) won't go! (x,y,metadata) also bad! -> ((x,y),metadata) is the correct formatting.
     """
-
     def __call__(self, x, *args, **kwargs):
+        # Apply this seed to img transforms
         for t in self.transforms:
             try:
                 x = t(x)
                 if isinstance(x, tuple) and len(x) == 2:
                     x, upd_kwargs = x
                     kwargs = kwargs | upd_kwargs
+
             except Exception as e:
                 print_stack()
                 print("We had an exception when calling transform [", t.__class__.__name__, "]")
 
-                raise e # Propagate the exception further
+                raise e  # Propagate the exception further
 
         return x, kwargs

@@ -10,7 +10,7 @@ from common.data.video import RegularFrameResampling
 
 
 def train_video_transform(size: tuple[int, int] = (224, 224),
-                          grayscale_p: float = 0.1,
+                          grayscale_p: float = 0.6,
 
                           max_frames: int = 32,
 
@@ -25,7 +25,7 @@ def train_video_transform(size: tuple[int, int] = (224, 224),
         RegularFrameResampling(max_frames),
         # Normalization
         v2.ToDtype(torch.float32, scale=True),
-        v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
+        # v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
         # TODO: Call the embedder if needed here somewhere.
     ])
 
