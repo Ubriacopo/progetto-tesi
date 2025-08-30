@@ -1,10 +1,9 @@
 from torchvision.transforms import v2
 
-from common.data.dataset import EEGPdSpecMediaDataset
-from common.data.transform import Compose, KwargsCompose
 import common.data.eeg.transforms as eegtfs
-from common.data.video.transforms import ResampleFrames
-from common.data.video.video import RegularFrameResampling
+from common.data.dataset import EEGPdSpecMediaDataset
+from common.data.transform import KwargsCompose
+from common.data.video.transforms import RegularFrameResampling
 
 
 class AMIGOSDataset(EEGPdSpecMediaDataset):
