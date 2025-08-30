@@ -2,17 +2,14 @@ import dataclasses
 from abc import ABC
 from typing import Optional
 
-import mne.io
 import pandas as pd
 import torch
-import torchaudio
 from torch import device
 
 from common.data.audio import Audio
 from common.data.audio.transforms import AudioToTensor
 from common.data.data_point import EEGDatasetDataPoint
 from common.data.eeg import EEG
-from common.data.eeg.mne_utils import find_segment_by_descriptor
 from common.data.eeg.transforms import EEGToTensor
 from common.data.text import Text
 from common.data.transform import KwargsCompose
@@ -24,6 +21,7 @@ class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
                  dataset_spec_file: str,
                  eeg_transform: KwargsCompose,
                  selected_device: device = None,
+
                  video_transform: KwargsCompose = None,
                  audio_transform: KwargsCompose = None,
                  text_transform: KwargsCompose = None):
