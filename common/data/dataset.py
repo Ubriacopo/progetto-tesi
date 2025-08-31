@@ -1,83 +1,66 @@
 import dataclasses
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
 import pandas as pd
 import torch
-from torch import device
+from torch import device, nn
 
 from common.data.audio import Audio
 from common.data.audio.transforms import AudioToTensor
-from common.data.data_point import EEGDatasetDataPoint
+from common.data.data_point import EEGDatasetDataPoint, EEGModalityComposeWrapper, call_pipelines
 from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToTensor
 from common.data.text import Text
-from common.data.transform import KwargsCompose
 from common.data.video import Video, VideoToTensor
 
 
-class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
-    def __init__(self,
-                 dataset_spec_file: str,
-                 eeg_transform: KwargsCompose,
-                 selected_device: device = None,
-
-                 video_transform: KwargsCompose = None,
-                 audio_transform: KwargsCompose = None,
-                 text_transform: KwargsCompose = None):
-        super().__init__()
-        # Auto device selection.
-        if selected_device is None:
-            selected_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device: device = selected_device
-
-        df = pd.read_csv(dataset_spec_file, index_col=False)
-        self.objects = [EEGDatasetDataPoint.from_dict(d) for d in df.to_dict(orient="records")]
-
-        if eeg_transform is None:
-            raise ValueError("EEG transform must be defined")
-        self.eeg_transform: Optional[KwargsCompose] = eeg_transform
-        self.vid_transform: Optional[KwargsCompose] = video_transform
-        self.aud_transform: Optional[KwargsCompose] = audio_transform
-        self.txt_transform: Optional[KwargsCompose] = text_transform
-
+class EEGMediaDataset(torch.utils.data.Dataset, ABC):
     def load_vid(self, x: Video, idx: int) -> tuple[torch.Tensor, dict] | None:
-        if x is None:
-            return None
-
-        x, metadata = VideoToTensor()(x)
-        x, metadata = self.vid_transform(x, **metadata)
-
-        return x, metadata
+        return VideoToTensor()(x) if x is not None else None
 
     def load_aud(self, x: Audio, idx: int) -> tuple[torch.Tensor, dict] | None:
-        if x is None:
-            return None
-
-        x, metadata = AudioToTensor()(x)
-        x, metadata = self.aud_transform(x, **metadata)
-
-        return x, metadata
+        return AudioToTensor()(x) if x is not None else None
 
     def load_txt(self, x: Text, idx: int) -> tuple[torch.Tensor, dict] | None:
+        # todo quando usiamo testo pensare
         if x is None: return None
 
         with open(x.file_path) as f:
             x.data = f.read()
 
-        metadata = x.to_dict(metadata_only=True)
-        x, metadata = self.txt_transform(x, **metadata)
+        return x
 
-        return x, metadata
-
-    def load_eeg(self, x: EEG, idx: int, eid: str) -> tuple[torch.Tensor, dict] | None:
+    def load_eeg(self, x: EEG, idx: int) -> tuple[torch.Tensor, dict] | None:
         if x is None:
             raise RuntimeError("EEG data is None but that cannot happen.")
+        return EEGToTensor()(x)
 
-        x, metadata = EEGToTensor()(x, entry_id=eid)
-        x, metadata = self.eeg_transform(x, **metadata)
+    @abstractmethod
+    def __getitem__(self, idx: int) -> EEGDatasetDataPoint:
+        pass
 
-        return x
+
+class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
+    def __init__(self, dataset_spec_file: str, transforms: EEGModalityComposeWrapper, selected_device: device = None):
+        super().__init__()
+        # Auto device selection.
+        if selected_device is None:
+            selected_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.device: device = selected_device
+        df = pd.read_csv(dataset_spec_file, index_col=False)
+        self.objects = [EEGDatasetDataPoint.from_dict(d) for d in df.to_dict(orient="records")]
+
+        if transforms.eeg_transform is None:
+            raise ValueError("EEG transform must be defined")
+
+        self.base_transforms: EEGModalityComposeWrapper = transforms
+
+        self.eeg_transform: Optional[nn.Sequential] = transforms.eeg_transform
+        self.vid_transform: Optional[nn.Sequential] = transforms.vid_transform
+        self.aud_transform: Optional[nn.Sequential] = transforms.aud_transform
+        self.txt_transform: Optional[nn.Sequential] = transforms.txt_transform
 
     def __getitem__(self, idx: int) -> EEGDatasetDataPoint:
         template = self.objects[idx]
@@ -94,7 +77,8 @@ class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
         x.vid = self.load_vid(x.vid, idx)
         x.aud = self.load_aud(x.aud, idx)
         x.txt = self.load_txt(x.txt, idx)
-        x.eeg = self.load_eeg(x.eeg, idx, x.entry_id)
+        x.eeg = self.load_eeg(x.eeg, idx)
+        x = call_pipelines(x, self.base_transforms)
 
         return x
 
@@ -104,54 +88,19 @@ class EEGPdSpecMediaDataset(torch.utils.data.Dataset, ABC):
 
 class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
     def __init__(self, dataset_spec_file: str,
-                 eeg_transform: list[KwargsCompose],
-                 selected_device: device = None,
-                 video_transform: list[KwargsCompose] = None,
-                 audio_transform: list[KwargsCompose] = None,
-                 text_transform: list[KwargsCompose] = None, ):
-        super().__init__(
-            dataset_spec_file,
-            eeg_transform[0], selected_device,
-            video_transform[0] if video_transform is not None and len(video_transform) > 0 else None,
-            audio_transform[0] if audio_transform is not None and len(audio_transform) > 0 else None,
-            text_transform[0] if text_transform is not None and len(text_transform) > 0 else None
-        )
+                 shared_transform: EEGModalityComposeWrapper,
+                 modality_transforms: list[EEGModalityComposeWrapper]):
+        super().__init__(dataset_spec_file, shared_transform)
+        if modality_transforms is None or len(modality_transforms) < 2:
+            raise ValueError("modality_transforms must have at least 2 elements you swine!/j"
+                             "Use the KD less one if you have one modality output at a time.")
+        self.multi_out_transforms = modality_transforms
 
-        self.egg_modality_transforms = eeg_transform[1:]
-        self.vid_modality_transforms = video_transform[1:] if video_transform is not None else []
-        self.aud_modality_transforms = audio_transform[1:] if audio_transform is not None else []
-        self.txt_modality_transforms = text_transform[1:] if text_transform is not None else []
-        self.output_modalities = (max(
-            len(self.egg_modality_transforms),
-            len(self.vid_modality_transforms),
-            len(self.aud_modality_transforms),
-            len(self.txt_modality_transforms))
-        )
-    # TODO Get rid of the metadata dict? Just pass the tensor?
     def __getitem__(self, idx: int) -> Tuple:
         x = super().__getitem__(idx)
+
         outputs = []
-        for mod in range(self.output_modalities):
-            vid = x.vid
-            if mod < len(self.vid_modality_transforms):
-                data, metadata = x.vid
-                vid = self.vid_modality_transforms[mod](data)
-
-            aud = x.aud
-            if mod < len(self.aud_modality_transforms):
-                data, metadata = x.aud
-                aud = self.aud_modality_transforms[mod](data)
-
-            txt = x.txt
-            if mod < len(self.txt_modality_transforms):
-                data, metadata = x.txt
-                txt = self.txt_modality_transforms[mod](data)
-
-            eeg = x.eeg
-            if mod < len(self.egg_modality_transforms):
-                data, metadata = x.eeg
-                eeg = self.egg_modality_transforms[mod](data)
-
-            outputs.append(dataclasses.replace(x, vid=vid, aud=aud, txt=txt, eeg=eeg))
+        for mod in range(len(self.multi_out_transforms)):
+            outputs.append(call_pipelines(x, self.multi_out_transforms[mod]))
 
         return tuple(outputs)

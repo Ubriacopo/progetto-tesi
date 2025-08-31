@@ -16,6 +16,7 @@ _AST_OK = (str, bytes, bool, int, float, type(None))
 class Media(ABC):
     data: Any
     file_path: Optional[str]
+    entry_id: Optional[str]
 
     @classmethod
     @abstractmethod

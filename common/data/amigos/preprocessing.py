@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from torch import nn
+
 from common.data.amigos.loader import AMIGOSLoader
 from common.data.data_point_transforms import ResizeEEGDataPointMedia, SubclipMedia
 from common.data.eeg.transforms import EEGMneAddAnnotation
 from common.data.preprocessing import EEGSegmenterPreprocessor
 from common.data.sampler import Segmenter, FixedIntervalsSegmenter
-from common.data.transform import Compose
+from common.data.data_point import EEGModalityComposeWrapper
 
 
 class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
@@ -19,16 +21,18 @@ class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
             output_path=output_path,
             segmenter=FixedIntervalsSegmenter(max_length),
             sample_pipeline=None,
-            # todo magari dividere per modality? cosi sara piu pulito
-            split_pipeline=Compose([
-                SubclipMedia(),
-                EEGMneAddAnnotation(),
-                ResizeEEGDataPointMedia((260, 260))
-            ])
+            split_pipeline=EEGModalityComposeWrapper(
+                xmod_first=True,
+                xmod_transform=nn.Sequential(
+                    SubclipMedia(),
+                    ResizeEEGDataPointMedia((260, 260))
+                ),
+                eeg_transform=nn.Sequential(EEGMneAddAnnotation(), )
+            )
         )
 
     def __init__(self, output_path: str, segmenter: Segmenter,
-                 sample_pipeline: Compose = None, split_pipeline: Compose = None):
+                 sample_pipeline: EEGModalityComposeWrapper = None, split_pipeline: EEGModalityComposeWrapper = None):
         ch_names = [
             "AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4",  # EEG Channels
             "ECG Right", "ECG Left", "GSR"  # Others (ECG + ECG + MISC)

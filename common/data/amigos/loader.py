@@ -42,9 +42,8 @@ class AMIGOSLoader(DataLoader):
 
             media_path: str = str(v.resolve())
             clip = VideoFileClip(media_path)
-            vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size)
-            aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps)
+            vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size, entry_id=experiment_id)
+            aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps, entry_id=experiment_id)
+            eeg = EEG(data=eeg_data[0], file_path=None, fs=128, entry_id=experiment_id)
 
-            yield EEGDatasetDataPoint(
-                entry_id=experiment_id, eeg=EEG(data=eeg_data[0], file_path=None, fs=128), vid=vid, aud=aud
-            )
+            yield EEGDatasetDataPoint(entry_id=experiment_id, eeg=eeg, vid=vid, aud=aud)

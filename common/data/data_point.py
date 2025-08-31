@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 import dataclasses
 from abc import ABC, abstractmethod
 from typing import Optional
 
-import pandas as pd
 import torch
+from torch import nn
 
 from common.data.audio import Audio
 from common.data.eeg import EEG
@@ -63,3 +64,35 @@ class EEGDatasetDataPoint(DatasetDataPoint):
         if self.aud is not None:
             d = d | self.aud.to_dict()
         return d
+
+
+# todo circ dependency? e rename
+@dataclasses.dataclass
+class EEGModalityComposeWrapper:
+    eeg_transform: nn.Sequential | None = None
+    vid_transform: nn.Sequential | None = None
+    aud_transform: nn.Sequential | None = None
+    txt_transform: nn.Sequential | None = None
+    # Cross Modality Transform. Run after others by default. Not used yet
+    xmod_transform: nn.Sequential | None = None
+    xmod_first: bool = False
+
+
+def call_pipelines(x: EEGDatasetDataPoint, pipe_wrapper: EEGModalityComposeWrapper):
+    # Cross modality first if defined and wanted
+    if pipe_wrapper.xmod_transform is not None and pipe_wrapper.xmod_first:
+        x = pipe_wrapper.xmod_transform(x)
+
+    if pipe_wrapper.eeg_transform is not None:
+        x.eeg = pipe_wrapper.eeg_transform(x.eeg)
+    if pipe_wrapper.vid_transform is not None:
+        x.vid = pipe_wrapper.vid_transform(x.vid)
+    if pipe_wrapper.aud_transform is not None:
+        x.aud = pipe_wrapper.aud_transform(x.aud)
+    if pipe_wrapper.txt_transform is not None:
+        x.txt = pipe_wrapper.txt_transform(x.txt)
+
+    if pipe_wrapper.xmod_transform is not None and not pipe_wrapper.xmod_first:
+        x = pipe_wrapper.xmod_transform(x)
+
+    return x

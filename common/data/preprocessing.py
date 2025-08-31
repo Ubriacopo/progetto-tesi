@@ -9,9 +9,8 @@ import pandas as pd
 
 from common.data.eeg.transforms import EEGToMneRawFromChannels
 from common.data.loader import DataLoader
-from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint
+from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGModalityComposeWrapper, call_pipelines
 from common.data.sampler import Segmenter
-from common.data.transform import Compose
 
 SPEC_FILE_NAME: str = "spec.csv"
 
@@ -63,12 +62,12 @@ class EEGSegmenterPreprocessor(Preprocessor):
                  # In order to work with EEG data
                  ch_names: list[str], ch_types: list[str],
                  # Custom pipelines to insert (Composition over inheritance).
-                 sample_pipeline: Compose = None, split_pipeline: Compose = None):
+                 sample_pipeline: EEGModalityComposeWrapper = None, split_pipeline: EEGModalityComposeWrapper = None):
         super().__init__(output_path)
 
         self.segmenter: Segmenter = segmenter
-        self.sample_pipeline: Optional[Compose] = sample_pipeline
-        self.split_pipeline: Optional[Compose] = split_pipeline
+        self.sample_pipeline: EEGModalityComposeWrapper = sample_pipeline
+        self.split_pipeline: EEGModalityComposeWrapper = split_pipeline
 
         # EEG mapping for mne
         self.ch_names: list[str] = ch_names
@@ -79,12 +78,12 @@ class EEGSegmenterPreprocessor(Preprocessor):
         original_sample_id = x.entry_id
 
         if x.eeg.data.shape[0] != len(self.ch_names):
-            x.eeg.data = x.eeg.data.max_length  # Transpose
+            x.eeg.data = x.eeg.data.T  # Transpose
 
         assert x.eeg.data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
-        x = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(x)
+        x.eeg = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(x.eeg)
         if self.sample_pipeline is not None:
-            x = self.sample_pipeline(x)
+            x = call_pipelines(x, self.sample_pipeline)
 
         segments: list[tuple[int, int]] = self.segmenter.compute_segments(x)
         x_out_folder = self.output_path + x.entry_id + "/"
@@ -109,14 +108,14 @@ class EEGSegmenterPreprocessor(Preprocessor):
         y = EEGDatasetDataPoint(
             entry_id=nid,
             # No files path are associated now.
-            eeg=replace(x.eeg, interval=segment),
-            vid=replace(x.vid, interval=segment),
-            aud=replace(x.aud, interval=segment),
-            txt=replace(x.txt) if x.txt is not None else None,
+            eeg=replace(x.eeg, interval=segment, entry_id=nid),
+            vid=replace(x.vid, interval=segment, entry_id=nid),
+            aud=replace(x.aud, interval=segment, entry_id=nid),
+            txt=replace(x.txt, entry_id=nid) if x.txt is not None else None,
         )
 
         if self.split_pipeline is not None:
-            y: EEGDatasetDataPoint = self.split_pipeline(y)
+            y: EEGDatasetDataPoint = call_pipelines(y, self.split_pipeline)
 
         # Save Video
         vid_out_path = out_folder + f'{y.entry_id}.mp4'

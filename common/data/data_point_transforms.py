@@ -3,13 +3,16 @@ import dataclasses
 from moviepy import VideoFileClip, AudioFileClip
 
 from common.data.data_point import EEGDatasetDataPoint
+from common.data.transform import CustomBaseTransform
 
 
 @dataclasses.dataclass
-class ResizeEEGDataPointMedia:
-    new_size: tuple[int, int] | int
+class ResizeEEGDataPointMedia(CustomBaseTransform):
+    def __init__(self, new_size: tuple[int, int] | int):
+        super().__init__()
+        self.new_size = new_size
 
-    def __call__(self, x: EEGDatasetDataPoint):
+    def do(self, x: EEGDatasetDataPoint):
         clip: VideoFileClip = x.vid.data
         if clip is None:
             # Make the clip if this is the first clipping experience.
@@ -23,8 +26,8 @@ class ResizeEEGDataPointMedia:
         return x
 
 
-class SubclipMedia:
-    def __call__(self, x: EEGDatasetDataPoint):
+class SubclipMedia(CustomBaseTransform):
+    def do(self, x: EEGDatasetDataPoint):
         vid: VideoFileClip = x.vid.data
         aud: AudioFileClip = x.aud.data
         start, stop = x.vid.interval
