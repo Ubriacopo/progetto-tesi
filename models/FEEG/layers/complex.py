@@ -49,4 +49,4 @@ class EmbeddingsAdapter(nn.Module):
         if self.projection is not None:
             z = self.projection(z)
 
-        return (z, kd_z) if use_kd and self.kd_head is not None else (z, None)
+        return (z, kd_z) if use_kd and self.kd_head is not None else z
