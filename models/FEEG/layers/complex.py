@@ -23,6 +23,7 @@ class EmbeddingsAdapter(nn.Module):
         super().__init__()
         self.adapter = adapter
 
+        self.kd_head = None
         if kd_size is not None:
             self.kd_head = KDHead(input_dimension=embedder.output_size, output_dimension=kd_size)
 
@@ -48,4 +49,4 @@ class EmbeddingsAdapter(nn.Module):
         if self.projection is not None:
             z = self.projection(z)
 
-        return (z, kd_z) if use_kd else (z, None)
+        return (z, kd_z) if use_kd and self.kd_head is not None else (z, None)
