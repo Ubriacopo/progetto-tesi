@@ -3,7 +3,8 @@
 - Domanda VATE: Ma prende sempre e solamente i primi 32 frame senza esitare?
   Non fa downsampling dei frame prima magari? Non capisco dal codice ho guardato e riguardato
 - > Forse grazie al punto di prima ho capito come avere piu media. \
-  Certo posso fare downsampling da 30fps a 16 (per stare 2-4s) ma se non bastano ho più media per un solo oggetto! (Quindi [1,2,32,224,224] ? O comunque il modello si
+  Certo posso fare downsampling da 30fps a 16 (per stare 2-4s) ma se non bastano ho più media per un solo oggetto! (
+  Quindi [1,2,32,224,224] ? O comunque il modello si
   deve arrangiare e fare come deve gli split -> Multi media di cui si parlava per gatedXAttention))
 - Il mio foundation model ritorna embeddings per ogni modality come VATE? Yes cosi fanno i foundaiton model
   Guarda per reference: https://github.com/openai/CLIP/blob/main/clip/model.py
@@ -18,5 +19,9 @@
 - Fine tuning VIVT su AffectNet/FER?
 - What is my goal?
 - Also bones of posture fed to my modeL?
-- When doing KD I feed an input x to two networks (teacher, student) When I do augmentations (like flipping images) should I do it for both? Or only for student?
-- 
+- When doing KD I feed an input x to two networks (teacher, student) When I do augmentations (like flipping images)
+  should I do it for both? Or only for student?
+- Ma dovrei secondo voi fare effettivo resampling dei frame in generale o per il mio modello lavorare su media.
+    - VATE -> Sempre resampling (mi sembra corretto per vid),
+    - FEEG -> Posso usare media (Un video point ha 32 frames ma posso avere n media?) Teoricamente la mia arch lo
+      supporta

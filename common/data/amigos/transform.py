@@ -23,9 +23,9 @@ def train_video_transform(size: tuple[int, int] = (224, 224),
         v2.RandomHorizontalFlip(),
         v2.RandomGrayscale(p=grayscale_p),
 
-        # RegularFrameResampling(max_frames), TODO
+        RegularFrameResampling(max_frames, drop_mask=True),
         # Normalization
-        v2.ToDtype(torch.float32, scale=True),
+        # v2.ToDtype(torch.float32, scale=True),
         # v2.Normalize(mean=means, std=stds) if means is not None and stds is not None else IDENTITY,
         # TODO: Call the embedder if needed here somewhere.
     )

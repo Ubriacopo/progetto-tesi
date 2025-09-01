@@ -24,7 +24,7 @@ class Media(ABC):
         pass
 
     @classmethod
-    def restore_from_dict(cls, data: dict) -> Optional[Media]:
+    def restore_from_dict(cls, data: dict, base_path: str = None) -> Optional[Media]:
         fields = [f.name for f in dataclasses.fields(cls)]
         prefix = cls.modality_prefix(cls) + "_"
 
@@ -33,7 +33,8 @@ class Media(ABC):
             return None
 
         # Expand my metadata (related to cls)
-        local_data = data | ast.literal_eval(data[prefix + "metadata"]) | {"file_path": data[prefix + "file_path"]}
+        file_path = (base_path if base_path is not None else "") + "/" + data[prefix + "file_path"]
+        local_data = data | ast.literal_eval(data[prefix + "metadata"]) | {"file_path": file_path}
 
         restored = {
             attr: (local_data[attr] if attr in local_data else None) for attr in fields

@@ -32,13 +32,13 @@ class DatasetDataPoint(ABC):
 @dataclasses.dataclass
 class EEGDatasetDataPoint(DatasetDataPoint):
     @staticmethod
-    def from_dict(o: dict) -> EEGDatasetDataPoint:
+    def from_dict(o: dict, base_path: str = None) -> EEGDatasetDataPoint:
         return EEGDatasetDataPoint(
             entry_id=o["entry_id"],
-            eeg=EEG.restore_from_dict(o),
-            vid=Video.restore_from_dict(o),
-            aud=Audio.restore_from_dict(o),
-            txt=Text.restore_from_dict(o),
+            eeg=EEG.restore_from_dict(o, base_path),
+            vid=Video.restore_from_dict(o, base_path),
+            aud=Audio.restore_from_dict(o, base_path),
+            txt=Text.restore_from_dict(o, base_path),
         )
 
     @staticmethod

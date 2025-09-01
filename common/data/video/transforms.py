@@ -54,13 +54,15 @@ class SubclipVideo(nn.Module):
 
 
 class RegularFrameResampling(nn.Module):
-    def __init__(self, max_length: int, device="cpu", padding: Literal['zero', 'none'] = 'zero'):
+    def __init__(self, max_length: int, device="cpu",
+                 padding: Literal['zero', 'none'] = 'zero', drop_mask: bool = True):
         super().__init__()
         self.max_length: int = max_length
         self.device = device
 
         # Possible padding choices
         self.padding: Literal['zero', 'none'] = padding
+        self.drop_mask: bool = drop_mask
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         T, c, h, w = x.shape
@@ -69,11 +71,11 @@ class RegularFrameResampling(nn.Module):
             i = torch.arange(self.max_length, device=self.device)
             idx = torch.div(i * (T - 1), (self.max_length - 1), rounding_mode="floor").to(torch.long)
             mask = torch.ones(T, dtype=torch.bool, device=x.device)
-            return x[idx], mask
+            return (x[idx], mask) if not self.drop_mask else x[idx]
 
         if T == self.max_length:
             mask = torch.ones(T, dtype=torch.bool, device=x.device)
-            return x, mask
+            return (x, mask) if not self.drop_mask else x
 
         if self.padding == "zero":
             # Video is not long enough so we need to pad
@@ -82,11 +84,11 @@ class RegularFrameResampling(nn.Module):
             x = torch.cat([x, pad])
             mask = torch.zeros(self.max_length, dtype=torch.bool, device=x.device)
             mask[:T] = True  # We are padding right
-            return x, mask
+            return (x, mask) if not self.drop_mask else x
 
         if self.padding == "none":
             print("Warning this is plain sequence with 'non' padding rule while required for the current"
                   " sequence. (", str(T), " > ", self.max_length, "). This might cause problems later.")
-            return x, None
+            return (x, None) if not self.drop_mask else x
 
         raise NotImplementedError("Given padding modality is invalid and input requires one.")

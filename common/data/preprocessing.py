@@ -1,3 +1,4 @@
+import os.path
 import traceback
 from abc import abstractmethod, ABC
 from dataclasses import replace
@@ -20,6 +21,9 @@ SPEC_FILE_NAME: str = "spec.csv"
 
 class Preprocessor(ABC):
     def __init__(self, output_path: str):
+        """
+        Creates a processed dataset in a target folder. Info of the new ds are contained in the spec.csv
+        """
         self.output_path: str = output_path
 
     @abstractmethod
@@ -104,7 +108,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
 
         x.eeg.data.save(eeg_out_path, overwrite=True, split_size="2GB")
         for x_segment in x_segments:
-            x_segment.eeg.file_path = eeg_out_path
+            x_segment.eeg.file_path = os.path.relpath(Path(eeg_out_path).resolve(), self.output_path)
 
         return x_segments
 
@@ -137,18 +141,19 @@ class EEGSegmenterPreprocessor(Preprocessor):
         # Save Video
         vid_out_path = out_folder + f'{y.entry_id}.mp4'
         y.vid.data.write_videofile(vid_out_path, audio=False, codec="libx264", ffmpeg_params=["-pix_fmt", "yuv420p"], )
-        y.vid.file_path = vid_out_path
+        y.vid.file_path = os.path.relpath(Path(vid_out_path).resolve(), self.output_path)
 
         # Save Audio
         aud_out_path = out_folder + f'{y.entry_id}.wav'
         y.aud.data.write_audiofile(aud_out_path)
-        y.aud.file_path = aud_out_path
+        y.aud.file_path = os.path.relpath(Path(aud_out_path).resolve(), self.output_path)
 
         # Save Text if exists
         if y.txt is not None and y.txt.data is not None:
             txt_out_path = out_folder + f'{y.entry_id}.txt'
             with open(txt_out_path, "w", encoding="utf-8") as f:
                 f.write(y.txt.data)
+            y.txt.file_path = os.path.relpath(Path(txt_out_path).resolve(), self.output_path)
 
         # EEG data is treated differently and aggregated to save space.
         # So it is not performed here.

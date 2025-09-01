@@ -1,5 +1,6 @@
 import dataclasses
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional, Tuple
 
 import pandas as pd
@@ -50,7 +51,9 @@ class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
 
         self.device: device = selected_device
         df = pd.read_csv(dataset_spec_file, index_col=False)
-        self.objects = [EEGDatasetDataPoint.from_dict(d) for d in df.to_dict(orient="records")]
+
+        self.base_path: str = str(Path(dataset_spec_file).parent)
+        self.objects = [EEGDatasetDataPoint.from_dict(d, self.base_path) for d in df.to_dict(orient="records")]
 
         if transforms.eeg_transform is None:
             raise ValueError("EEG transform must be defined")
