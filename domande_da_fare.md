@@ -25,3 +25,5 @@
     - VATE -> Sempre resampling (mi sembra corretto per vid),
     - FEEG -> Posso usare media (Un video point ha 32 frames ma posso avere n media?) Teoricamente la mia arch lo
       supporta
+    - Comincia con semplice (DonwSampling) poi prova con complessi media (VIVIT non super adeguato ma forse altri nativ si)
+      Altrimenti giro ViviT n volte e faccio poi quel mod
