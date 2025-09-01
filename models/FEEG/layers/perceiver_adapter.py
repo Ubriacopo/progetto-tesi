@@ -180,7 +180,7 @@ class PerceiverResampler(nn.Module):
 
 class PerceiverAdapter(nn.Module):
     def __init__(self, embedder: FoundationEmbedder, resampler_depth: int,
-                 target_shape: int, kd: bool = False, kd_size: int = None) -> None:
+                 target_shape: int, kd: bool = False, kd_size: int = None):
         """
         Adapts a modality to be ready for the GatedXAttention with other modalities.
 

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from common.data.audio import Audio
-from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGModalityComposeWrapper, call_pipelines
+from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines
 from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToMneRawFromChannels
 from common.data.loader import DataLoader
@@ -69,12 +69,12 @@ class EEGSegmenterPreprocessor(Preprocessor):
                  # In order to work with EEG data
                  ch_names: list[str], ch_types: list[str],
                  # Custom pipelines to insert (Composition over inheritance).
-                 sample_pipeline: EEGModalityComposeWrapper = None, split_pipeline: EEGModalityComposeWrapper = None):
+                 sample_pipeline: EEGDatasetTransformWrapper = None, split_pipeline: EEGDatasetTransformWrapper = None):
         super().__init__(output_path)
 
         self.segmenter: Segmenter = segmenter
-        self.sample_pipeline: EEGModalityComposeWrapper = sample_pipeline
-        self.split_pipeline: EEGModalityComposeWrapper = split_pipeline
+        self.sample_pipeline: EEGDatasetTransformWrapper = sample_pipeline
+        self.split_pipeline: EEGDatasetTransformWrapper = split_pipeline
 
         # EEG mapping for mne
         self.ch_names: list[str] = ch_names

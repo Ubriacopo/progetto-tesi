@@ -7,43 +7,17 @@ import pandas as pd
 import torch
 from torch import device, nn
 
-from common.data.audio import Audio
-from common.data.audio.transforms import AudioToTensor
-from common.data.data_point import EEGDatasetDataPoint, EEGModalityComposeWrapper, call_pipelines
-from common.data.eeg import EEG
-from common.data.eeg.transforms import EEGToTensor
-from common.data.text import Text
-from common.data.video import Video, VideoToTensor
+from common.data.data_point import EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines
 
 
 class EEGMediaDataset(torch.utils.data.Dataset, ABC):
-    def load_vid(self, x: Video, idx: int) -> tuple[torch.Tensor, dict] | None:
-        return VideoToTensor()(x) if x is not None else None
-
-    def load_aud(self, x: Audio, idx: int) -> tuple[torch.Tensor, dict] | None:
-        return AudioToTensor()(x) if x is not None else None
-
-    def load_txt(self, x: Text, idx: int) -> tuple[torch.Tensor, dict] | None:
-        # todo quando usiamo testo pensare
-        if x is None: return None
-
-        with open(x.file_path) as f:
-            x.data = f.read()
-
-        return x
-
-    def load_eeg(self, x: EEG, idx: int) -> tuple[torch.Tensor, dict] | None:
-        if x is None:
-            raise RuntimeError("EEG data is None but that cannot happen.")
-        return EEGToTensor()(x)
-
     @abstractmethod
     def __getitem__(self, idx: int) -> EEGDatasetDataPoint:
         pass
 
 
 class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
-    def __init__(self, dataset_spec_file: str, transforms: EEGModalityComposeWrapper, selected_device: device = None):
+    def __init__(self, dataset_spec_file: str, transforms: EEGDatasetTransformWrapper, selected_device: device = None):
         super().__init__()
         # Auto device selection.
         if selected_device is None:
@@ -58,7 +32,7 @@ class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
         if transforms.eeg_transform is None:
             raise ValueError("EEG transform must be defined")
 
-        self.base_transforms: EEGModalityComposeWrapper = transforms
+        self.base_transforms: EEGDatasetTransformWrapper = transforms
 
         self.eeg_transform: Optional[nn.Sequential] = transforms.eeg_transform
         self.vid_transform: Optional[nn.Sequential] = transforms.vid_transform
@@ -77,12 +51,7 @@ class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
             eeg=dataclasses.replace(template.eeg, data=None) if template.eeg is not None else None,
         )
 
-        x.vid = self.load_vid(x.vid, idx)
-        x.aud = self.load_aud(x.aud, idx)
-        x.txt = self.load_txt(x.txt, idx)
-        x.eeg = self.load_eeg(x.eeg, idx)
         x = call_pipelines(x, self.base_transforms)
-
         return x
 
     def __len__(self):
@@ -91,21 +60,20 @@ class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
 
 class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
     def __init__(self, dataset_spec_file: str,
-                 shared_transform: EEGModalityComposeWrapper,
-                 modality_transforms: list[EEGModalityComposeWrapper]):
+                 shared_transform: EEGDatasetTransformWrapper,
+                 modality_transforms: list[EEGDatasetTransformWrapper]):
         super().__init__(dataset_spec_file, shared_transform)
         if modality_transforms is None or len(modality_transforms) < 2:
             raise ValueError("modality_transforms must have at least 2 elements you swine!/j"
                              "Use the KD less one if you have one modality output at a time.")
         self.multi_out_transforms = modality_transforms
 
-    def __getitem__(self, idx: int) -> Tuple:
+    def __getitem__(self, idx: int) -> dict:
         x = super().__getitem__(idx)
-
-        outputs = []
+        outputs = {}
         for mod in range(len(self.multi_out_transforms)):
             # Replace where possible
             y = dataclasses.replace(x)
-            outputs.append(call_pipelines(y, self.multi_out_transforms[mod]))
+            outputs[self.multi_out_transforms[mod].name] = call_pipelines(y, self.multi_out_transforms[mod])
 
-        return tuple(outputs)
+        return outputs

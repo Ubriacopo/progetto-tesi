@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from torch import nn
 
+from common.data.amigos.config import CH_NAMES, CH_TYPES
 from common.data.amigos.loader import AMIGOSLoader
 from common.data.audio.transforms import SubclipAudio
 from common.data.data_point_transforms import ResizeEEGDataPointMedia, SubclipMedia
 from common.data.eeg.transforms import EEGMneAddAnnotation
 from common.data.preprocessing import EEGSegmenterPreprocessor
 from common.data.sampler import Segmenter, FixedIntervalsSegmenter
-from common.data.data_point import EEGModalityComposeWrapper
+from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.video.transforms import UnbufferedResize, SubclipVideo
 
 
@@ -23,9 +24,8 @@ class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
             output_path=output_path,
             segmenter=FixedIntervalsSegmenter(max_length),
             sample_pipeline=None,
-            split_pipeline=EEGModalityComposeWrapper(
-                xmod_first=True,
-                xmod_transform=nn.Sequential(),
+            split_pipeline=EEGDatasetTransformWrapper(
+                name="preprocessing-default",
                 vid_transform=nn.Sequential(
                     UnbufferedResize((260, 260)),
                     SubclipVideo(),
@@ -40,14 +40,8 @@ class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
         )
 
     def __init__(self, output_path: str, segmenter: Segmenter,
-                 sample_pipeline: EEGModalityComposeWrapper = None, split_pipeline: EEGModalityComposeWrapper = None):
-        ch_names = [
-            "AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4",  # EEG Channels
-            "ECG Right", "ECG Left", "GSR"  # Others (ECG + ECG + MISC)
-        ]
-
-        ch_types = ["eeg"] * 14 + ["ecg"] * 2 + ["misc"]
-        super().__init__(output_path, segmenter, ch_names, ch_types, sample_pipeline, split_pipeline)
+                 sample_pipeline: EEGDatasetTransformWrapper = None, split_pipeline: EEGDatasetTransformWrapper = None):
+        super().__init__(output_path, segmenter, CH_NAMES, CH_TYPES, sample_pipeline, split_pipeline)
 
 
 if __name__ == "__main__":

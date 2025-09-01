@@ -5,7 +5,7 @@ from torch import nn
 from torchvision.transforms import v2
 from transformers import VivitImageProcessor, VivitForVideoClassification
 
-from common.data.data_point import EEGModalityComposeWrapper
+from common.data.data_point import EEGDatasetTransformWrapper
 
 
 class CallViViTModelAndProcessor(nn.Module):
@@ -35,7 +35,7 @@ class FaceCrop(nn.Module):
         return video
 
 
-vate_transform = EEGModalityComposeWrapper(
+vate_transform = EEGDatasetTransformWrapper(
     vid_transform=nn.Sequential(
         FaceCrop(),
         CallViViTModelAndProcessor(),
@@ -47,18 +47,18 @@ if __name__ == "__main__":
     from common.data.amigos.transform import train_eeg_transform
     from common.data.amigos.transform import train_video_transform
     from common.data.amigos.transform import train_audio_transform
-    from common.data.data_point import EEGModalityComposeWrapper
+    from common.data.data_point import EEGDatasetTransformWrapper
     from common.data.amigos.dataset import KDAmigosDataset
 
     dataset = KDAmigosDataset(
         dataset_spec_file="./../../resources/AMIGOS/processed/spec.csv",
-        shared_transform=EEGModalityComposeWrapper(
+        shared_transform=EEGDatasetTransformWrapper(
             train_eeg_transform(),
             train_video_transform(),
             train_audio_transform(),
         ),
         modality_transforms=[
-            EEGModalityComposeWrapper(
+            EEGDatasetTransformWrapper(
                 vid_transform=nn.Sequential(
                     v2.Resize((128, 128)),
                     v2.ToDtype(torch.float32, scale=True),

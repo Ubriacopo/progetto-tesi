@@ -27,3 +27,4 @@
       supporta
     - Comincia con semplice (DonwSampling) poi prova con complessi media (VIVIT non super adeguato ma forse altri nativ si)
       Altrimenti giro ViviT n volte e faccio poi quel mod
+- Devo eslorare diverse possibili tecniche di distillazione?

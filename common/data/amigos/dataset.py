@@ -4,7 +4,7 @@ from torchvision.transforms import Resize
 from transformers import VivitForVideoClassification, VivitImageProcessor
 
 from common.data.amigos.transform import train_video_transform, train_audio_transform, train_eeg_transform
-from common.data.data_point import EEGModalityComposeWrapper
+from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.dataset import EEGPdSpecMediaDataset, KDEEGPdSpecMediaDataset
 
 
@@ -20,18 +20,18 @@ class KDAmigosDataset(KDEEGPdSpecMediaDataset):
 if __name__ == "__main__":
     dataset = KDAmigosDataset(
         dataset_spec_file="../../../resources/AMIGOS/processed/spec.csv",
-        shared_transform=EEGModalityComposeWrapper(
+        shared_transform=EEGDatasetTransformWrapper(
             train_eeg_transform(),
             train_video_transform(),
             train_audio_transform(),
         ),
         modality_transforms=[
-            EEGModalityComposeWrapper(
+            EEGDatasetTransformWrapper(
                 vid_transform=nn.Sequential(
                     Resize((128, 128))
                 ),
             ),
-            EEGModalityComposeWrapper(
+            EEGDatasetTransformWrapper(
                 vid_transform=nn.Sequential(
                     Resize((56, 56))
                 )

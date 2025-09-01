@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Optional, Any, Iterable
 
 import torch
 from torch import nn
@@ -67,19 +67,34 @@ class EEGDatasetDataPoint(DatasetDataPoint):
         return d
 
 
-# todo circ dependency? e rename
-@dataclasses.dataclass
-class EEGModalityComposeWrapper:
-    eeg_transform: nn.Sequential | None = None
-    vid_transform: nn.Sequential | None = None
-    aud_transform: nn.Sequential | None = None
-    txt_transform: nn.Sequential | None = None
-    # Cross Modality Transform. Run after others by default. Not used yet
-    xmod_transform: nn.Sequential | None = None
-    xmod_first: bool = False
+class EEGDatasetTransformWrapper:
+    @staticmethod
+    def init_transform(transform: nn.Sequential | list | None) -> nn.Sequential | None:
+        if transform is None:
+            return None
+        if isinstance(transform, Iterable):
+            transform = nn.Sequential(*transform)
+        return transform
+
+    def __init__(self, name: str,
+                 eeg_transform: nn.Sequential | Iterable[nn.Module] | None = None,
+                 vid_transform: nn.Sequential | Iterable[nn.Module]  | None = None,
+                 aud_transform: nn.Sequential | Iterable[nn.Module]  | None = None,
+                 txt_transform: nn.Sequential | Iterable[nn.Module]  | None = None,
+                 xmod_first: bool = False,
+                 xmod_transform: nn.Sequential | Iterable[nn.Module]  | None = None, ):
+        self.name: str = name
+
+        self.eeg_transform: Optional[nn.Sequential] = self.init_transform(eeg_transform)
+        self.vid_transform: Optional[nn.Sequential] = self.init_transform(vid_transform)
+        self.aud_transform: Optional[nn.Sequential] = self.init_transform(aud_transform)
+        self.txt_transform: Optional[nn.Sequential] = self.init_transform(txt_transform)
+
+        self.xmod_first: bool = xmod_first
+        self.xmod_transform: Optional[nn.Sequential] = self.init_transform(xmod_transform)
 
 
-def call_pipelines(x: EEGDatasetDataPoint, pipe_wrapper: EEGModalityComposeWrapper) -> EEGDatasetDataPoint:
+def call_pipelines(x: EEGDatasetDataPoint, pipe_wrapper: EEGDatasetTransformWrapper) -> EEGDatasetDataPoint:
     # Cross modality first if defined and wanted
     if pipe_wrapper.xmod_transform is not None and pipe_wrapper.xmod_first:
         x = pipe_wrapper.xmod_transform(x)

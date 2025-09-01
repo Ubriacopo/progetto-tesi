@@ -44,7 +44,13 @@ class ToMono(nn.Module):
     Transforms a source from Stereo or any other format to MONO. (Single wave)
     """
 
+    def __init__(self, dim: int = 1, keepdim: bool = False):
+        super().__init__()
+
+        self.keepdim = keepdim
+        self.dim = dim
+
     def forward(self, x: torch.Tensor):
         if not isinstance(x, torch.Tensor):
             raise TypeError("Expected a torch.Tensor")
-        return torch.mean(x, dim=0, keepdim=True)
+        return torch.mean(x, dim=self.dim, keepdim=self.keepdim)
