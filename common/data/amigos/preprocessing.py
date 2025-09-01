@@ -3,11 +3,13 @@ from __future__ import annotations
 from torch import nn
 
 from common.data.amigos.loader import AMIGOSLoader
+from common.data.audio.transforms import SubclipAudio
 from common.data.data_point_transforms import ResizeEEGDataPointMedia, SubclipMedia
 from common.data.eeg.transforms import EEGMneAddAnnotation
 from common.data.preprocessing import EEGSegmenterPreprocessor
 from common.data.sampler import Segmenter, FixedIntervalsSegmenter
 from common.data.data_point import EEGModalityComposeWrapper
+from common.data.video.transforms import UnbufferedResize, SubclipVideo
 
 
 class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
@@ -23,11 +25,17 @@ class AMIGOSPreprocessor(EEGSegmenterPreprocessor):
             sample_pipeline=None,
             split_pipeline=EEGModalityComposeWrapper(
                 xmod_first=True,
-                xmod_transform=nn.Sequential(
-                    SubclipMedia(),
-                    ResizeEEGDataPointMedia((260, 260))
+                xmod_transform=nn.Sequential(),
+                vid_transform=nn.Sequential(
+                    UnbufferedResize((260, 260)),
+                    SubclipVideo(),
                 ),
-                eeg_transform=nn.Sequential(EEGMneAddAnnotation(), )
+                eeg_transform=nn.Sequential(
+                    EEGMneAddAnnotation(),
+                ),
+                aud_transform=nn.Sequential(
+                    SubclipAudio()
+                )
             )
         )
 

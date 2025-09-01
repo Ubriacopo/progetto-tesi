@@ -27,10 +27,14 @@ if __name__ == "__main__":
         ),
         modality_transforms=[
             EEGModalityComposeWrapper(
-                vid_transform=nn.Sequential(Resize((128, 128))),
+                vid_transform=nn.Sequential(
+                    Resize((128, 128))
+                ),
             ),
             EEGModalityComposeWrapper(
-                vid_transform=nn.Sequential(Resize((56, 56)))
+                vid_transform=nn.Sequential(
+                    Resize((56, 56))
+                )
             ),
         ]
     )

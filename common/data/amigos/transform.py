@@ -5,8 +5,8 @@ from torch import nn
 from torchvision.transforms import v2
 from torchvision.transforms.v2 import ToTensor
 
-from common.data.audio.transforms import ToMono, MyResample
-from common.data.transform import IDENTITY, ToCuda
+from common.data.audio.transforms import ToMono
+from common.data.transform import IDENTITY
 from common.data.video import RegularFrameResampling
 
 
@@ -39,7 +39,7 @@ def train_audio_transform(frequency_mapping: tuple[int, int] = (44100, 16000)) -
 
     return nn.Sequential(
         ToMono(),
-        MyResample(orig_freq=ogf, new_freq=nwf) if ogf != nwf else IDENTITY
+        at.Resample(orig_freq=ogf, new_freq=nwf) if ogf != nwf else IDENTITY
     )
 
 
@@ -61,4 +61,6 @@ def text_transform(tokenizer=Tokenizer.from_pretrained("sentence-transformers/al
 # to stft
 def train_eeg_transform() -> nn.Sequential:
     # TODO: Work on this
-    return nn.Sequential(ToCuda())
+    return nn.Sequential(
+        v2.Lambda(lambda x: x.to("cuda"))
+    )

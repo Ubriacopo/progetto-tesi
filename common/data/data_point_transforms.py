@@ -1,18 +1,21 @@
 import dataclasses
 
 from moviepy import VideoFileClip, AudioFileClip
+from torch import nn
 
+from common.data.audio.transforms import SubclipAudio
 from common.data.data_point import EEGDatasetDataPoint
-from common.data.transform import CustomBaseTransform
+from common.data.transform import FirstArgTransform
+from common.data.video.transforms import SubclipVideo
 
 
 @dataclasses.dataclass
-class ResizeEEGDataPointMedia(CustomBaseTransform):
+class ResizeEEGDataPointMedia(nn.Module):
     def __init__(self, new_size: tuple[int, int] | int):
         super().__init__()
         self.new_size = new_size
 
-    def do(self, x: EEGDatasetDataPoint):
+    def forward(self, x: EEGDatasetDataPoint):
         clip: VideoFileClip = x.vid.data
         if clip is None:
             # Make the clip if this is the first clipping experience.
@@ -26,17 +29,8 @@ class ResizeEEGDataPointMedia(CustomBaseTransform):
         return x
 
 
-class SubclipMedia(CustomBaseTransform):
-    def do(self, x: EEGDatasetDataPoint):
-        vid: VideoFileClip = x.vid.data
-        aud: AudioFileClip = x.aud.data
-        start, stop = x.vid.interval
-
-        if vid is None:
-            # Make the clip if this is the first clipping experience.
-            vid = VideoFileClip(x.vid.file_path)
-            aud = vid.audio
-
-        x.vid.data = vid.subclipped(start, stop)
-        x.aud.data = aud.subclipped(start, stop)
+class SubclipMedia(nn.Module):
+    def forward(self, x: EEGDatasetDataPoint):
+        x.aud = SubclipAudio()(x.aud)
+        x.vid = SubclipVideo()(x.vid)
         return x

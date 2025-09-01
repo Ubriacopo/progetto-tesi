@@ -8,10 +8,12 @@ from torchvision.transforms import Lambda
 IDENTITY = Lambda(lambda x: x)
 
 
-class CustomBaseTransform(nn.Module, ABC):
+class FirstArgTransform(nn.Module, ABC):
     """
     For maximum compatibility
     https://docs.pytorch.org/vision/main/auto_examples/transforms/plot_custom_transforms.html
+
+    Applies a transformation only to first element if the input is a tuple or to the element if it is not a tuple.
     """
 
     @classmethod
@@ -28,7 +30,7 @@ class CustomBaseTransform(nn.Module, ABC):
                     return tuple([mod[0]] + list(x[1:]) + list(mod[1:]))
 
                 x = list(x)
-                x[0] = mod # Update leftmost data stream
+                x[0] = mod  # Update leftmost data stream
                 return tuple(x)
 
             # X was just a value so we can call ourselves
@@ -41,8 +43,3 @@ class CustomBaseTransform(nn.Module, ABC):
     @abstractmethod
     def do(self, x):
         pass
-
-
-class ToCuda(CustomBaseTransform):
-    def do(self, x: torch.Tensor):
-        return x.to("cuda")

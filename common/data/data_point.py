@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Any
 
 import torch
 from torch import nn
@@ -47,13 +47,14 @@ class EEGDatasetDataPoint(DatasetDataPoint):
 
     entry_id: str  # We suppose every entry has a unique way of identifying itself
     # EEG dataset supposes to have for an entry a list of recordings. Other data types are optional.
-    eeg: EEG | tuple[torch.Tensor, dict]
+    eeg: EEG | torch.Tensor
 
     # TODO: What about multiple medias? (front-rgp-etc). -> sarebbe array di Video etc
     #       Da fare dopo ora ci va bene così
-    vid: Optional[Video | tuple[torch.Tensor, dict]] = None
-    txt: Optional[Text | tuple[torch.Tensor, dict]] = None
-    aud: Optional[Audio | tuple[torch.Tensor, dict]] = None
+    vid: Optional[Video | torch.Tensor] = None
+    txt: Optional[Text | torch.Tensor] = None
+    aud: Optional[Audio | torch.Tensor] = None
+    metadata: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict:
         d = {"entry_id": self.entry_id, } | self.eeg.to_dict()
@@ -78,7 +79,7 @@ class EEGModalityComposeWrapper:
     xmod_first: bool = False
 
 
-def call_pipelines(x: EEGDatasetDataPoint, pipe_wrapper: EEGModalityComposeWrapper):
+def call_pipelines(x: EEGDatasetDataPoint, pipe_wrapper: EEGModalityComposeWrapper) -> EEGDatasetDataPoint:
     # Cross modality first if defined and wanted
     if pipe_wrapper.xmod_transform is not None and pipe_wrapper.xmod_first:
         x = pipe_wrapper.xmod_transform(x)

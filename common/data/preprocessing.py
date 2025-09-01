@@ -2,15 +2,18 @@ import traceback
 from abc import abstractmethod, ABC
 from dataclasses import replace
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Text
 
 import numpy as np
 import pandas as pd
 
+from common.data.audio import Audio
+from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGModalityComposeWrapper, call_pipelines
+from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToMneRawFromChannels
 from common.data.loader import DataLoader
-from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGModalityComposeWrapper, call_pipelines
 from common.data.sampler import Segmenter
+from common.data.video import Video
 
 SPEC_FILE_NAME: str = "spec.csv"
 
@@ -92,6 +95,13 @@ class EEGSegmenterPreprocessor(Preprocessor):
 
         eeg_out_path: str = self.output_path + f'{original_sample_id}_raw.fif'
 
+        assert (
+                isinstance(x.eeg, EEG)
+                and isinstance(x.vid, Video) or x.vid is None
+                and isinstance(x.txt, Text) or x.txt is None
+                and isinstance(x.aud, Audio) or x.aud is None
+        ), "EEGDatasetDataPoint are required to not be in tensor form here."
+
         x.eeg.data.save(eeg_out_path, overwrite=True, split_size="2GB")
         for x_segment in x_segments:
             x_segment.eeg.file_path = eeg_out_path
@@ -103,6 +113,13 @@ class EEGSegmenterPreprocessor(Preprocessor):
             -> EEGDatasetDataPoint:
         if isinstance(segment[0], np.ndarray):
             segment = (segment[0].item(), segment[1].item())
+
+        assert (
+                isinstance(x.eeg, EEG)
+                and isinstance(x.vid, Video) or x.vid is None
+                and isinstance(x.txt, Text) or x.txt is None
+                and isinstance(x.aud, Audio) or x.aud is None
+        ), "EEGDatasetDataPoint are required to not be in tensor form here."
 
         nid = x.entry_id + "_" + str(idx)
         y = EEGDatasetDataPoint(

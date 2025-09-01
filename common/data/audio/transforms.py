@@ -2,47 +2,49 @@ from typing import Optional
 
 import torch
 from moviepy import AudioFileClip
-from torchaudio.transforms import Resample
+from torch import nn
 
 from .audio import Audio
-from ..transform import CustomBaseTransform
 
 
-class AudioToTensor(CustomBaseTransform):
-    @classmethod
-    def scriptable(cls) -> bool:
-        return False  # Has custom data types. I think this won't allow it to be scriptable
+def check_audio_data(x, data_type: type):
+    if not isinstance(x, Audio):
+        raise TypeError("Given object is not of required type Audio")
 
-    def do(self, x: Audio):
+    if x.data is None:
+        raise ValueError("Audio has to be loaded first.")
+
+    if not isinstance(x.data, data_type):
+        raise TypeError("Given audio object is not valid")
+
+
+class AudioToTensor(nn.Module):
+    def forward(self, x: Audio):
         aud: Optional[AudioFileClip] = x.data
-        metadata = x.to_dict(metadata_only=True)
-
         if x.data is None:
             aud = AudioFileClip(x.file_path)
 
         x = aud.to_soundarray()
         x = torch.from_numpy(x).float()
-        x = x.T
-        return x, metadata
+
+        return x
 
 
-class ToMono(CustomBaseTransform):
+class SubclipAudio(nn.Module):
+    def forward(self, x: Audio):
+        aud: AudioFileClip = x.data
+        check_audio_data(x, AudioFileClip)
+
+        x.data = aud.subclipped(x.interval[0], x.interval[1])
+        return x
+
+
+class ToMono(nn.Module):
     """
     Transforms a source from Stereo or any other format to MONO. (Single wave)
     """
 
-    def do(self, x: torch.Tensor, **kwargs):
+    def forward(self, x: torch.Tensor):
         if not isinstance(x, torch.Tensor):
             raise TypeError("Expected a torch.Tensor")
         return torch.mean(x, dim=0, keepdim=True)
-
-
-# TODO: Evitiamo questa "multi" gestione di multi output. Noi prendiamo solo argomenti definit e fine.
-#       Facciamo classic style. TODO
-# todo meh ora tutte da ridefinire cosi? Mi sembra assurdo
-class MyResample(Resample, CustomBaseTransform):
-    def forward(self, x):
-        return CustomBaseTransform.forward(self, x)
-
-    def do(self, x):
-        return Resample.forward(self, x)
