@@ -1,4 +1,4 @@
-torchcodec
+torchcodec~=0.5
 zipfile-inflate64
 einops-exts
 torchview

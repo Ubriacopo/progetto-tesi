@@ -101,6 +101,8 @@ class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
 
         outputs = []
         for mod in range(len(self.multi_out_transforms)):
-            outputs.append(call_pipelines(x, self.multi_out_transforms[mod]))
+            # Replace where possible
+            y = dataclasses.replace(x)
+            outputs.append(call_pipelines(y, self.multi_out_transforms[mod]))
 
         return tuple(outputs)
