@@ -5,7 +5,7 @@ from cbramod.models.cbramod import CBraMod
 from torch import nn
 from transformers import VivitModel, AutoModel, Wav2Vec2BertModel
 
-from models.FEEG.utils import freeze_module
+from common.model.utils import freeze_module
 
 
 class FoundationEmbedder(nn.Module, ABC):
@@ -32,12 +32,12 @@ class FoundationEmbedder(nn.Module, ABC):
     def reshape_for_perceiver(self, x):
         raise NotImplementedError
 
-    def forward(self, for_perceiver: bool = True, *args, **kwargs) -> torch.Tensor:
+    def forward(self, x, for_perceiver: bool = False) -> torch.Tensor:
         if self.model_is_frozen:
             with torch.no_grad():
-                x = self.base_model(*args, **kwargs)
+                x = self.base_model(**x)
         else:
-            x = self.base_model(*args, **kwargs)
+            x = self.base_model(**x)
 
         x = self.retrieve_patches(x)
         return self.reshape_for_perceiver(x) if for_perceiver else x

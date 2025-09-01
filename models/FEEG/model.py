@@ -60,21 +60,21 @@ class SimpleEEGAVI(nn.Module):
             embedder=base_video, target_shape=target_shape, kd_size=video_kd_size,
             adapter=nn.Sequential(
                 ISAB(base_video.output_size, 8, 10),
-                PMA(target_shape, 8, 10)
+                PMA(base_video.output_size, 8, 10)
             )
         )
 
         self.audio_adapter = EmbeddingsAdapter(
             embedder=base_audio, target_shape=target_shape, kd_size=audio_kd_size,
             adapter=nn.Sequential(
-                PMA(target_shape, 8, 10)
+                PMA(base_audio.output_size, 8, 10)
             ),
         )
 
         self.text_adapter = EmbeddingsAdapter(
             embedder=base_text, target_shape=target_shape, kd_size=text_kd_size,
             adapter=nn.Sequential(
-                PMA(target_shape, 8, 10)
+                PMA(base_text.output_size, 8, 10)
             ),
         )
 
@@ -97,27 +97,33 @@ class SimpleEEGAVI(nn.Module):
             nn.Linear(target_shape * 2, target_shape)
         )
 
-    def forward(self, x: tuple[EEGDatasetDataPoint, bool] | EEGDatasetDataPoint):
-        use_kd = False  # By default, don't use KD
-        if isinstance(x, tuple) and len(x) == 2:
-            x, use_kd = x
+    def forward(self, x: dict | EEGDatasetDataPoint):
+        order = list(zip(*x["order"]))[0]
+        # By default, don't use KD
+        use_kd = x["kd"] if "kd" in x else False
+
+        # Access the stored data:
+        eeg = x["eeg"]
+        vid = x["vid"] if "vid" in x and x["mask"][0][order.index("vid")] else None
+        aud = x["aud"] if "aud" in x and x["mask"][0][order.index("aud")] else None
+        txt = x["txt"] if "txt" in x and x["mask"][0][order.index("txt")] else None
 
         kd_zv = None
-        zv = self.video_adapter(x.vid, use_kd)
+        zv = self.video_adapter(vid, use_kd)
         if isinstance(zv, tuple):
             zv, kd_zv = zv
 
-        kd_zt = None
-        zt = self.text_adapter(x.txt, use_kd)
-        if isinstance(zt, tuple):
-            zt, kd_zt = zt
-
         kd_za = None
-        za = self.audio_adapter(x.aud, use_kd)
+        za = self.audio_adapter(aud, use_kd)
         if isinstance(za, tuple):
             za, kd_za = za
 
-        ze = self.eeg_adapter(x.eeg, use_kd)
+        kd_zt = None
+        zt = self.text_adapter(txt, use_kd)
+        if isinstance(zt, tuple):
+            zt, kd_zt = zt
+
+        ze = self.eeg_adapter(eeg, use_kd)
 
         b, c, T, D = ze.shape
         ze = rearrange(ze, "b c T D -> b (T c) D")

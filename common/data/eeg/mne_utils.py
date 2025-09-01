@@ -20,7 +20,8 @@ def find_segment_by_descriptor(raw: mne.io.BaseRaw, segment_annotation_identifie
     return [
         (description, onset, duration)
         for description, onset, duration in zip(ann.description, ann.onset, ann.duration)
-        if re.search(segment_annotation_identifier, description)
+        if segment_annotation_identifier == description
+        # if re.search(segment_annotation_identifier, description) We want 100% match no overlaps
     ]
 
 

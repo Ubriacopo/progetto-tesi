@@ -12,7 +12,7 @@ from models.FEEG.layers.base_layers import SimpleFeedForward
 class MaskedCrossAttention(nn.Module):
     def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 8, only_attend_immediate_media=True):
         """
-        Masked cross-attention layer.
+        Masked cross-attention layers.
 
         :param dim: Final shape of the query vector space
         :param dim_latent: Final shape of the kv vector space

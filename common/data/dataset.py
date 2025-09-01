@@ -58,6 +58,10 @@ class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
         return len(self.objects)
 
 
+def fix(x):  # replace None with empty tensor
+    return x if x is not None else torch.empty(0)
+
+
 class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
     def __init__(self, dataset_spec_file: str,
                  shared_transform: EEGDatasetTransformWrapper,
@@ -74,6 +78,13 @@ class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
         for mod in range(len(self.multi_out_transforms)):
             # Replace where possible
             y = dataclasses.replace(x)
-            outputs[self.multi_out_transforms[mod].name] = call_pipelines(y, self.multi_out_transforms[mod])
+            o = call_pipelines(y, self.multi_out_transforms[mod])
+
+            out = {
+                "eeg": fix(o.eeg), "vid": fix(o.vid), "aud": fix(o.aud), "txt": fix(o.txt),
+                "mask": torch.Tensor([o.eeg is not None, o.vid is not None, o.aud is not None, o.txt is not None, ]),
+                "order": ("eeg", "vid", "aud", "txt", "mask"),
+            }
+            outputs[self.multi_out_transforms[mod].name] = out
 
         return outputs

@@ -7,7 +7,7 @@ from common.data.data_point import EEGDatasetDataPoint
 
 class Segmenter(ABC):
     """
-    Segments input samples into timed ranges defined by custom logic.
+    Segments input samples into timed ranges defined by predefined logic.
     """
 
     def __init__(self, max_length: int):

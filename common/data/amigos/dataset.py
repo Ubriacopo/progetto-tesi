@@ -1,13 +1,12 @@
-import torch
 from torch import nn
 from torchvision.transforms import Resize
-from transformers import VivitForVideoClassification, VivitImageProcessor
 
 from common.data.amigos.transform import train_video_transform, train_audio_transform, train_eeg_transform
 from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.dataset import EEGPdSpecMediaDataset, KDEEGPdSpecMediaDataset
 
 
+# todo non ha vero motivo di esistere
 class AMIGOSDataset(EEGPdSpecMediaDataset):
     pass
 
