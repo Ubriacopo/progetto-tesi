@@ -4,10 +4,13 @@ import torch
 from einops import rearrange
 from torch import nn, Tensor
 
+from common.data.data_point import EEGModalityComposeWrapper, EEGDatasetDataPoint
 from models.FEEG.layers.base_embedding import FoundationEmbedder, ViViTFoundationEmbedder, W2VBertFoundationEmbedder, \
     MiniLMFoundationEmbedder, CBraModFoundationEmbedder
 from models.FEEG.layers.base_layers import ModalContextEncoder
 from models.FEEG.layers.cross_attention import GatedCrossAttentionBlock
+from models.FEEG.layers.isab import ISAB, PMA
+from models.FEEG.layers.kd import KDHead
 from models.FEEG.layers.perceiver_adapter import PerceiverAdapter
 
 # TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
@@ -33,6 +36,84 @@ def media_locs_single_item(B, Tq, device):
     m = torch.zeros(B, Tq, dtype=torch.bool, device=device)
     m[:, 0] = True  # Item “introduced” at t=0
     return m
+
+
+class SimpleEEGAVI(nn.Module):
+    def __init__(self,
+                 target_shape: int = 384,
+                 cross_attention_blocks: int = 2,
+                 base_video: FoundationEmbedder = ViViTFoundationEmbedder(),
+                 video_kd_size: int | None = None,
+
+                 base_audio: FoundationEmbedder = W2VBertFoundationEmbedder(),
+                 audio_kd_size: int | None = None,
+
+                 base_text: FoundationEmbedder = MiniLMFoundationEmbedder(),
+                 text_kd_size: int | None = None,
+                 base_eeg: FoundationEmbedder = CBraModFoundationEmbedder(),
+                 use_kd: bool = True):
+        self.use_kd: bool = use_kd
+        self.video_adapter = nn.Sequential(
+            ISAB(base_video.output_size, 8, 10),
+            PMA(target_shape, 8, 10)
+        )
+
+        # KD
+        if video_kd_size is not None:
+            self.vid_kd_head = KDHead(base_video.output_size, video_kd_size)
+
+        self.audio_adapter = nn.Sequential(
+            PMA(target_shape, 8, 10)
+        )
+
+        if audio_kd_size is not None:
+            self.aud_kd_head = KDHead(base_audio.output_size, audio_kd_size)
+
+        self.text_adapter = nn.Sequential(
+            PMA(target_shape, 8, 10)
+        )
+
+        if text_kd_size is not None:
+            self.txt_kd_head = KDHead(base_text.output_size, text_kd_size)
+
+    def forward(self, x: tuple[EEGDatasetDataPoint, bool] | EEGDatasetDataPoint):
+        use_kd = False  # By default don't use KD
+        if isinstance(x, tuple) and len(x) == 2:
+            x, use_kd = x
+
+        ve: Optional[torch.Tensor] = None
+        kd_ve: Optional[torch.Tensor] = None
+        if x.vid is not None:
+            ve = self.video_adapter(x.vid, use_kd=use_kd)
+            if use_kd and self.vid_kd_head is not None:
+                kd_ve: Optional[torch.Tensor] = self.vid_kd_head(ve)
+
+        ae = None
+        kd_ae = None
+        if x.aud is not None:
+            ae = self.audio_adapter(x.aud, use_kd=use_kd)
+            if use_kd and self.aud_kd_head is not None:
+                kd_ae: Optional[torch.Tensor] = self.aud_kd_head(ae)
+
+        te = None
+        kd_te = None
+        if x.txt is not None:
+            te = self.text_adapter(x.txt, use_kd=use_kd)
+            if use_kd and self.txt_kd_head is not None:
+                kd_te: Optional[torch.Tensor] = self.txt_kd_head(te)
+
+        ee = self.base_eeg(x.eeg, for_perceiver=False)
+        b, c, T, D = ee.shape
+        ee = rearrange(ee, "b c T D -> b (T c) D")
+        media_locations = media_locs_single_item(b, T, ee.device)
+        embeddings = torch.cat([e for e in [ve, ae, te] if e is not None], dim=1)
+
+        for gated_x_attn in self.gatedXAttn_layers:
+            ee = gated_x_attn(ee, embeddings, media_locations=media_locations)
+
+        logits = self.projector(ee)
+        # Final projection head?
+        return (logits, {"kd_ve": kd_ve, "kd_ae": kd_ae, "kd_te": kd_te}) if use_kd else logits
 
 
 class EEGAVI(nn.Module):
