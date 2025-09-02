@@ -1,4 +1,4 @@
-# Titled references are to review and read
+# Titled references are to review and read (Short comment pls)
 
 ## Self-Supervised Representation Learning & Self Learning
 > # https://lilianweng.github.io/posts/2019-11-10-self-supervised/

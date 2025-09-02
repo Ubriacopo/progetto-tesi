@@ -1,0 +1,2 @@
+- Drop Text
+  - Non sembra avere valore aggiunto

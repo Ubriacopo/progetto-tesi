@@ -1,7 +1,7 @@
 - Con distillation faccio anche per EEG? Self distillation o fine tuning di foundation qui?
 - (Errore di VATE constrastive) (fa audio-audio in model si vede)
 - Domanda VATE: Ma prende sempre e solamente i primi 32 frame senza esitare?
-  Non fa downsampling dei frame prima magari? Non capisco dal codice ho guardato e riguardato
+  Non fa down sampling dei frame prima magari? Non capisco dal codice ho guardato e riguardato
 - > Forse grazie al punto di prima ho capito come avere piu media. \
   Certo posso fare downsampling da 30fps a 16 (per stare 2-4s) ma se non bastano ho più media per un solo oggetto! (
   Quindi [1,2,32,224,224] ? O comunque il modello si

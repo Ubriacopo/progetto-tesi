@@ -11,6 +11,7 @@ It encodes *which* media a query is allowed to look at, matching the Flamingo ru
 Minimal recipe you can drop in:
 
 ```python
+import torch
 # Suppose you have EEG windows with midpoints eeg_t (B, Tq) in seconds
 # and modality chunks with timestamps media_t (B, Tm).
 # Build a mask saying: query i may see media j iff media_t[j] <= eeg_t[i].
