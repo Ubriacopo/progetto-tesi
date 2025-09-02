@@ -29,3 +29,6 @@
       Altrimenti giro ViviT n volte e faccio poi quel mod
 - Devo eslorare diverse possibili tecniche di distillazione?
 - Modellino per ECG?
+- Ma al posto di Vivit un bel clip-vit + custom stuff + PMA?
+  - per-frame ViT (e.g., CLIP-ViT) → temporal mixer (GRU/TCN/S4) → compress (PMA/Perceiver) → Gated X-Attention.
+  - Prova con TimesFormer che dovrebbe essere flessible per time sequences

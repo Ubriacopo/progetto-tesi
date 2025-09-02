@@ -6,9 +6,10 @@ from transformers import VivitImageProcessor, AutoFeatureExtractor
 # toddo ma va in preprocessing questo?
 # todo da metter in embedder zone
 class ViVitImageProcessorTransform(nn.Module):
-    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400"):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False):
         super().__init__()
         self.processor = VivitImageProcessor.from_pretrained(model_name)
+        self.force_time_seq = force_time_seq
 
     def forward(self, x):
         if isinstance(x, torch.Tensor) and len(x.shape) == 3:
@@ -17,17 +18,23 @@ class ViVitImageProcessorTransform(nn.Module):
             x = list(x.unbind(0))
 
         x = self.processor(x, return_tensors="pt")
-        x["pixel_values"] = x["pixel_values"].squeeze(0)
+        if not self.force_time_seq:
+            x["pixel_values"] = x["pixel_values"].squeeze(0)
+
         return x
 
 
 class W2VBertFeatureExtractorTransform(nn.Module):
-    def __init__(self, model: str = "facebook/w2v-bert-2.0"):
+    def __init__(self, model: str = "facebook/w2v-bert-2.0", force_time_seq: bool = False):
         super().__init__()
         self.extractor = AutoFeatureExtractor.from_pretrained(model)
+        self.force_time_seq = force_time_seq
 
     def forward(self, x: torch.Tensor):
         o = self.extractor(x, return_tensors="pt", padding=True)
-        o["input_features"] = o["input_features"].squeeze()
-        o["attention_mask"] = o["attention_mask"].squeeze()
+
+        if not self.force_time_seq:
+            o["input_features"] = o["input_features"].squeeze()
+            o["attention_mask"] = o["attention_mask"].squeeze()
+
         return o

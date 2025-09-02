@@ -62,7 +62,7 @@ def fix(x):  # replace None with empty tensor
     return x if x is not None else torch.empty(0)
 
 
-class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset, ABC):
+class KDEEGPdSpecMediaDataset(EEGPdSpecMediaDataset):
     def __init__(self, dataset_spec_file: str,
                  shared_transform: EEGDatasetTransformWrapper,
                  modality_transforms: list[EEGDatasetTransformWrapper]):

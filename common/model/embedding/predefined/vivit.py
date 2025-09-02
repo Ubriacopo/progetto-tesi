@@ -3,6 +3,7 @@ from transformers import VivitModel
 from common.model.embedding.foundation_embedder import FoundationEmbedder
 
 
+# TODO Variante che supporta time segments
 class ViViTFoundationEmbedder(FoundationEmbedder):
     def __init__(self, output_size: int = 768, variant: str = "google/vivit-b-16x2-kinetics400", freeze: bool = True):
         super().__init__(VivitModel.from_pretrained(variant), output_size, freeze)
