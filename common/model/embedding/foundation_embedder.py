@@ -5,7 +5,8 @@ from torch import nn
 
 from common.model.utils import freeze_module
 
-
+# TODO Drop the facade. Almeno cambia contratto. Forward sarà da definire a manina per ognuno
+#               Più facile da usare così poi
 class FoundationEmbedder(nn.Module, ABC):
     def __init__(self, base_model, output_size: int, freeze: bool):
         """
