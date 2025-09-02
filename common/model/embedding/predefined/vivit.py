@@ -24,7 +24,7 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
     def retrieve_patches(self, x):
         return x.last_hidden_state
 
-
+# Todo ma mask?
 class ViViTFoundationEmbedderForTimeSequences(FoundationEmbedder):
     def reshape_for_perceiver(self, x):
         raise NotImplementedError()
