@@ -4,7 +4,7 @@ import torch
 from einops import rearrange
 from torch import nn
 
-from models.FEEG.layers.base_embedding import FoundationEmbedder
+from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.layers.kd import KDHead
 
 

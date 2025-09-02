@@ -5,8 +5,11 @@ from einops import rearrange
 from torch import nn, Tensor
 
 from common.data.data_point import EEGDatasetDataPoint
-from models.FEEG.layers.base_embedding import FoundationEmbedder, ViViTFoundationEmbedder, W2VBertFoundationEmbedder, \
-    MiniLMFoundationEmbedder, CBraModFoundationEmbedder
+from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedder
+from common.model.embedding.predefined.minilm import MiniLMFoundationEmbedder
+from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedder
+from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
+from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.layers.base import ModalContextEncoder
 from common.model.embedding.embedder_adapter import EmbedderAdapter
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock

@@ -3,8 +3,10 @@ from einops import rearrange
 from torch import nn
 
 from common.model.embedding.embedder_adapter import EmbedderAdapter
-from models.FEEG.layers.base_embedding import FoundationEmbedder, CBraModFoundationEmbedder, W2VBertFoundationEmbedder, \
-    ViViTFoundationEmbedder
+from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedder
+from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedder
+from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
+from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
 from common.model.layers.ISAB import ISAB, PMA
 from models.FEEG.model import media_locs_single_item

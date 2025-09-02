@@ -5,7 +5,7 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from models.FEEG.layers.base_embedding import FoundationEmbedder
+from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.layers.base import SimpleFeedForward
 from common.model.layers.kd import KDHead
 
