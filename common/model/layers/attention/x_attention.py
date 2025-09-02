@@ -5,8 +5,35 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import nn, einsum, Tensor
 
-from models.FEEG.layers.base_layers import SimpleFeedForward
+from common.model.layers.base import SimpleFeedForward
 
+
+class GatedCrossAttentionBlock(nn.Module):
+    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6,
+                 ff_mult: int = 4, only_attend_immediate_media: bool = True):
+        """
+
+        :param dim:
+        :param dim_latent:
+        :param dim_head: Number of features for each attention head
+        :param heads: Number of heads of masked cross attention
+        :param ff_mult: Multiplier for the feed forward structure
+        :param only_attend_immediate_media:
+        """
+        super().__init__()
+        # First call
+        self.attn = MaskedCrossAttention(dim, dim_latent, dim_head, heads, only_attend_immediate_media)
+        self.attn_gate = nn.Parameter(torch.tensor([.1]))
+
+        self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
+        self.ff_gate = nn.Parameter(torch.tensor([.1]))
+
+    def forward(self, q, kv, media_locations=None, use_cached_media=False, ):
+        use_cached_media = True  # To see if it works at 0. Poi sara da fare
+        q = self.attn(q, kv, media_locations, use_cached_media, ) * self.attn_gate.tanh() + q
+        q = self.ff(q) * self.ff_gate.tanh() + q
+
+        return q
 
 
 class MaskedCrossAttention(nn.Module):
@@ -92,31 +119,3 @@ class MaskedCrossAttention(nn.Module):
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h n d -> b n (h d)")
         return self.out(out)
-
-
-class GatedCrossAttentionBlock(nn.Module):
-    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6,
-                 ff_mult: int = 4, only_attend_immediate_media: bool = True):
-        """
-
-        :param dim:
-        :param dim_latent:
-        :param dim_head: Number of features for each attention head
-        :param heads: Number of heads of masked cross attention
-        :param ff_mult: Multiplier for the feed forward structure
-        :param only_attend_immediate_media:
-        """
-        super().__init__()
-        # First call
-        self.attn = MaskedCrossAttention(dim, dim_latent, dim_head, heads, only_attend_immediate_media)
-        self.attn_gate = nn.Parameter(torch.tensor([.1]))
-
-        self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
-        self.ff_gate = nn.Parameter(torch.tensor([.1]))
-
-    def forward(self, q, kv, media_locations=None, use_cached_media=False, ):
-        use_cached_media = True  # To see if it works at 0. Poi sara da fare
-        q = self.attn(q, kv, media_locations, use_cached_media, ) * self.attn_gate.tanh() + q
-        q = self.ff(q) * self.ff_gate.tanh() + q
-
-        return q

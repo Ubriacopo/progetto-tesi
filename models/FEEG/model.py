@@ -4,15 +4,14 @@ import torch
 from einops import rearrange
 from torch import nn, Tensor
 
-from common.data.data_point import EEGDatasetTransformWrapper, EEGDatasetDataPoint
+from common.data.data_point import EEGDatasetDataPoint
 from models.FEEG.layers.base_embedding import FoundationEmbedder, ViViTFoundationEmbedder, W2VBertFoundationEmbedder, \
     MiniLMFoundationEmbedder, CBraModFoundationEmbedder
-from models.FEEG.layers.base_layers import ModalContextEncoder
-from models.FEEG.layers.complex import EmbeddingsAdapter
-from models.FEEG.layers.cross_attention import GatedCrossAttentionBlock
-from models.FEEG.layers.isab import ISAB, PMA
-from models.FEEG.layers.kd import KDHead
-from models.FEEG.layers.perceiver_adapter import PerceiverAdapter
+from common.model.layers.base import ModalContextEncoder
+from common.model.embedding.embedder_adapter import EmbedderAdapter
+from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
+from common.model.layers.ISAB import ISAB, PMA
+from common.model.layers.perceiver_adapter import PerceiverAdapter
 
 # TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
 # TODO: Sequence length: Your EEG has 85 tokens - is this sufficient temporal resolution? (ViViT has 3306)
@@ -56,30 +55,30 @@ class SimpleEEGAVI(nn.Module):
         super().__init__()
         self.use_kd: bool = use_kd
 
-        self.video_adapter = EmbeddingsAdapter(
-            embedder=base_video, target_shape=target_shape, kd_size=video_kd_size,
+        self.video_adapter = EmbedderAdapter(
+            embedder=base_video, target_size=target_shape, kd_size=video_kd_size,
             adapter=nn.Sequential(
                 ISAB(base_video.output_size, 8, 10),
                 PMA(base_video.output_size, 8, 10)
             )
         )
 
-        self.audio_adapter = EmbeddingsAdapter(
-            embedder=base_audio, target_shape=target_shape, kd_size=audio_kd_size,
+        self.audio_adapter = EmbedderAdapter(
+            embedder=base_audio, target_size=target_shape, kd_size=audio_kd_size,
             adapter=nn.Sequential(
                 PMA(base_audio.output_size, 8, 10)
             ),
         )
 
-        self.text_adapter = EmbeddingsAdapter(
-            embedder=base_text, target_shape=target_shape, kd_size=text_kd_size,
+        self.text_adapter = EmbedderAdapter(
+            embedder=base_text, target_size=target_shape, kd_size=text_kd_size,
             adapter=nn.Sequential(
                 PMA(base_text.output_size, 8, 10)
             ),
         )
 
-        self.eeg_adapter = EmbeddingsAdapter(
-            embedder=base_eeg, target_shape=target_shape,
+        self.eeg_adapter = EmbedderAdapter(
+            embedder=base_eeg, target_size=target_shape,
             # Nothing happens for EEG data
             adapter=nn.Sequential(),
         )
@@ -129,6 +128,10 @@ class SimpleEEGAVI(nn.Module):
         ze = rearrange(ze, "b c T D -> b (T c) D")
         media_locations = media_locs_single_item(b, T, ze.device)
         embeddings = torch.cat([emb for emb in [zv, za, zt] if emb is not None], dim=1)
+
+        if len(embeddings.shape) == 3:
+            # (b, T*F, D) (Case of no time series used).
+            embeddings = rearrange(embeddings, "b (T F) d -> b T F d", T=1)
 
         for gated_x_attn in self.gatedXAttn_layers:
             ze = gated_x_attn(ze, embeddings, media_locations=media_locations)
