@@ -7,7 +7,7 @@ from common.model.embedding.embedder_adapter import EmbedderAdapter
 from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedder
 from common.model.embedding.predefined.minilm import MiniLMFoundationEmbedder
-from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
+from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder, ViViTFoundationEmbedderForTimeSequences
 from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedder
 from common.model.layers.ISAB import ISAB, PMA
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
@@ -36,7 +36,7 @@ class SingleMediaEEGAVI(nn.Module):
     def __init__(self,
                  target_shape: int = 384,
                  cross_attention_blocks: int = 2,
-                 base_video: FoundationEmbedder = ViViTFoundationEmbedder(),
+                 base_video: FoundationEmbedder = ViViTFoundationEmbedderForTimeSequences(),
                  video_kd_size: int | None = None,
 
                  base_audio: FoundationEmbedder = W2VBertFoundationEmbedder(),
