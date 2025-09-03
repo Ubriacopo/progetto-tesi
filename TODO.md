@@ -9,3 +9,6 @@ feature_extractor = VivitFeatureExtractor(size=224, num_frames=32)
 # MA NON ESISTE DANNATO!
 ```
 - Configura viviprocessor
+
+
+- Devo capire bene cosa volgio fare: FOGLIO E PENNA TI AIUTANO

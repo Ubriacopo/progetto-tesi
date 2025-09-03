@@ -24,6 +24,7 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
     def retrieve_patches(self, x):
         return x.last_hidden_state
 
+
 # Todo ma mask?
 class ViViTFoundationEmbedderForTimeSequences(FoundationEmbedder):
     def reshape_for_perceiver(self, x):
@@ -45,5 +46,8 @@ class ViViTFoundationEmbedderForTimeSequences(FoundationEmbedder):
         else:
             x = self.base_model(x.pixel_values)
 
-        x.last_hidden_state = rearrange(x.last_hidden_state, "(b T) F D -> b T F D", b=b)
-        return self.reshape_for_perceiver(x) if for_perceiver else x
+        y = rearrange(x.last_hidden_state, "(b T) F D -> b T F D", b=b)
+        tokens = y[:, :, 1:, :]  # Drop the [CLS] token
+        tubelet = self.base_model.config.tubelet_size[-1]
+        tokens = rearrange(tokens, "b T (F p) D -> b T F p D", F=tubelet)
+        return tokens

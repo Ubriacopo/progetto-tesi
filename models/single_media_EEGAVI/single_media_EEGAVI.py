@@ -5,12 +5,13 @@ from torch import nn
 from common.data.data_point import EEGDatasetDataPoint
 from common.model.embedding.embedder_adapter import EmbedderAdapter
 from common.model.embedding.foundation_embedder import FoundationEmbedder
-from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedder
-from common.model.embedding.predefined.minilm import MiniLMFoundationEmbedder
-from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder, ViViTFoundationEmbedderForTimeSequences
-from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedder
-from common.model.layers.ISAB import ISAB, PMA
+from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedder, \
+    CBraModFoundationEmbedderForTimeSequences
+from common.model.embedding.predefined.vivit import ViViTFoundationEmbedderForTimeSequences
+from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedder, \
+    W2VBertFoundationEmbedderForTimeSequences
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
+from common.model.layers.perceiver_adapter import PerceiverResampler
 
 # TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
 # TODO: Sequence length: Your EEG has 85 tokens - is this sufficient temporal resolution? (ViViT has 3306)
@@ -33,42 +34,32 @@ def media_locs_single_item(B, Tq, device):
 
 
 class SingleMediaEEGAVI(nn.Module):
+    """
+    Since it does not use PerceiverResampler it is more lightweight but also strictly related to input size (not variable)
+    """
+
     def __init__(self,
                  target_shape: int = 384,
                  cross_attention_blocks: int = 2,
                  base_video: FoundationEmbedder = ViViTFoundationEmbedderForTimeSequences(),
                  video_kd_size: int | None = None,
 
-                 base_audio: FoundationEmbedder = W2VBertFoundationEmbedder(),
+                 base_audio: FoundationEmbedder = W2VBertFoundationEmbedderForTimeSequences(),
                  audio_kd_size: int | None = None,
 
-                 base_text: FoundationEmbedder = MiniLMFoundationEmbedder(),
-                 text_kd_size: int | None = None,
-                 base_eeg: FoundationEmbedder = CBraModFoundationEmbedder(),
+                 base_eeg: FoundationEmbedder = CBraModFoundationEmbedderForTimeSequences(),
                  use_kd: bool = True):
         super().__init__()
         self.use_kd: bool = use_kd
 
         self.video_adapter = EmbedderAdapter(
             embedder=base_video, target_size=target_shape, kd_size=video_kd_size,
-            adapter=nn.Sequential(
-                ISAB(base_video.output_size, 8, 10),
-                PMA(base_video.output_size, 8, 10)
-            )
+            adapter=PerceiverResampler(base_video.output_size, 2)
         )
 
         self.audio_adapter = EmbedderAdapter(
             embedder=base_audio, target_size=target_shape, kd_size=audio_kd_size,
-            adapter=nn.Sequential(
-                PMA(base_audio.output_size, 8, 10)
-            ),
-        )
-
-        self.text_adapter = EmbedderAdapter(
-            embedder=base_text, target_size=target_shape, kd_size=text_kd_size,
-            adapter=nn.Sequential(
-                PMA(base_text.output_size, 8, 10)
-            ),
+            adapter=PerceiverResampler(base_audio.output_size, 2),
         )
 
         self.eeg_adapter = EmbedderAdapter(
