@@ -10,7 +10,7 @@ from common.model.utils import freeze_module
 class CBraModFoundationEmbedder(FoundationEmbedder):
 
     def __init__(self, output_size: int = 200, device=None, freeze: bool = True,
-                 weights: str = "../../dependencies/cbramod/pretrained_weights.pth"):
+                 weights: str = "../../../dependencies/cbramod/pretrained_weights.pth"):
         model = CBraMod()
         if device is None:
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -20,6 +20,14 @@ class CBraModFoundationEmbedder(FoundationEmbedder):
             model.load_state_dict(torch.load(weights, map_location=device))
 
         super().__init__(model, output_size, freeze)
+
+    def forward(self, x, mask=None) -> torch.Tensor:
+        if self.model_is_frozen:
+            with torch.no_grad():
+                x = self.base_model(x.float())
+        else:
+            x = self.base_model(x.float())
+        return x
 
     def retrieve_patches(self, x):
         return x

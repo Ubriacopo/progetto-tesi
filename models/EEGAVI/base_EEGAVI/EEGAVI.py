@@ -78,10 +78,10 @@ class EEGAVI(nn.Module):
 
         z_mod = []
         vid = x["vid"] if "vid" in x else None
-        vid_mask = mask[:, order.index("vid")] if mask else None
+        vid_mask = mask[:, order.index("vid")] if mask is not None else None
 
         aud = x["aud"] if "aud" in x else None
-        aud_mask = mask[:, order.index("aud")] if mask else None
+        aud_mask = mask[:, order.index("aud")] if mask is not None else None
 
         z_kd_vid = None
         z_vid = self.video_adapter(vid, vid_mask)
@@ -105,7 +105,7 @@ class EEGAVI(nn.Module):
         embeddings = torch.cat(z_mod, dim=1)
         if len(embeddings.shape) == 3:
             # (b, T*F, D) (Case of no time series used).
-            embeddings = rearrange(embeddings, "b T d -> b T F d", T=1)
+            embeddings = rearrange(embeddings, "b (T F) d -> b T F d", T=1)
 
         for gated_x_attn in self.gatedXAttn_layers:
             z_eeg = gated_x_attn(z_eeg, embeddings, media_locations=media_locations)
