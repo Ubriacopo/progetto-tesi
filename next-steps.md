@@ -1,5 +1,8 @@
 ## Understand what model I need
 
+### Fine tune CBraMod on datasets? MHM
+Si potrebbe fare la prova ablativa con e senza?
+
 ### T sequences
 
 Potrei modellare qualcosa come è adesso EEGAVI e quindi "fregarmene di sequenze"

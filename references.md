@@ -46,3 +46,5 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 > https://benjaminwarner.dev/2022/07/14/tinkering-with-attention-pooling
 
 > ### https://github.com/KangHyunWook/Pytorch-implementation-of-Multimodal-emotion-recognition-on-RAVDESS-dataset
+
+> ### https://arxiv.org/pdf/2504.20069

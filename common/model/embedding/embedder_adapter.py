@@ -6,11 +6,10 @@ from torch import nn
 
 from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.layers.kd import KDHead
-from common.model.layers.utils import TimeStepsCompression
 
 
 class EmbedderAdapter(nn.Module):
-    def __init__(self, embedder: FoundationEmbedder, adapter: nn.Module, target_size: int, kd_size: int = None):
+    def __init__(self, embedder: FoundationEmbedder, adapter: nn.Module, target_size: int | None, kd_size: int = None):
         """
         Cool to test out different adapting techniques while respecting the required structure by EEGAVI model
 
@@ -29,7 +28,7 @@ class EmbedderAdapter(nn.Module):
             self.kd_head = KDHead(input_dimension=embedder.output_size, output_dimension=kd_size)
 
         self.projection: Optional[nn.Linear] = None
-        if target_size != embedder.output_size:
+        if target_size is not None and  target_size != embedder.output_size:
             self.projection = nn.Linear(embedder.output_size, target_size)
 
     def forward(self, x, mask=None, use_kd: bool = True):

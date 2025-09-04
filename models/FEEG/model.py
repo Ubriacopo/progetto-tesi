@@ -15,6 +15,7 @@ from common.model.embedding.embedder_adapter import EmbedderAdapter
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
 from common.model.layers.ISAB import ISAB, PMA
 from common.model.layers.perceiver_adapter import PerceiverAdapter
+from models.EEGAVI.transforms import media_locs_single_item
 
 # TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
 # TODO: Sequence length: Your EEG has 85 tokens - is this sufficient temporal resolution? (ViViT has 3306)
@@ -33,12 +34,6 @@ from common.model.layers.perceiver_adapter import PerceiverAdapter
 def freeze_module(m: torch.nn.Module):
     for p in m.parameters():
         p.requires_grad = False
-
-
-def media_locs_single_item(B, Tq, device):
-    m = torch.zeros(B, Tq, dtype=torch.bool, device=device)
-    m[:, 0] = True  # Item “introduced” at t=0
-    return m
 
 
 class SimpleEEGAVI(nn.Module):

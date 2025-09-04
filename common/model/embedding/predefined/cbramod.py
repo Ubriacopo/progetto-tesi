@@ -60,6 +60,4 @@ class CBraModFoundationEmbedderForTimeSequences(nn.Module):
             y = self.base_model(y)
 
         y = rearrange(y, "(b T) f F D -> b T f F D", b=b)
-        y = y.unsqueeze(2)  # W2V has no other decomposition
-
         return y
