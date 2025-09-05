@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Callable
 
 import torch
 from torch import nn
@@ -7,13 +8,16 @@ from torch.utils.data import DataLoader
 from models.EEGAVI.EEGAVI import EEGAVI
 
 
-class EEGAVITeacherSingleTeacher(ABC):
+class EEGAVITeacherSingleTeacher:
 
-    def __init__(self, model: tuple[str, EEGAVI], teacher: tuple[str, nn.Module]):
+    def __init__(self,
+                 model: tuple[str, EEGAVI], teacher: tuple[str, nn.Module],
+                 loss_function: Callable, optimizer_constructor: Callable, optimizer_args: dict, ):
         self.student_key, self.model = model
         self.teacher_key, self.teacher = teacher
         # Initialize the optimizer for the current trainer
-        self.optimizer = self.init_optimizer()
+        self.optimizer = optimizer_constructor(self.model.parameters(), **optimizer_args)
+        self.loss_function = loss_function
 
     @abstractmethod
     def init_optimizer(self) -> torch.optim.Optimizer:
