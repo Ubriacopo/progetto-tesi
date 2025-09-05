@@ -10,6 +10,7 @@ from common.model.loss import sigLIP
 from models.EEGAVI.EEGAVI import EEGAVI
 from models.VATE.constrastive_model import ContrastiveModel
 
+
 # TODO TEST
 class EEGAVITeacherSingleTeacher:
 
@@ -59,4 +60,4 @@ class EEGAVITeacherSingleTeacher:
             print(f"Epoch {epoch + 1}/{epochs}, Loss: {running_loss / len(dataloader)}")
 
     def test(self):
-        pass
+        raise NotImplementedError()
