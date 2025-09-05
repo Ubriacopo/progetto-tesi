@@ -8,7 +8,6 @@ from common.model.utils import freeze_module
 
 
 class CBraModFoundationEmbedder(FoundationEmbedder):
-
     def __init__(self, output_size: int = 200, device=None, freeze: bool = True,
                  weights: str = "../../../dependencies/cbramod/pretrained_weights.pth"):
         model = CBraMod()
@@ -27,15 +26,14 @@ class CBraModFoundationEmbedder(FoundationEmbedder):
                 x = self.base_model(x.float())
         else:
             x = self.base_model(x.float())
+
         return x
 
-    def retrieve_patches(self, x):
-        return x
-
-    def reshape_for_perceiver(self, x):
-        return x
+    def get_output_shape(self) -> tuple[int, ...]:
+        return -1, 1, 1, 1  # todo in futuro pulire qui
 
 
+# todo fuse in one
 class CBraModFoundationEmbedderForTimeSequences(nn.Module):
     def __init__(self, output_size: int = 200, device=None, freeze: bool = True,
                  weights: str = "../../dependencies/cbramod/pretrained_weights.pth"):

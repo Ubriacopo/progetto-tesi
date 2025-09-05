@@ -5,6 +5,7 @@ from torch import nn
 
 from common.model.utils import freeze_module
 
+
 # TODO Drop the facade. Almeno cambia contratto. Forward sarà da definire a manina per ognuno
 #               Più facile da usare così poi
 class FoundationEmbedder(nn.Module, ABC):
@@ -16,6 +17,7 @@ class FoundationEmbedder(nn.Module, ABC):
         :param freeze: If true, the base model is frozen.
         """
         super().__init__()
+
         self.model_is_frozen: bool = freeze
         if freeze:
             freeze_module(base_model)
@@ -24,19 +26,9 @@ class FoundationEmbedder(nn.Module, ABC):
         self.output_size: int = output_size
 
     @abstractmethod
-    def retrieve_patches(self, x):
-        raise NotImplementedError
+    def forward(self, x, mask=None) -> torch.Tensor:
+        pass
 
     @abstractmethod
-    def reshape_for_perceiver(self, x):
-        raise NotImplementedError
-
-    def forward(self, x, for_perceiver: bool = False) -> torch.Tensor:
-        if self.model_is_frozen:
-            with torch.no_grad():
-                x = self.base_model(**x)
-        else:
-            x = self.base_model(**x)
-
-        x = self.retrieve_patches(x)
-        return self.reshape_for_perceiver(x) if for_perceiver else x
+    def get_output_shape(self) -> tuple[int, ...]:
+        pass

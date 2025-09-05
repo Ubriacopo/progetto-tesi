@@ -5,38 +5,37 @@ from transformers import VivitModel
 from common.model.embedding.foundation_embedder import FoundationEmbedder
 
 
-# TODO Variante che supporta time segments
 class ViViTFoundationEmbedder(FoundationEmbedder):
     def __init__(self, output_size: int = 768, variant: str = "google/vivit-b-16x2-kinetics400", freeze: bool = True):
         super().__init__(VivitModel.from_pretrained(variant), output_size, freeze)
 
-    def reshape_for_perceiver(self, x):
-        tokens = x[:, 1:, :]  # Drop the [CLS] token
-        b, N, D = tokens.shape  # Shape given by ViViT
-        tubelet = self.base_model.config.tubelet_size[-1]
-        assert N % self.base_model.config.num_frames == 0, \
-            f"Token count {N} is not divisible by self.frames={self.model.config.num_frames}. " \
-            "Check that self.frames matches ViViT's config.num_frames."
+    def forward(self, x, mask=None) -> torch.Tensor:
+        # TODO: Masking
+        if self.model_is_frozen:
+            with torch.no_grad():
+                y = self.base_model(x.pixel_values)
+        else:
+            y = self.base_model(x.pixel_values)
 
-        v = int(N / tubelet)  # Num patches for frame
-        return tokens.reshape(b, 1, tubelet, v, D)
+        y = y.last_hidden_state  # Take the real values.
+        # Drop the [CLS] token
+        tokens = y[:, 1:, :]
 
-    def retrieve_patches(self, x):
-        return x.last_hidden_state
+        # tubelet = self.base_model.config.tubelet_size[-1]
+        # tokens = rearrange(tokens, "b (F p) D -> b F p D", F=tubelet)
+
+        return tokens
+
+    def get_output_shape(self, b: int = -1) -> tuple[int, ...]:
+        return b, self.base_model.config.tubelet_size[-1], int(3306 / self.base_model.config.tubelet_size[-1]), 768
 
 
-# Todo ma mask?
 class ViViTFoundationEmbedderForTimeSequences(FoundationEmbedder):
-    def reshape_for_perceiver(self, x):
-        raise NotImplementedError()
-
-    def retrieve_patches(self, x):
-        return x.last_hidden_state
-
     def __init__(self, output_size: int = 768, variant: str = "google/vivit-b-16x2-kinetics400", freeze: bool = True):
         super().__init__(VivitModel.from_pretrained(variant), output_size, freeze)
 
-    def forward(self, x, for_perceiver: bool = False) -> torch.Tensor:
+    def forward(self, x, mask=None) -> torch.Tensor:
+        # TODO: Masking
         b = x.pixel_values.shape[0]  # Batch size
         x.pixel_values = rearrange(x.pixel_values, "b T f c w h -> (b T) f c w h")
 
@@ -51,3 +50,6 @@ class ViViTFoundationEmbedderForTimeSequences(FoundationEmbedder):
         tubelet = self.base_model.config.tubelet_size[-1]
         tokens = rearrange(tokens, "b T (F p) D -> b T F p D", F=tubelet)
         return tokens
+
+    def get_output_shape(self, b: int = -1, t: int = -1) -> tuple[int, ...]:
+        return b, t, self.base_model.config.tubelet_size[-1], int(3306 / self.base_model.config.tubelet_size[-1]), 768

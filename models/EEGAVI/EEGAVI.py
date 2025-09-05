@@ -76,7 +76,6 @@ class EEGAVI(nn.Module):
 
         # TODO: Get media locs for z base
         media_locations = media_locs_single_item(z_base.shape[0], 1, z_base.device)
-
         z_supp: torch.Tensor = torch.cat(z_supports, dim=1)
         if len(z_supp.shape) == 3:
             # (b, T*F, D) (Case of no time series used).
