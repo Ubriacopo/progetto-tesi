@@ -1,5 +1,6 @@
 import torch
 from einops import rearrange
+from einops.layers.torch import Rearrange
 from torch import nn
 
 from common.model.embedding.embedder_adapter import EmbedderAdapter
@@ -9,10 +10,70 @@ from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
 from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
 from common.model.layers.ISAB import ISAB, PMA
+from models.EEGAVI.EEGAVI import EEGAVI
 from models.EEGAVI.transforms import media_locs_single_item
 
 
-class EEGAVI(nn.Module):
+def get_default_simple_EEGAVI():
+    video_embedder = ViViTFoundationEmbedder()
+    audio_embedder = W2VBertFoundationEmbedder()
+    target_size = 384
+    supporting_size_embedding: int = 768
+    return EEGAVI(
+        target_size=target_size,
+        pivot_modality=(
+            "eeg",
+            EmbedderAdapter(
+                embedder=CBraModFoundationEmbedder(),
+                adapter=nn.Sequential(
+                    Rearrange("b c P D -> b D c P"),
+                    nn.AdaptiveAvgPool2d((1, 1)),
+                    nn.Flatten(start_dim=1),
+                    Rearrange("(b T) D -> b T D", T=1),
+                ),
+                target_size=target_size
+            )
+        ),
+        supporting_size_embedding=supporting_size_embedding,
+        supporting_modalities=[
+            (
+                "vid",
+                EmbedderAdapter(
+                    embedder=video_embedder,
+                    target_size=768,
+                    kd_size=100,
+                    adapter=nn.Sequential(
+                        ISAB(video_embedder.output_size, 8, 10),
+                        PMA(video_embedder.output_size, 8, 10),
+                    )
+
+                )
+            ),
+            (
+                "aud",
+                # todo new version of embedder adapter? io devo fondere last 3 levels
+                EmbedderAdapter(
+                    embedder=audio_embedder,
+                    target_size=supporting_size_embedding,
+                    kd_size=100,
+                    adapter=nn.Sequential(
+                        PMA(audio_embedder.output_size, 8, 10),
+                    )
+                )
+            )
+        ],
+        use_modality_encoder=True,
+        cross_attention_blocks=4,
+        final_projector=nn.Sequential(
+            nn.LayerNorm(target_size),
+            nn.Linear(target_size, target_size * 2),
+            nn.GELU(),
+            nn.Linear(target_size * 2, target_size)
+        )
+    )
+
+
+class WorkingEEGAVI(nn.Module):
     def __init__(self,
                  target_shape: int = 384,
                  cross_attention_blocks: int = 2,
@@ -102,6 +163,7 @@ class EEGAVI(nn.Module):
         media_locations = media_locs_single_item(b, T, z_eeg.device)
 
         # TODO new mask?
+        # TODO Add modality embedding?
         embeddings = torch.cat(z_mod, dim=1)
         if len(embeddings.shape) == 3:
             # (b, T*F, D) (Case of no time series used).
