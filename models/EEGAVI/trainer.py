@@ -1,14 +1,30 @@
-from abc import ABC, abstractmethod
+from __future__ import annotations
 from typing import Callable
 
 import torch
 from torch import nn
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 
+from common.model.loss import sigLIP
 from models.EEGAVI.EEGAVI import EEGAVI
+from models.VATE.constrastive_model import ContrastiveModel
 
-
+# TODO TEST
 class EEGAVITeacherSingleTeacher:
+
+    @staticmethod
+    def default_kd_vate_trainer(model: tuple[str, EEGAVI]) -> EEGAVITeacherSingleTeacher:
+        return EEGAVITeacherSingleTeacher(
+            model=model,
+            teacher=("VATE", ContrastiveModel(200, 100)),
+
+            # TODO Tailor it for the model
+            loss_function=sigLIP,
+
+            optimizer_constructor=Adam,
+            optimizer_args={'lr': 1e-3},
+        )
 
     def __init__(self,
                  model: tuple[str, EEGAVI], teacher: tuple[str, nn.Module],
@@ -19,9 +35,6 @@ class EEGAVITeacherSingleTeacher:
         self.optimizer = optimizer_constructor(self.model.parameters(), **optimizer_args)
         self.loss_fn = loss_function
 
-    # TODO Non farlo troppo generale perchè ciao altrimenti che complichiamo inutilmente le cose
-    #           -> No classe astratta e farei optimizer e loss passate in costruzione.
-    #               COMPOSITION OVER INHERITANCE
     def train(self, dataloader: DataLoader, epochs: int):
         self.model.train()
 
