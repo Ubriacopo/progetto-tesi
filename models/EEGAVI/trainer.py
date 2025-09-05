@@ -17,15 +17,7 @@ class EEGAVITeacherSingleTeacher:
         self.teacher_key, self.teacher = teacher
         # Initialize the optimizer for the current trainer
         self.optimizer = optimizer_constructor(self.model.parameters(), **optimizer_args)
-        self.loss_function = loss_function
-
-    @abstractmethod
-    def init_optimizer(self) -> torch.optim.Optimizer:
-        pass
-
-    @abstractmethod
-    def loss_fn(self):
-        pass
+        self.loss_fn = loss_function
 
     # TODO Non farlo troppo generale perchè ciao altrimenti che complichiamo inutilmente le cose
     #           -> No classe astratta e farei optimizer e loss passate in costruzione.
@@ -47,7 +39,7 @@ class EEGAVITeacherSingleTeacher:
                     y_t = self.teacher(x_t)
                 y_s, kd_s = self.model(x_s)
 
-                loss = self.loss_fn()(y_s, kd_s, y_t)
+                loss = self.loss_fn(y_s, kd_s, y_t)
                 loss.backward()
                 running_loss += loss.item()
 
