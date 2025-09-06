@@ -3,11 +3,13 @@ from einops import rearrange
 from torch import nn
 
 
-class TimeStepsCompression(nn.Module):
-    def forward(self, x: torch.Tensor):
-        return rearrange(x, 'b T F D -> (b T) F D')
+# For a lightweight ablation or if you just want to test gating as a concept:
+# Use the simple global sigmoid scalar per modality — perfectly fine to start with.
+class GateUnit(nn.Module):
+    def __init__(self, supporting_size_embedding, modality_mappings):
+        super(GateUnit, self).__init__()
 
 
-class TimeStepsDecompression(nn.Module):
-    def forward(self, x: torch.Tensor, b: int):
-        return rearrange(x, '(b T) F D -> b T F D', b=b)
+class DeepGateUnit(nn.Module):
+    def __init__(self, supporting_size_embedding, modality_mappings):
+        super(DeepGateUnit, self).__init__()

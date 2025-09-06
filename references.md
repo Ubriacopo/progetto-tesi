@@ -48,3 +48,9 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 > ### https://github.com/KangHyunWook/Pytorch-implementation-of-Multimodal-emotion-recognition-on-RAVDESS-dataset
 
 > ### https://arxiv.org/pdf/2504.20069
+
+> ### http://arxiv.org/pdf/1702.01992
+ 
+> ## https://arxiv.org/pdf/2208.11893
+
+>### https://github.com/soujanyaporia/multimodal-sentiment-analysis?tab=readme-ov-file 
