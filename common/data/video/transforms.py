@@ -5,7 +5,7 @@ import torch
 from moviepy import VideoFileClip
 from torch import nn
 from torchcodec.decoders import VideoDecoder
-from transformers import VivitImageProcessor
+from transformers import VivitImageProcessor, VivitModel, VivitForVideoClassification
 
 from .video import Video
 
@@ -113,5 +113,19 @@ class ViVitImageProcessorTransform(nn.Module):
         x = self.processor(x, return_tensors="pt")
         if not self.force_time_seq:
             x["pixel_values"] = x["pixel_values"].squeeze(0)
+
+        return x
+
+
+class ViVitFeatureExtractorTransform(nn.Module):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False):
+        super().__init__()
+        self.model = VivitForVideoClassification.from_pretrained(model_name)
+        self.force_time_seq = force_time_seq
+
+    def forward(self, x):
+        with torch.no_grad():
+            x["pixel_values"] = x["pixel_values"].squeeze(1)
+            x = self.model(**x).logits.squeeze(0)
 
         return x
