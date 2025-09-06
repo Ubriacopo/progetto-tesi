@@ -13,7 +13,7 @@ from common.data.data_point import EEGDatasetDataPoint
 from common.data.video.video import Video
 
 
-class AMIGOSLoader(DataLoader):
+class AmigosLoader(DataLoader):
     def __init__(self, base_path: str):
         super().__init__()
         self.base_path: str = base_path
