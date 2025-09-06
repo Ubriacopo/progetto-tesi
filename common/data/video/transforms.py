@@ -5,6 +5,7 @@ import torch
 from moviepy import VideoFileClip
 from torch import nn
 from torchcodec.decoders import VideoDecoder
+from transformers import VivitImageProcessor
 
 from .video import Video
 
@@ -92,3 +93,25 @@ class RegularFrameResampling(nn.Module):
             return (x, None) if not self.drop_mask else x
 
         raise NotImplementedError("Given padding modality is invalid and input requires one.")
+
+
+# toddo ma va in preprocessing questo?
+# todo da metter in embedder zone
+# todo visionare bene con time sequences.
+class ViVitImageProcessorTransform(nn.Module):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False):
+        super().__init__()
+        self.processor = VivitImageProcessor.from_pretrained(model_name)
+        self.force_time_seq = force_time_seq
+
+    def forward(self, x):
+        if isinstance(x, torch.Tensor) and len(x.shape) == 3:
+            x = [x]
+        elif isinstance(x, torch.Tensor):
+            x = list(x.unbind(0))
+
+        x = self.processor(x, return_tensors="pt")
+        if not self.force_time_seq:
+            x["pixel_values"] = x["pixel_values"].squeeze(0)
+
+        return x

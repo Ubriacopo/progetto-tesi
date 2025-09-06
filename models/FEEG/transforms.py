@@ -1,27 +1,11 @@
 import torch
 from torch import nn
-from transformers import VivitImageProcessor, AutoFeatureExtractor
+from transformers import AutoFeatureExtractor
 
 
 # toddo ma va in preprocessing questo?
 # todo da metter in embedder zone
-class ViVitImageProcessorTransform(nn.Module):
-    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False):
-        super().__init__()
-        self.processor = VivitImageProcessor.from_pretrained(model_name)
-        self.force_time_seq = force_time_seq
-
-    def forward(self, x):
-        if isinstance(x, torch.Tensor) and len(x.shape) == 3:
-            x = [x]
-        elif isinstance(x, torch.Tensor):
-            x = list(x.unbind(0))
-
-        x = self.processor(x, return_tensors="pt")
-        if not self.force_time_seq:
-            x["pixel_values"] = x["pixel_values"].squeeze(0)
-
-        return x
+# todo visionare bene con time sequences.
 
 
 class W2VBertFeatureExtractorTransform(nn.Module):

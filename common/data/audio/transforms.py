@@ -90,16 +90,41 @@ class AudioZeroMasking(nn.Module):
             x = torch.cat([x, np.zeros(self.max_data_points - x_points)], dim=-1)
             return x if not transposed else x.T
 
+        raise ValueError("Somehow you got here how can that be!")
 
-# TODO: Valutare dove questo va nel modello :(
-#       Sembra sensato dataloader ma per strutture boh
+
+class ComputeFeatureHubert(nn.Module):
+    def __init__(self, original_fs: int):
+        super().__init__()
+        self.original_fs = original_fs
+
+    def forward(self, x: torch.Tensor):
+        return torchaudio.functional.resample(x, self.original_fs, torchaudio.pipelines.HUBERT_BASE.sample_rate)
+
+
+# todo visionare bene con time sequences.
 class W2VBertFeatureExtractorTransform(nn.Module):
-    def __init__(self, model: str = "facebook/w2v-bert-2.0"):
+    def __init__(self, model: str = "facebook/w2v-bert-2.0", force_time_seq: bool = False):
         super().__init__()
         self.extractor = AutoFeatureExtractor.from_pretrained(model)
+        self.force_time_seq = force_time_seq
 
     def forward(self, x: torch.Tensor):
         o = self.extractor(x, return_tensors="pt", padding=True)
-        o["input_features"] = o["input_features"].squeeze()
-        o["attention_mask"] = o["attention_mask"].squeeze()
+
+        if not self.force_time_seq:
+            o["input_features"] = o["input_features"].squeeze()
+            o["attention_mask"] = o["attention_mask"].squeeze()
+
         return o
+
+
+class HubertBaseFeatureExtractor(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = torchaudio.pipelines.HUBERT_BASE.get_model()
+
+    def forward(self, x: torch.Tensor):
+        y = self.model.extract_features(x)
+        y = y[-1][0].mean(0)  # TODO vedi non so bene cosa faccia.
+        return y

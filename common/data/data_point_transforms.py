@@ -1,11 +1,10 @@
 import dataclasses
 
-from moviepy import VideoFileClip, AudioFileClip
+from moviepy import VideoFileClip
 from torch import nn
 
 from common.data.audio.transforms import SubclipAudio
 from common.data.data_point import EEGDatasetDataPoint
-from common.data.transform import FirstArgTransform
 from common.data.video.transforms import SubclipVideo
 
 

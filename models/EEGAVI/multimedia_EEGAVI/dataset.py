@@ -8,7 +8,8 @@ from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.dataset import KDEEGPdSpecMediaDataset
 from common.data.eeg.transforms import EEGToMneRawFromChannels, EEGResample, EEGToTensor, EEGToTimePatches
 from common.data.video import VideoToTensor, RegularFrameResampling
-from models.FEEG.transforms import ViVitImageProcessorTransform, W2VBertFeatureExtractorTransform
+from models.FEEG.transforms import W2VBertFeatureExtractorTransform
+from common.data.video.transforms import ViVitImageProcessorTransform
 
 
 def kd_train_dataset(amigos_path: str):

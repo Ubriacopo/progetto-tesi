@@ -1,31 +1,31 @@
 from __future__ import annotations
 
-import torch
 from torch import nn
 from torchvision.transforms import v2
-from transformers import VivitImageProcessor, VivitForVideoClassification
 
+from common.data.audio.transforms import ComputeFeatureHubert, HubertBaseFeatureExtractor
 from common.data.data_point import EEGDatasetTransformWrapper
+from common.data.video.transforms import ViVitImageProcessorTransform
 
 
-class CallViViTModelAndProcessor(nn.Module):
-    def __init__(self, model: str = "google/vivit-b-16x2-kinetics400"):
-        super().__init__()
-        self.processor = VivitImageProcessor.from_pretrained(model)
-        self.model = VivitForVideoClassification.from_pretrained(model)
-
-    def __call__(self, video: list[torch.Tensor] | torch.Tensor, **kwargs) -> dict[str, torch.Tensor]:
-        # TODO: Vedi se veramente così
-        if isinstance(video, torch.Tensor) and len(video.shape) == 3:
-            video = [video]
-        elif isinstance(video, torch.Tensor):
-            video = list(video.unbind(0))
-
-        item = self.processor(video, return_tensors="pt")
-        with torch.no_grad():
-            item = self.model(**item).logits.squeeze(0)
-
-        return item  # The item has been embedded.
+# Transforms per AMIGOS
+def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
+    return EEGDatasetTransformWrapper(
+        name="VATE",
+        vid_transform=[
+            ViVitImageProcessorTransform(),
+        ],
+        aud_transform=[
+            # TODO Vedi se vera la frequenza di amigos e noi salvata cosi
+            ComputeFeatureHubert(original_fs=44100),
+            # todo vedi se devo gestire in qualche modo medias.
+            HubertBaseFeatureExtractor()
+        ],
+        txt_transform=[
+            # Text is for now disabled. I have yet to find a way to extract it correctly.
+            v2.Lambda(lambda x: None),
+        ],
+    )
 
 
 class FaceCrop(nn.Module):
@@ -33,40 +33,3 @@ class FaceCrop(nn.Module):
     # TODO: Implement (Per ora posticipo in quanto già face videos)
     def forward(self, video):
         return video
-
-
-vate_transform = EEGDatasetTransformWrapper(
-    vid_transform=nn.Sequential(
-        FaceCrop(),
-        CallViViTModelAndProcessor(),
-    )
-)
-
-if __name__ == "__main__":
-    from torch import nn
-    from common.data.amigos.transform import train_eeg_transform
-    from common.data.amigos.transform import train_video_transform
-    from common.data.amigos.transform import train_audio_transform
-    from common.data.data_point import EEGDatasetTransformWrapper
-    from common.data.amigos.dataset import KDAmigosDataset
-
-    dataset = KDAmigosDataset(
-        dataset_spec_file="./../../resources/AMIGOS/processed/spec.csv",
-        shared_transform=EEGDatasetTransformWrapper(
-            train_eeg_transform(),
-            train_video_transform(),
-            train_audio_transform(),
-        ),
-        modality_transforms=[
-            EEGDatasetTransformWrapper(
-                vid_transform=nn.Sequential(
-                    v2.Resize((128, 128)),
-                    v2.ToDtype(torch.float32, scale=True),
-                ),
-            ),
-            vate_transform
-        ]
-    )
-
-    a = dataset[0]
-    print("a")

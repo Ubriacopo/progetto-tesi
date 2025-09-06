@@ -33,7 +33,8 @@ class EEGAVI(nn.Module):
         if use_modality_encoder:
             modality_mappings = {e[0]: i for i, e in enumerate(supporting_modalities)}
             self.modality_encoder = ModalContextEncoder(supporting_size_embedding, modality_mappings)
-        # What about modality  gating? Cross Attention handles it!
+        # TODO: random disabler for each supporting modality for training robustness
+        # What about modality gating? Cross Attention handles it!
         self.gatedXAttn_layers = nn.ModuleList([
             GatedCrossAttentionBlock(dim=target_size, dim_latent=supporting_size_embedding)
             for _ in range(cross_attention_blocks)
