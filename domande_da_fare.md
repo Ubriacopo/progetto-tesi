@@ -32,3 +32,5 @@
 - Ma al posto di Vivit un bel clip-vit + custom stuff + PMA?
   - per-frame ViT (e.g., CLIP-ViT) → temporal mixer (GRU/TCN/S4) → compress (PMA/Perceiver) → Gated X-Attention.
   - Prova con TimesFormer che dovrebbe essere flessible per time sequences
+- Ma devo fare più input stream video? Face + video che vedono?
+- For what I could see the DREAMER dataset has no videos on the drive is it wanted?
