@@ -16,6 +16,7 @@ def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
         name="VATE",
         vid_transform=[
             FaceCrop(),
+            v2.Lambda(lambda x: x.to("cuda")),
             ViVitImageProcessorTransform(),
             ViVitFeatureExtractorTransform(),
         ],
@@ -24,6 +25,7 @@ def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
             ComputeFeatureHubert(original_fs=AmigosConfig.original_aud_fs),
             # todo vedi se devo gestire in qualche modo medias.
             Rearrange("(i D) -> i D", i=1),
+            v2.Lambda(lambda x: x.to("cuda")),
             HubertBaseFeatureExtractor()
         ],
         txt_transform=[

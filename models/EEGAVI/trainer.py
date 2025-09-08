@@ -55,6 +55,14 @@ class EEGAVIVateTrainer:
                 loss.backward()
                 running_loss += loss.item()
 
+                # Release memory? TODO Vedi se si fa di solito
+                del x_t
+                del x_s
+                del kd_s
+                del y_s
+                del y_t
+                torch.cuda.empty_cache()
+
             print(f"Epoch {epoch + 1}/{epochs}, Loss: {running_loss / len()}")
 
     def test(self):

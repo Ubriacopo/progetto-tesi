@@ -7,10 +7,12 @@ from common.model.embedding.foundation_embedder import FoundationEmbedder
 
 class ViViTFoundationEmbedder(FoundationEmbedder):
     def __init__(self, output_size: int = 768, variant: str = "google/vivit-b-16x2-kinetics400", freeze: bool = True):
-        super().__init__(VivitModel.from_pretrained(variant), output_size, freeze)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        super().__init__(VivitModel.from_pretrained(variant, device_map=device), output_size, freeze)
 
     def forward(self, x, mask=None) -> torch.Tensor:
         # TODO: Masking
+        x = x.to(self.base_model.device)
         if self.model_is_frozen:
             with torch.no_grad():
                 y = self.base_model(x.pixel_values)
@@ -32,13 +34,15 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
 
 class ViViTFoundationEmbedderForTimeSequences(FoundationEmbedder):
     def __init__(self, output_size: int = 768, variant: str = "google/vivit-b-16x2-kinetics400", freeze: bool = True):
-        super().__init__(VivitModel.from_pretrained(variant), output_size, freeze)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        super().__init__(VivitModel.from_pretrained(variant, device_map=device), output_size, freeze)
 
     def forward(self, x, mask=None) -> torch.Tensor:
         # TODO: Masking
         b = x.pixel_values.shape[0]  # Batch size
-        x.pixel_values = rearrange(x.pixel_values, "b T f c w h -> (b T) f c w h")
+        x = x.to(self.base_model.device)
 
+        x.pixel_values = rearrange(x.pixel_values, "b T f c w h -> (b T) f c w h")
         if self.model_is_frozen:
             with torch.no_grad():
                 x = self.base_model(x.pixel_values)

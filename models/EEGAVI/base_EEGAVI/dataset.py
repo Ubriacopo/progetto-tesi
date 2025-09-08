@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import StackDataset
 from torchaudio.transforms import Resample
-from torchvision.transforms import Normalize
+from torchvision.transforms import Normalize, v2
 from torchvision.transforms.v2 import ToDtype
 from transformers import VivitImageProcessor
 
@@ -18,10 +18,11 @@ from models.VATE.dataset import VATE_AMIGOS_transforms
 
 def get_ViVit_processor():
     processor: VivitImageProcessor = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
-    # Prepare ViVit for our task
+    # Prepare ViVit for our task. Works as intended.
     processor.do_resize = True
     processor.do_rescale = True
     processor.do_normalize = True
+
     return processor
 
 

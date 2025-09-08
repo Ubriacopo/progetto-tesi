@@ -8,12 +8,14 @@ from common.model.embedding.foundation_embedder import FoundationEmbedder
 class W2VBertFoundationEmbedder(FoundationEmbedder):
     def __init__(self, output_size: int = 1024, variant: str = "facebook/w2v-bert-2.0", freeze: bool = True,
                  for_time_series: bool = False):
-        super().__init__(Wav2Vec2BertModel.from_pretrained(variant), output_size, freeze)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        super().__init__(Wav2Vec2BertModel.from_pretrained(variant, device_map=device), output_size, freeze)
         self.for_time_series = for_time_series
 
     def forward(self, x, mask=None) -> torch.Tensor:
         # TODO Usa mask
         b = x.input_features.shape[0]  # Batch size
+        x = x.to(self.base_model.device)
 
         input_features = x.input_features
         attn_mask = x.attention_mask

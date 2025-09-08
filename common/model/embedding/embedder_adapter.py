@@ -9,7 +9,7 @@ from common.model.layers.kd import KDHead
 
 
 class EmbedderAdapter(nn.Module):
-    def __init__(self, embedder: FoundationEmbedder, adapter: nn.Module,
+    def __init__(self, embedder: Optional[FoundationEmbedder], adapter: nn.Module,
                  output_size: int, kd_shape: Tuple[int, ...] = None):
         """
         Standard structure. If you need to operate after KD explicitly you have to override the class and make a new one.
@@ -20,7 +20,7 @@ class EmbedderAdapter(nn.Module):
         :param kd_shape:
         """
         super(EmbedderAdapter, self).__init__()
-        self.embedder: FoundationEmbedder = embedder
+        self.embedder: Optional[FoundationEmbedder] = embedder
         self.adapter: nn.Module = adapter
 
         self.kd_head = None
@@ -29,7 +29,10 @@ class EmbedderAdapter(nn.Module):
 
     def forward(self, x: torch.Tensor, mask=None, use_kd: bool = True) \
             -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
-        z = self.embedder(x, mask=mask)
+        z = x
+        if self.embedder is not None:
+            z = self.embedder(x, mask=mask)
+
         z = self.adapter(z)
 
         kd_z: Optional[torch.Tensor] = None

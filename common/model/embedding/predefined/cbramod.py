@@ -56,6 +56,8 @@ class CBraModFoundationEmbedderForTimeSequences(nn.Module):
     # TODO MASKING
     def forward(self, x, mask=None) -> torch.Tensor:
         b = x.shape[0]  # Batch size
+        x = x.to(self.base_model.device)
+
         y = rearrange(x, "b T f p d -> (b T) f p d")
         y = y.float()
 

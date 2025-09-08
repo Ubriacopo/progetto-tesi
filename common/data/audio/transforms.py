@@ -125,7 +125,8 @@ class W2VBertFeatureExtractorTransform(nn.Module):
 class HubertBaseFeatureExtractor(nn.Module):
     def __init__(self):
         super().__init__()
-        self.model = torchaudio.pipelines.HUBERT_BASE.get_model()
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.model = torchaudio.pipelines.HUBERT_BASE.get_model().to(device)
 
     def forward(self, x: torch.Tensor):
         y, _ = self.model.extract_features(x)
