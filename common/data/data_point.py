@@ -29,6 +29,7 @@ class DatasetDataPoint(ABC):
         pass
 
 
+# TODO: Se aggiungo info questa struttura non mi basta.
 @dataclasses.dataclass
 class EEGDatasetDataPoint(DatasetDataPoint):
     @staticmethod
@@ -78,11 +79,11 @@ class EEGDatasetTransformWrapper:
 
     def __init__(self, name: str,
                  eeg_transform: nn.Sequential | Iterable[nn.Module] | None = None,
-                 vid_transform: nn.Sequential | Iterable[nn.Module]  | None = None,
-                 aud_transform: nn.Sequential | Iterable[nn.Module]  | None = None,
-                 txt_transform: nn.Sequential | Iterable[nn.Module]  | None = None,
+                 vid_transform: nn.Sequential | Iterable[nn.Module] | None = None,
+                 aud_transform: nn.Sequential | Iterable[nn.Module] | None = None,
+                 txt_transform: nn.Sequential | Iterable[nn.Module] | None = None,
                  xmod_first: bool = False,
-                 xmod_transform: nn.Sequential | Iterable[nn.Module]  | None = None, ):
+                 xmod_transform: nn.Sequential | Iterable[nn.Module] | None = None, ):
         self.name: str = name
 
         self.eeg_transform: Optional[nn.Sequential] = self.init_transform(eeg_transform)
