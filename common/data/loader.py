@@ -4,7 +4,7 @@ from typing import Iterator
 from common.data.data_point import EEGDatasetDataPoint
 
 
-class DataLoader(ABC):
+class DataPointsLoader(ABC):
     """
     Loads samples of a dataset as reference points.
     """

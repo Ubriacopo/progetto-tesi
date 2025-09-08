@@ -3,6 +3,7 @@ from torch.utils.data import StackDataset
 from torchaudio.transforms import Resample
 from torchvision.transforms import Normalize
 from torchvision.transforms.v2 import ToDtype
+from transformers import VivitImageProcessor
 
 from common.data.amigos.config import AmigosConfig
 from common.data.audio.transforms import AudioZeroMasking, AudioToTensor, ToMono
@@ -13,6 +14,15 @@ from common.data.video import VideoToTensor, RegularFrameResampling
 from common.data.video.transforms import ViVitImageProcessorTransform
 from models.FEEG.transforms import W2VBertFeatureExtractorTransform
 from models.VATE.dataset import VATE_AMIGOS_transforms
+
+
+def get_ViVit_processor():
+    processor: VivitImageProcessor = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
+    # Prepare ViVit for our task
+    processor.do_resize = True
+    processor.do_rescale = True
+    processor.do_normalize = True
+    return processor
 
 
 def kd_train_dataset(amigos_path: str):
@@ -48,7 +58,10 @@ def kd_train_dataset(amigos_path: str):
                     name="EEGAVI",
                     vid_transform=[
                         # TODO Normalize rgb in questi. Sono fatti apposta
-                        ViVitImageProcessorTransform(),
+                        ViVitImageProcessorTransform(
+                            # TODO Move the model name to config somewhere
+                            processor=get_ViVit_processor()
+                        ),
                     ],
                     aud_transform=[
                         Resample(44000, 16000),

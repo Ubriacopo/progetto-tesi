@@ -3,7 +3,7 @@ from __future__ import annotations
 from torch import nn
 
 from common.data.amigos.config import AmigosConfig
-from common.data.amigos.loader import AmigosLoader
+from common.data.amigos.loader import AmigosPointsLoader
 from common.data.audio.transforms import SubclipAudio
 from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.eeg.transforms import EEGMneAddAnnotation
@@ -12,10 +12,12 @@ from common.data.sampler import Segmenter, FixedIntervalsSegmenter
 from common.data.video.transforms import UnbufferedResize, SubclipVideo
 
 
+# todo ma serve? Non definisce logica sua. come ihrentiacen potrei fare composition
+#   Sarebbe factory
 class AmigosPreprocessor(EEGSegmenterPreprocessor):
     @staticmethod
-    def execute_default(input_path: str, output_path: str, max_length: int = 8):
-        return AmigosPreprocessor.default(output_path, max_length).run(AmigosLoader(input_path))
+    def run_default(input_path: str, output_path: str, max_length: int = 8):
+        return AmigosPreprocessor.default(output_path, max_length).run(AmigosPointsLoader(input_path))
 
     @staticmethod
     def default(output_path: str, max_length: int = 8) -> AmigosPreprocessor:
@@ -46,7 +48,7 @@ class AmigosPreprocessor(EEGSegmenterPreprocessor):
 
 
 if __name__ == "__main__":
-    AmigosPreprocessor.execute_default(
+    AmigosPreprocessor.run_default(
         "../../../resources/AMIGOS/",
         "../../../resources/AMIGOS/processed/"
     )

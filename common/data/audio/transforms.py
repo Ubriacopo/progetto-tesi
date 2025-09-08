@@ -75,6 +75,9 @@ class AudioZeroMasking(nn.Module):
             transposed = True
             x = x.T
 
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+
         x_points = x.shape[-1]
         if x_points > self.max_data_points:
             # Truncate
@@ -125,6 +128,6 @@ class HubertBaseFeatureExtractor(nn.Module):
         self.model = torchaudio.pipelines.HUBERT_BASE.get_model()
 
     def forward(self, x: torch.Tensor):
-        y = self.model.extract_features(x)
+        y, _ = self.model.extract_features(x)
         y = y[-1][0].mean(0)  # TODO vedi non so bene cosa faccia.
         return y

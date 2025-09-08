@@ -99,9 +99,14 @@ class RegularFrameResampling(nn.Module):
 # todo da metter in embedder zone
 # todo visionare bene con time sequences.
 class ViVitImageProcessorTransform(nn.Module):
-    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400",
+                 processor: VivitImageProcessor = None, force_time_seq: bool = False):
         super().__init__()
-        self.processor = VivitImageProcessor.from_pretrained(model_name)
+
+        self.processor: VivitImageProcessor = processor
+        if processor is None:
+            self.processor: VivitImageProcessor = VivitImageProcessor.from_pretrained(model_name)
+
         self.force_time_seq = force_time_seq
 
     def forward(self, x):
@@ -110,7 +115,7 @@ class ViVitImageProcessorTransform(nn.Module):
         elif isinstance(x, torch.Tensor):
             x = list(x.unbind(0))
 
-        x = self.processor(x, return_tensors="pt")
+        x = self.processor.preprocess(x, return_tensors="pt")
         if not self.force_time_seq:
             x["pixel_values"] = x["pixel_values"].squeeze(0)
 
@@ -125,7 +130,7 @@ class ViVitFeatureExtractorTransform(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            x["pixel_values"] = x["pixel_values"].squeeze(1)
+            x["pixel_values"] = x["pixel_values"].unsqueeze(0)
             x = self.model(**x).logits.squeeze(0)
 
         return x

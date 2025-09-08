@@ -12,7 +12,7 @@ from common.data.audio import Audio
 from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines
 from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToMneRawFromChannels
-from common.data.loader import DataLoader
+from common.data.loader import DataPointsLoader
 from common.data.sampler import Segmenter
 from common.data.video import Video
 
@@ -30,7 +30,7 @@ class Preprocessor(ABC):
     def preprocess(self, x: DatasetDataPoint) -> DatasetDataPoint | list[DatasetDataPoint]:
         pass
 
-    def run(self, loader: DataLoader) -> bool:
+    def run(self, loader: DataPointsLoader) -> bool:
         try:
             # Read an existing spec if it was computed.
             existing_df: Optional[pd.DataFrame] = None

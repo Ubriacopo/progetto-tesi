@@ -8,12 +8,12 @@ from moviepy import VideoFileClip
 from common.data.amigos.utils import extract_trial_data, load_participant_data
 from common.data.audio.audio import Audio
 from common.data.eeg import EEG
-from common.data.loader import DataLoader
+from common.data.loader import DataPointsLoader
 from common.data.data_point import EEGDatasetDataPoint
 from common.data.video.video import Video
 
 
-class AmigosLoader(DataLoader):
+class AmigosPointsLoader(DataPointsLoader):
     def __init__(self, base_path: str):
         super().__init__()
         self.base_path: str = base_path

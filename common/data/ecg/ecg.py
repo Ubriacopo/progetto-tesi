@@ -2,3 +2,10 @@
 # MA QUESTO MEGLIO PER MISSING LEAD https://github.com/Fsoft-AIC/TolerantECG (problema è molto recente)
 # ELSE THIS ALSO https://github.com/PKUDigitalHealth/ECGFounder (Good base)
 # Map your leads: RA & LA = effectively lead I. If you have RA & LL, you’d also get lead II.
+from common.data.signal.signal import Signal
+
+
+class ECG(Signal):
+    @classmethod
+    def modality_prefix(cls) -> str:
+        return "ecg"

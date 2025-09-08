@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from einops.layers.torch import Rearrange
 from torch import nn
 from torchvision.transforms import v2
 
@@ -22,6 +23,7 @@ def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
             # TODO Vedi se vera la frequenza di amigos e noi salvata cosi
             ComputeFeatureHubert(original_fs=AmigosConfig.original_aud_fs),
             # todo vedi se devo gestire in qualche modo medias.
+            Rearrange("(i D) -> i D", i=1),
             HubertBaseFeatureExtractor()
         ],
         txt_transform=[
