@@ -2,23 +2,15 @@
 - (Errore di VATE constrastive) (fa audio-audio in model si vede)
 - Domanda VATE: Ma prende sempre e solamente i primi 32 frame senza esitare?
   Non fa down sampling dei frame prima magari? Non capisco dal codice ho guardato e riguardato
-- > Forse grazie al punto di prima ho capito come avere piu media. \
-  Certo posso fare downsampling da 30fps a 16 (per stare 2-4s) ma se non bastano ho più media per un solo oggetto! (
-  Quindi [1,2,32,224,224] ? O comunque il modello si
-  deve arrangiare e fare come deve gli split -> Multi media di cui si parlava per gatedXAttention))
 - Il mio foundation model ritorna embeddings per ogni modality come VATE? Yes cosi fanno i foundaiton model
   Guarda per reference: https://github.com/openai/CLIP/blob/main/clip/model.py
-- What are logits (non fare documentati)
 - When and where fusion (I guess I can only apply late fusion when I distil from VATE)
   https://medium.com/@raj.pulapakura/multimodal-models-and-fusion-a-complete-guide-225ca91f6861
   https://arxiv.org/html/2411.17040v1
   https://arxiv.org/pdf/2402.12030
-- Nella nostra modalita EEG e veramente la modalita più importante di dati?
-  O sono equivlaenti tutti?
-- Per il momento sto usando il vostro modello pre-trained. Va bene o dovrei allenarne un altro?
 - Fine tuning VIVT su AffectNet/FER?
 - What is my goal?
-- Also bones of posture fed to my modeL?
+- Also bones of posture fed to my model?
 - When doing KD I feed an input x to two networks (teacher, student) When I do augmentations (like flipping images)
   should I do it for both? Or only for student?
 - Ma dovrei secondo voi fare effettivo resampling dei frame in generale o per il mio modello lavorare su media.
@@ -27,10 +19,17 @@
       supporta
     - Comincia con semplice (DonwSampling) poi prova con complessi media (VIVIT non super adeguato ma forse altri nativ si)
       Altrimenti giro ViviT n volte e faccio poi quel mod
-- Devo eslorare diverse possibili tecniche di distillazione?
+- Devo esplorare diverse possibili tecniche di distillazione?
 - Modellino per ECG?
 - Ma al posto di Vivit un bel clip-vit + custom stuff + PMA?
   - per-frame ViT (e.g., CLIP-ViT) → temporal mixer (GRU/TCN/S4) → compress (PMA/Perceiver) → Gated X-Attention.
   - Prova con TimesFormer che dovrebbe essere flessible per time sequences
 - Ma devo fare più input stream video? Face + video che vedono?
 - For what I could see the DREAMER dataset has no videos on the drive is it wanted?
+- Late fusion per aux info che non hanno impatto temporale hanno senso/
+- Ok so you say its better to ask myself: Is this data source modelled as a time sequence: If yes cat with xattn is a good pick If not it's better to just do late fusion (for example) with the output of my mlp and the z I get from xattn
+  - context tokens or FiLM if the static info should steer attention -> lightweight): AV → KV, Tab → FiLM on Q (no tab tokens), head.
+- Se introduci ECG: sincronizza con R-peaks (Pan-Tompkins) e crea heartbeat-centered windows; mappale sulle finestre EEG vicine.
+- Audio paralinguistico (prosodia, pitch, energy) → a volte correla più con EEG/affetto del contenuto semantico.
+- Use self-distillation over training iterations
+- Projection to reconstruct e,v,a (all mods) -> self supervision. Siglip prima di gatedXAttention
