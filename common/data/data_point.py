@@ -28,7 +28,6 @@ class DatasetDataPoint(ABC):
     def get_identifier() -> str:
         pass
 
-
 # TODO: Se aggiungo info questa struttura non mi basta.
 @dataclasses.dataclass
 class EEGDatasetDataPoint(DatasetDataPoint):
