@@ -7,8 +7,10 @@ from typing import Optional, Any, Iterable
 import torch
 from torch import nn
 
+from common.data import media_types
 from common.data.audio import Audio
 from common.data.eeg import EEG
+from common.data.media import Media
 from common.data.text import Text
 from common.data.video import Video
 
@@ -27,6 +29,7 @@ class DatasetDataPoint(ABC):
     @abstractmethod
     def get_identifier() -> str:
         pass
+
 
 # TODO: Se aggiungo info questa struttura non mi basta.
 @dataclasses.dataclass
@@ -112,3 +115,45 @@ def call_pipelines(x: EEGDatasetDataPoint, pipe_wrapper: EEGDatasetTransformWrap
         x = pipe_wrapper.xmod_transform(x)
 
     return x
+
+
+class AgnosticDatasetPoint(DatasetDataPoint):
+    def __init__(self, eid: str | int, *modality: tuple[str, dict | Media]):
+        self.eid = eid
+        for (k, o) in modality:
+            self.__setattr__(k, o)
+
+    def to_dict(self) -> dict:
+        o = {self.get_identifier(): self.eid}
+        for attr, value in self.__dict__.items():
+            if isinstance(value, Media) or hasattr(value, "to_dict_new"):
+                # Custom dict logic. Should add classname to it for restore?
+                value = value.to_dict_new()
+
+            if not isinstance(value, dict):
+                continue
+            o = o | {attr: value}
+
+        return o
+
+    @staticmethod
+    def get_identifier() -> str:
+        return "eid"
+
+    @staticmethod
+    def from_dict(o: dict, base_path: str = None) -> AgnosticDatasetPoint:
+        objects = []
+        for attr, value in o.items():
+            # Only exception we can handle inside the DatasetPoint
+            if attr == AgnosticDatasetPoint.get_identifier():
+                continue
+
+            assert isinstance(value, dict)
+            # Path of restoring the object of type else it is just dict
+            if "classname" in value:
+                media_type: Media = getattr(media_types, value["classname"])
+                objects.append((attr, media_type.restore_from_dict_new(value)))
+            else:
+                objects.append((attr, value))
+        # Flexible to any new structure
+        return AgnosticDatasetPoint(o["eid"], *objects)

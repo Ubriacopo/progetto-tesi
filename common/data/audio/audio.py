@@ -6,7 +6,8 @@ from common.data.media import Media
 
 @dataclasses.dataclass
 class Audio(Media):
-    def modality_prefix(self) -> str:
+    @staticmethod
+    def modality_code() -> str:
         return "aud"
 
     fs: float

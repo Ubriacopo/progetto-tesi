@@ -6,6 +6,6 @@ from common.data.signal.signal import Signal
 
 
 class ECG(Signal):
-    @classmethod
-    def modality_prefix(cls) -> str:
+    @staticmethod
+    def modality_code() -> str:
         return "ecg"

@@ -1,7 +1,7 @@
 from abc import abstractmethod, ABC
 from typing import Iterator
 
-from common.data.data_point import EEGDatasetDataPoint
+from common.data.data_point import EEGDatasetDataPoint, AgnosticDatasetPoint
 
 
 class DataPointsLoader(ABC):
@@ -10,5 +10,5 @@ class DataPointsLoader(ABC):
     """
 
     @abstractmethod
-    def scan(self) -> Iterator[EEGDatasetDataPoint]:
+    def scan(self) -> Iterator[AgnosticDatasetPoint | EEGDatasetDataPoint]:
         pass
