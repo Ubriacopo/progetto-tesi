@@ -7,9 +7,9 @@ from moviepy import VideoFileClip
 
 from common.data.amigos.utils import extract_trial_data, load_participant_data
 from common.data.audio.audio import Audio
+from common.data.data_point import AgnosticDatasetPoint
 from common.data.eeg import EEG
 from common.data.loader import DataPointsLoader
-from common.data.data_point import EEGDatasetDataPoint
 from common.data.video.video import Video
 
 
@@ -18,7 +18,7 @@ class AmigosPointsLoader(DataPointsLoader):
         super().__init__()
         self.base_path: str = base_path
 
-    def scan(self) -> Iterator[EEGDatasetDataPoint]:
+    def scan(self) -> Iterator[AgnosticDatasetPoint]:
         processed_data = Path(self.base_path + "pre_processed_py/")
 
         if not processed_data.exists():
@@ -46,4 +46,5 @@ class AmigosPointsLoader(DataPointsLoader):
             aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps, entry_id=experiment_id)
             eeg = EEG(data=eeg_data[0], file_path=None, fs=128, entry_id=experiment_id)
 
-            yield EEGDatasetDataPoint(entry_id=experiment_id, eeg=eeg, vid=vid, aud=aud)
+            # TODO Passare ad agnostic e veder se gira ancora tutto
+            yield AgnosticDatasetPoint(experiment_id, eeg.as_mod_tuple(), vid.as_mod_tuple(), aud.as_mod_tuple())

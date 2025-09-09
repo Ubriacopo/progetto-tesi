@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 
 from common.data.audio import Audio
-from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines
+from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, \
+    AgnosticDatasetPoint
 from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToMneRawFromChannels
 from common.data.loader import DataPointsLoader
@@ -64,6 +65,65 @@ class Preprocessor(ABC):
             return False
 
 
+class SegmenterPreprocessor(Preprocessor):
+    def __init__(self, output_path: str, segmenter: Segmenter,
+                 # In order to work with EEG data
+                 ch_names: list[str], ch_types: list[str], pipeline):
+        super().__init__(output_path)
+        self.segmenter: Segmenter = segmenter
+        # todo AgnosticDatasetTransformWrapper
+        self.pipeline: EEGDatasetTransformWrapper = pipeline
+        # EEG mapping for mne
+        self.ch_names: list[str] = ch_names
+        self.ch_types: list[str] = ch_types
+
+    def preprocess(self, x: AgnosticDatasetPoint) -> AgnosticDatasetPoint | list[AgnosticDatasetPoint]:
+        original_sample_id = x.eid
+        if EEG.modality_code() not in x:
+            raise ValueError("EEG data is required by design in any dataset")
+
+        eeg = getattr(x, EEG.modality_code())
+        if eeg.data.shape[0] != len(self.ch_names):
+            eeg.data = eeg.data.T  # Transpose
+
+        assert eeg.data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
+        eeg = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(eeg)
+
+        # todo rework
+        segments: list[tuple[int, int]] = self.segmenter.compute_segments(x)
+
+        x_out_folder = self.output_path + x.eid + "/"
+        Path(x_out_folder).mkdir(parents=True, exist_ok=True)
+        x_segments = [self.preprocess_segment(x, idx, segment, x_out_folder) for idx, segment in enumerate(segments)]
+        eeg_out_path: str = self.output_path + f'{original_sample_id}_raw.fif'
+        eeg.data.save(eeg_out_path, overwrite=True, split_size="2GB")
+
+        for x_segment in x_segments:
+            eeg_segment = getattr(x_segment, EEG.modality_code())
+            eeg_segment.file_path = os.path.relpath(Path(eeg_out_path).resolve(), self.output_path)
+
+        return x_segments
+
+    def preprocess_segment(self, x: AgnosticDatasetPoint, idx: int,
+                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray], out_folder: str) \
+            -> AgnosticDatasetPoint:
+        if isinstance(segment[0], np.ndarray):
+            segment = (segment[0].item(), segment[1].item())
+
+        nid = x.eid + "_" + str(idx)
+        # todo clone an existing agnostic dataset point
+        y = AgnosticDatasetPoint(
+            nid
+        )
+
+        if self.pipeline is not None:
+            # todo cambia call pipelines e self pipeline`
+            y = call_pipelines(y, self.pipeline)
+        # todo metodo per sportare le modalità che lo supportano
+        y.export(self.output_path)
+        return y
+
+
 class EEGSegmenterPreprocessor(Preprocessor):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
@@ -73,6 +133,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
         super().__init__(output_path)
 
         self.segmenter: Segmenter = segmenter
+        # todo AgnosticDatasetTransformWrapper
         self.sample_pipeline: EEGDatasetTransformWrapper = sample_pipeline
         self.split_pipeline: EEGDatasetTransformWrapper = split_pipeline
 

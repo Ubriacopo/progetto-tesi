@@ -33,7 +33,6 @@ class DeapPointsLoader(DataPointsLoader):
                 media_path: str = f"{self.base_path}videos/{uid}/{eid}.avi"
 
                 clip = VideoFileClip(media_path)
-                # todo fare piu dict like cosi meno rigido?
                 fps, size = clip.fps, clip.size
                 yield AgnosticDatasetPoint(
                     eid,
