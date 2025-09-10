@@ -90,7 +90,7 @@ class AudioZeroMasking(nn.Module):
             return x if not transposed else x.T
 
         if x_points < self.max_data_points:
-            x = torch.cat([x, np.zeros(self.max_data_points - x_points)], dim=-1)
+            x = torch.cat([x, torch.zeros(1, self.max_data_points - x_points)], dim=-1)
             return x if not transposed else x.T
 
         raise ValueError("Somehow you got here how can that be!")

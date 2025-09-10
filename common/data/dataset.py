@@ -7,13 +7,14 @@ import pandas as pd
 import torch
 from torch import device, nn
 
-from common.data.data_point import EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines
+from common.data.data_point import EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, AgnosticDatasetPoint
 
 
 class EEGMediaDataset(torch.utils.data.Dataset, ABC):
     @abstractmethod
     def __getitem__(self, idx: int) -> EEGDatasetDataPoint:
         pass
+
 
 # TODO Agnostic one too
 # Embeddings ready is our choice
@@ -24,9 +25,14 @@ class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.base_path: str = str(Path(dataset_spec_file).parent)
 
-    def __getitem__(self, idx: int):
-        pass
+        df = pd.read_csv(dataset_spec_file, index_col=False)
+        df.to_dict(orient="records")
+        self.objects = [AgnosticDatasetPoint.from_dict(d, self.base_path) for d in df.to_dict(orient="records")]
 
+    def __getitem__(self, idx: int):
+        o = self.objects[idx]
+        # todo has to be numpy serializable
+        return o
 
 
 class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):

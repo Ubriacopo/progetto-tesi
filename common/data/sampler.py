@@ -21,7 +21,7 @@ class Segmenter(ABC):
 class FixedIntervalsSegmenter(Segmenter):
     def compute_segments(self, sample: EEG) -> list[tuple[int, int]]:
         # Good indicator of duration.
-        length = len(sample.data) / sample.fs
+        length = len(sample.data[-1]) / sample.fs
 
         # Given the length of the sample in time
         starts = np.arange(0, length, self.max_length).astype(int)

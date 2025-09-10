@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import dataclasses
 from abc import ABC, abstractmethod
 from dataclasses import is_dataclass, replace
@@ -162,6 +163,10 @@ class AgnosticDatasetPoint(DatasetDataPoint):
             # Only exception we can handle inside the DatasetPoint
             if attr == AgnosticDatasetPoint.get_identifier():
                 continue
+
+            if isinstance(value, str):
+                # Turn into a dict if it is one
+                value = ast.literal_eval(value)
 
             assert isinstance(value, dict)
             # Path of restoring the object of type else it is just dict

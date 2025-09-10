@@ -2,7 +2,6 @@ from torch.utils.data import StackDataset
 from torchaudio.transforms import Resample
 from torchvision.transforms import v2
 
-from common.data.amigos.config import CH_NAMES, CH_TYPES
 from common.data.audio.transforms import AudioToTensor, AudioZeroMasking, ToMono
 from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.dataset import KDEEGPdSpecMediaDataset

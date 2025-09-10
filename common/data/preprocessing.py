@@ -1,7 +1,6 @@
 import os.path
 import traceback
 from abc import abstractmethod, ABC
-from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Text
@@ -66,6 +65,14 @@ class Preprocessor(ABC):
             return False
 
 
+"""
+    TODO: Era troppo bello pensare di fare una cosa cosi.
+        Ci serve almeno una fn per salvare i record generati. -> Abstract method o comunque gestione di torch like structures che salvo in "database".
+        Problema dello split in segmenti: Posso fare alcuni step prima?
+        Problema: Estrazione testo da audio come faccio?
+"""
+
+
 class SegmenterPreprocessor(Preprocessor):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
@@ -86,10 +93,6 @@ class SegmenterPreprocessor(Preprocessor):
         if x[EEG.modality_code()].data.shape[0] != len(self.ch_names):
             x[EEG.modality_code()].data = x[EEG.modality_code()].data.T  # Transpose
         assert x[EEG.modality_code()].data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
-        x[EEG.modality_code()] = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(
-            x[EEG.modality_code()]
-        )
-
         segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
 
         x_out_folder = self.output_path + x.eid + "/"
@@ -102,7 +105,14 @@ class SegmenterPreprocessor(Preprocessor):
         # EEG data are collected in files.
         for x_segment in x_segments:
             x_segment[EEG.modality_code()].file_path = x[EEG.modality_code()].file_path
-
+        """
+        TODO: Qualcosa del genere: MOLTO BUONO cosi
+        torch.save({
+            'eeg': torch.stack([sample['eeg'] for sample in a]),  # (17, 14, 8, 200)
+            'vid': torch.stack([sample['vid'] for sample in a]),   # (17, 400)
+            'aud': torch.stack([sample['aud']["input_features"] for sample in a])  # (17, 400)
+        }, 'batched_file.pt')
+        """
         return x_segments
 
     def preprocess_segment(self, x: AgnosticDatasetPoint, idx: int,
