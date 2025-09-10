@@ -110,7 +110,11 @@ class SegmenterPreprocessor(Preprocessor):
         torch.save({
             'eeg': torch.stack([sample['eeg'] for sample in a]),  # (17, 14, 8, 200)
             'vid': torch.stack([sample['vid'] for sample in a]),   # (17, 400)
-            'aud': torch.stack([sample['aud']["input_features"] for sample in a])  # (17, 400)
+            EFFICENTE anche cosi quindi posso tnere le mask e tutto
+            'aud': {
+                "in":torch.stack([sample['aud']["input_features"] for sample in a]),
+                "attn": torch.stack([sample['aud']["attention_mask"] for sample in a])
+            }
         }, 'batched_file.pt')
         """
         return x_segments
