@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from abc import ABC, abstractmethod
+from dataclasses import is_dataclass, replace
 from typing import Optional, Any, Iterable
 
 import torch
@@ -123,6 +124,16 @@ class AgnosticDatasetPoint(DatasetDataPoint):
         for (k, o) in modality:
             self.__setattr__(k, o)
 
+    def clone(self, n_eid: str) -> AgnosticDatasetPoint:
+        modalities: list[tuple[str, dict | Media]] = []
+        for attr, value in self.__dict__.items():
+            if is_dataclass(value):
+                modalities.append((attr, replace(value, eid=n_eid)))
+            else:
+                modalities.append((attr, value))
+
+        return AgnosticDatasetPoint(n_eid, *modalities)
+
     def to_dict(self) -> dict:
         o = {self.get_identifier(): self.eid}
         for attr, value in self.__dict__.items():
@@ -162,12 +173,12 @@ class AgnosticDatasetPoint(DatasetDataPoint):
         # Flexible to any new structure
         return AgnosticDatasetPoint(o["eid"], *objects)
 
-    def export(self, base_path: str = None, *exceptions: str, only: str = None):
+    def export(self, base_path: str = None, relative_path: str = None, *exceptions: str, only: str = None):
         # Only one execution branch
-        if only is not None and only in self.__dict__.items():
+        if only is not None and hasattr(self, only):
             attr = self.__getattribute__(only)
             if isinstance(attr, Media) or hasattr(attr, "export"):
-                attr.export(base_path)
+                attr.export(base_path, relative_path)
                 return
 
         # All except the exceptions
@@ -179,7 +190,7 @@ class AgnosticDatasetPoint(DatasetDataPoint):
             if attr in exceptions:
                 continue
 
-            value.export(base_path)
+            value.export(base_path, relative_path)
 
 
 class AgnosticDatasetTransformWrapper:
@@ -199,3 +210,4 @@ class AgnosticDatasetTransformWrapper:
             if self.is_defined(key):
                 # Call each transform that maps to x definition
                 x[key] = self[key](value)
+        return x

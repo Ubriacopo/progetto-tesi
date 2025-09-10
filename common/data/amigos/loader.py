@@ -42,9 +42,9 @@ class AmigosPointsLoader(DataPointsLoader):
 
             media_path: str = str(v.resolve())
             clip = VideoFileClip(media_path)
-            vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size, entry_id=experiment_id)
-            aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps, entry_id=experiment_id)
-            eeg = EEG(data=eeg_data[0], file_path=None, fs=128, entry_id=experiment_id)
+            vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size, eid=experiment_id)
+            aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps, eid=experiment_id)
+            eeg = EEG(data=eeg_data[0], file_path=None, fs=128, eid=experiment_id)
 
             # TODO Passare ad agnostic e veder se gira ancora tutto
             yield AgnosticDatasetPoint(experiment_id, eeg.as_mod_tuple(), vid.as_mod_tuple(), aud.as_mod_tuple())

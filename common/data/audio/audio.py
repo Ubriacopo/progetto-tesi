@@ -13,8 +13,8 @@ class Audio(Media):
     interval: Optional[tuple[int, int]] = None
 
     def export(self, base_path: str, output_path_to_relative: str = None):
-        out_path = f"{base_path}{self.entry_id}.mp4"
-        self.data.write_audiofile(base_path)
+        out_path = f"{base_path}{self.eid}.wav"
+        self.data.write_audiofile(out_path)
         if output_path_to_relative is not None:
             self.file_path = os.path.relpath(Path(out_path).resolve(), output_path_to_relative)
         else:

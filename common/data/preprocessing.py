@@ -90,20 +90,18 @@ class SegmenterPreprocessor(Preprocessor):
             x[EEG.modality_code()]
         )
 
-        # todo rework
-        segments: list[tuple[int, int]] = self.segmenter.compute_segments(x)
+        segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
 
         x_out_folder = self.output_path + x.eid + "/"
         Path(x_out_folder).mkdir(parents=True, exist_ok=True)
         x_segments = [self.preprocess_segment(x, idx, segment, x_out_folder) for idx, segment in enumerate(segments)]
 
-        eeg_out_path: str = self.output_path + f'{original_sample_id}_raw.fif'
-        x.export(eeg_out_path, only=EEG.modality_code())
+        eeg_out_path: str = self.output_path + f'{original_sample_id}'
+        x.export(eeg_out_path, self.output_path, only=EEG.modality_code())
 
+        # EEG data are collected in files.
         for x_segment in x_segments:
-            eeg_segment = getattr(x_segment, EEG.modality_code())
-            eeg_segment.file_path = os.path.relpath(Path(eeg_out_path).resolve(), self.output_path)
-            x_segment.__setattr__(EEG.modality_code(), eeg_segment)
+            x_segment[EEG.modality_code()].file_path = x[EEG.modality_code()].file_path
 
         return x_segments
 
@@ -113,24 +111,15 @@ class SegmenterPreprocessor(Preprocessor):
         if isinstance(segment[0], np.ndarray):
             segment = (segment[0].item(), segment[1].item())
 
-        nid = x.eid + "_" + str(idx)
-
-        y = deepcopy(x)
-        # Update id of the copy as it is working on other items.
-        y.eid = nid
-
+        y = x.clone(x.eid + "_" + str(idx))
         for arg, value in y.__dict__.items():
             if hasattr(value, "interval"):
                 value.__setattr__("interval", segment)
-            if hasattr(value, "eid"):
-                value.__setattr__("eid", nid)
 
         if self.pipeline is not None:
-            # todo cambia call pipelines e self pipeline`
-            y = self.pipeline.call(x)
+            y = self.pipeline.call(y)
 
-        # todo metodo per sportare le modalità che lo supportano
-        y.export(out_folder)
+        y.export(out_folder, self.output_path, EEG.modality_code())
         return y
 
 

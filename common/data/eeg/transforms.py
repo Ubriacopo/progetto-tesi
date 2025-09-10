@@ -19,9 +19,9 @@ class EEGToTensor(nn.Module):
         raw: Optional[mne.io.BaseRaw] = x.data
         if raw is None:
             fif = mne.io.read_raw_fif(x.file_path)
-            segments = find_segment_by_descriptor(fif, x.entry_id)
+            segments = find_segment_by_descriptor(fif, x.eid)
             if len(segments) == 0 or len(segments) > 1:
-                raise RuntimeError(f"Found {len(segments)} EEG for {x.entry_id}. There an error with {x.entry_id}.")
+                raise RuntimeError(f"Found {len(segments)} EEG for {x.eid}. There an error with {x.eid}.")
             _, onset, duration = segments[0]
             raw = fif.copy().crop(tmin=onset, tmax=onset + duration)
 
@@ -42,9 +42,9 @@ class EEGToMneRawFromChannels(nn.Module):
     def forward(self, x: EEG) -> EEG:
         if x.data is None:
             fif = mne.io.read_raw_fif(x.file_path)
-            segments = find_segment_by_descriptor(fif, x.entry_id)
+            segments = find_segment_by_descriptor(fif, x.eid)
             if len(segments) == 0 or len(segments) > 1:
-                raise RuntimeError(f"Found {len(segments)} EEG for {x.entry_id}. There an error with {x.entry_id}.")
+                raise RuntimeError(f"Found {len(segments)} EEG for {x.eid}. There an error with {x.eid}.")
             _, onset, duration = segments[0]
             raw = fif.copy().crop(tmin=onset, tmax=onset + duration)
             x.data = raw
@@ -62,11 +62,11 @@ class EEGMneAddAnnotation(nn.Module):
         if not isinstance(raw, mne.io.BaseRaw):
             raise TypeError("To call this pipeline you have to turn to MNE object first ")
 
-        if x.entry_id is None:
+        if x.eid is None:
             raise TypeError("A valid descriptor to identify the annotation is required")
 
         start, stop = x.interval
-        new_annotation = mne.Annotations(onset=[start], duration=[stop - start], description=x.entry_id, orig_time=None)
+        new_annotation = mne.Annotations(onset=[start], duration=[stop - start], description=x.eid, orig_time=None)
         existing = getattr(raw, 'annotations', None)
 
         merged = new_annotation if existing is None else existing + new_annotation

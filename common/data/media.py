@@ -16,7 +16,7 @@ _AST_OK = (str, bytes, bool, int, float, type(None))
 class Media(ABC):
     data: Any
     file_path: Optional[str]
-    entry_id: Optional[str]
+    eid: Optional[str]
 
     def as_mod_tuple(self) -> tuple[str, Media]:
         return self.modality_code(), self
