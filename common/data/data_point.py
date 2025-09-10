@@ -130,11 +130,15 @@ class AgnosticDatasetPoint(DatasetDataPoint):
                 # Custom dict logic. Should add classname to it for restore?
                 value = value.to_dict_new()
 
-            if not isinstance(value, dict):
-                continue
-            o = o | {attr: value}
+            o |= {attr: value}
 
         return o
+
+    def __getitem__(self, item: str):
+        return getattr(self, item)
+
+    def __setitem__(self, key, value):
+        self.__setattr__(key, value)
 
     @staticmethod
     def get_identifier() -> str:
@@ -157,3 +161,41 @@ class AgnosticDatasetPoint(DatasetDataPoint):
                 objects.append((attr, value))
         # Flexible to any new structure
         return AgnosticDatasetPoint(o["eid"], *objects)
+
+    def export(self, base_path: str = None, *exceptions: str, only: str = None):
+        # Only one execution branch
+        if only is not None and only in self.__dict__.items():
+            attr = self.__getattribute__(only)
+            if isinstance(attr, Media) or hasattr(attr, "export"):
+                attr.export(base_path)
+                return
+
+        # All except the exceptions
+        for attr, value in self.__dict__.items():
+            if not isinstance(value, Media) and not hasattr(value, "export"):
+                continue
+
+            # Ignore the currently processed element.
+            if attr in exceptions:
+                continue
+
+            value.export(base_path)
+
+
+class AgnosticDatasetTransformWrapper:
+    def __init__(self, name: str, *transforms: tuple[str, nn.Sequential]):
+        self.name = name
+        for (k, o) in transforms:
+            self.__setattr__(k, o)
+
+    def __getitem__(self, item: str):
+        return getattr(self, item)
+
+    def is_defined(self, item: str):
+        return item in self.__dict__
+
+    def call(self, x: AgnosticDatasetPoint):
+        for key, value in x.__dict__.items():
+            if self.is_defined(key):
+                # Call each transform that maps to x definition
+                x[key] = self[key](value)

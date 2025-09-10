@@ -2,7 +2,7 @@ from abc import abstractmethod, ABC
 
 import numpy as np
 
-from common.data.data_point import EEGDatasetDataPoint
+from common.data.eeg import EEG
 
 
 class Segmenter(ABC):
@@ -14,14 +14,14 @@ class Segmenter(ABC):
         self.max_length: int = max_length
 
     @abstractmethod
-    def compute_segments(self, sample: EEGDatasetDataPoint) -> list[tuple[int, int]]:
+    def compute_segments(self, sample) -> list[tuple[int, int]]:
         pass
 
 
 class FixedIntervalsSegmenter(Segmenter):
-    def compute_segments(self, sample: EEGDatasetDataPoint) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: EEG) -> list[tuple[int, int]]:
         # Good indicator of duration.
-        length = len(sample.eeg.data) / sample.eeg.fs
+        length = len(sample.data) / sample.fs
 
         # Given the length of the sample in time
         starts = np.arange(0, length, self.max_length).astype(int)

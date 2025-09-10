@@ -45,6 +45,10 @@ class Media(ABC):
 
         return cls(**restored)
 
+    @abstractmethod
+    def export(self, base_path: str, output_path_to_relative: str = None):
+        pass
+
     def to_dict(self, metadata_only: bool = False) -> dict:
         attrs = [f.name for f in dataclasses.fields(self)]
         metadata = {attr: getattr(self, attr) for attr in attrs if attr != "data" and attr != "file_path"}

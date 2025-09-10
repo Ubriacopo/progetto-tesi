@@ -1,6 +1,7 @@
 import os.path
 import traceback
 from abc import abstractmethod, ABC
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Text
@@ -10,7 +11,7 @@ import pandas as pd
 
 from common.data.audio import Audio
 from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, \
-    AgnosticDatasetPoint
+    AgnosticDatasetPoint, AgnosticDatasetTransformWrapper
 from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToMneRawFromChannels
 from common.data.loader import DataPointsLoader
@@ -44,7 +45,7 @@ class Preprocessor(ABC):
             # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
             for i in loader.scan():
                 key = i.get_identifier()
-                if existing_df is not None and existing_df[key].str.contains(i.entry_id).any():
+                if existing_df is not None and existing_df[key].str.contains(i.eid).any():
                     continue  # This element was already processed.
 
                 [docs.append(e) for e in self.preprocess(i)]
@@ -68,26 +69,26 @@ class Preprocessor(ABC):
 class SegmenterPreprocessor(Preprocessor):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
-                 ch_names: list[str], ch_types: list[str], pipeline):
+                 ch_names: list[str], ch_types: list[str], pipeline: AgnosticDatasetTransformWrapper):
         super().__init__(output_path)
         self.segmenter: Segmenter = segmenter
         # todo AgnosticDatasetTransformWrapper
-        self.pipeline: EEGDatasetTransformWrapper = pipeline
+        self.pipeline: AgnosticDatasetTransformWrapper = pipeline
         # EEG mapping for mne
         self.ch_names: list[str] = ch_names
         self.ch_types: list[str] = ch_types
 
     def preprocess(self, x: AgnosticDatasetPoint) -> AgnosticDatasetPoint | list[AgnosticDatasetPoint]:
         original_sample_id = x.eid
-        if EEG.modality_code() not in x:
+        if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
 
-        eeg = getattr(x, EEG.modality_code())
-        if eeg.data.shape[0] != len(self.ch_names):
-            eeg.data = eeg.data.T  # Transpose
-
-        assert eeg.data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
-        eeg = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(eeg)
+        if x[EEG.modality_code()].data.shape[0] != len(self.ch_names):
+            x[EEG.modality_code()].data = x[EEG.modality_code()].data.T  # Transpose
+        assert x[EEG.modality_code()].data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
+        x[EEG.modality_code()] = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(
+            x[EEG.modality_code()]
+        )
 
         # todo rework
         segments: list[tuple[int, int]] = self.segmenter.compute_segments(x)
@@ -95,12 +96,14 @@ class SegmenterPreprocessor(Preprocessor):
         x_out_folder = self.output_path + x.eid + "/"
         Path(x_out_folder).mkdir(parents=True, exist_ok=True)
         x_segments = [self.preprocess_segment(x, idx, segment, x_out_folder) for idx, segment in enumerate(segments)]
+
         eeg_out_path: str = self.output_path + f'{original_sample_id}_raw.fif'
-        eeg.data.save(eeg_out_path, overwrite=True, split_size="2GB")
+        x.export(eeg_out_path, only=EEG.modality_code())
 
         for x_segment in x_segments:
             eeg_segment = getattr(x_segment, EEG.modality_code())
             eeg_segment.file_path = os.path.relpath(Path(eeg_out_path).resolve(), self.output_path)
+            x_segment.__setattr__(EEG.modality_code(), eeg_segment)
 
         return x_segments
 
@@ -111,16 +114,23 @@ class SegmenterPreprocessor(Preprocessor):
             segment = (segment[0].item(), segment[1].item())
 
         nid = x.eid + "_" + str(idx)
-        # todo clone an existing agnostic dataset point
-        y = AgnosticDatasetPoint(
-            nid
-        )
+
+        y = deepcopy(x)
+        # Update id of the copy as it is working on other items.
+        y.eid = nid
+
+        for arg, value in y.__dict__.items():
+            if hasattr(value, "interval"):
+                value.__setattr__("interval", segment)
+            if hasattr(value, "eid"):
+                value.__setattr__("eid", nid)
 
         if self.pipeline is not None:
             # todo cambia call pipelines e self pipeline`
-            y = call_pipelines(y, self.pipeline)
+            y = self.pipeline.call(x)
+
         # todo metodo per sportare le modalità che lo supportano
-        y.export(self.output_path)
+        y.export(out_folder)
         return y
 
 

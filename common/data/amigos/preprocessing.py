@@ -5,16 +5,16 @@ from torch import nn
 from common.data.amigos.config import AmigosConfig
 from common.data.amigos.loader import AmigosPointsLoader
 from common.data.audio.transforms import SubclipAudio
-from common.data.data_point import EEGDatasetTransformWrapper
+from common.data.data_point import EEGDatasetTransformWrapper, AgnosticDatasetTransformWrapper
 from common.data.eeg.transforms import EEGMneAddAnnotation
-from common.data.preprocessing import EEGSegmenterPreprocessor
+from common.data.preprocessing import SegmenterPreprocessor
 from common.data.sampler import Segmenter, FixedIntervalsSegmenter
 from common.data.video.transforms import UnbufferedResize, SubclipVideo
 
 
 # todo ma serve? Non definisce logica sua. come ihrentiacen potrei fare composition
 #   Sarebbe factory
-class AmigosPreprocessor(EEGSegmenterPreprocessor):
+class AmigosPreprocessor(SegmenterPreprocessor):
     @staticmethod
     def run_default(input_path: str, output_path: str, max_length: int = 8):
         return AmigosPreprocessor.default(output_path, max_length).run(AmigosPointsLoader(input_path))
@@ -24,26 +24,18 @@ class AmigosPreprocessor(EEGSegmenterPreprocessor):
         return AmigosPreprocessor(
             output_path=output_path,
             segmenter=FixedIntervalsSegmenter(max_length),
-            sample_pipeline=None,
-            split_pipeline=EEGDatasetTransformWrapper(
-                name="preprocessing-default",
-                vid_transform=nn.Sequential(
-                    UnbufferedResize((260, 260)),
-                    SubclipVideo(),
-                ),
-                eeg_transform=nn.Sequential(
-                    EEGMneAddAnnotation(),
-                ),
-                aud_transform=nn.Sequential(
-                    SubclipAudio()
-                )
+            pipeline=AgnosticDatasetTransformWrapper(
+                "preprocessing-default",
+                ("vid", nn.Sequential(UnbufferedResize((260, 260)), SubclipVideo(), )),
+                ("eeg", nn.Sequential(EEGMneAddAnnotation(), )),
+                ("aud", nn.Sequential(SubclipAudio()))
             )
         )
 
     def __init__(self, output_path: str, segmenter: Segmenter,
-                 sample_pipeline: EEGDatasetTransformWrapper = None, split_pipeline: EEGDatasetTransformWrapper = None):
+                 pipeline: AgnosticDatasetTransformWrapper = None):
         super().__init__(
-            output_path, segmenter, AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES, sample_pipeline, split_pipeline
+            output_path, segmenter, AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES, pipeline
         )
 
 
