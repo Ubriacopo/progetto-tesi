@@ -15,7 +15,7 @@ class EEGMediaDataset(torch.utils.data.Dataset, ABC):
     def __getitem__(self, idx: int) -> EEGDatasetDataPoint:
         pass
 
-
+# TODO Agnostic one too
 class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
     def __init__(self, dataset_spec_file: str, transforms: EEGDatasetTransformWrapper, selected_device: device = None):
         super().__init__()
