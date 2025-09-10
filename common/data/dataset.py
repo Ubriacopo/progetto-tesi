@@ -16,6 +16,19 @@ class EEGMediaDataset(torch.utils.data.Dataset, ABC):
         pass
 
 # TODO Agnostic one too
+# Embeddings ready is our choice
+class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset_spec_file: str, selected_device: device = None):
+        self.device = selected_device
+        if selected_device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.base_path: str = str(Path(dataset_spec_file).parent)
+
+    def __getitem__(self, idx: int):
+        pass
+
+
+
 class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
     def __init__(self, dataset_spec_file: str, transforms: EEGDatasetTransformWrapper, selected_device: device = None):
         super().__init__()
