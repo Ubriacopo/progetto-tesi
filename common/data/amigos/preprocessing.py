@@ -66,14 +66,16 @@ class AmigosPreprocessorFactory:
                 ),
                 (
                     Audio.modality_code(),
+                    # todo continua qui
                     nn.Sequential(
                         SubclipAudio(),
                         AudioToTensor(),
                         ToMono(),
                         Resample(44000, 16000),
                         AudioZeroMasking(8, 16000),
-                        Lambda(lambda x: x.unsqueeze(0)),
-                        W2VBertFeatureExtractorTransform(),
+                        # Lambda(lambda x: x.unsqueeze(0)),
+                        W2VBertFeatureExtractorTransform(force_time_seq=True),
+                        # tood unsqueeze non va prima
                         W2VBertFoundationEmbedder()
                     )
                 )

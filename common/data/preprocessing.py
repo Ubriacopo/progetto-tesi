@@ -49,7 +49,7 @@ class Preprocessor(ABC, Generic[T]):
                 existing_df = pd.read_csv(existing_path)
 
             docs: list[dict] = []
-
+            # todo make parent directory
             # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
             for i in loader.scan():
                 key = i.get_identifier()
