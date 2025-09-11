@@ -123,9 +123,9 @@ class ViVitImageProcessorTransform(nn.Module):
 
 
 class ViVitFeatureExtractorTransform(nn.Module):
-    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False, device=None):
         super().__init__()
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model = VivitForVideoClassification.from_pretrained(model_name, device_map=device)
         self.force_time_seq = force_time_seq
 

@@ -113,11 +113,9 @@ class EEGToTimePatches(nn.Module):
         if T > self.max_segments:
             # Center crop. Alternative would be sliding window, but we would be moving towards
             # the model (CBraMod needs to be involved or something else)
-            # TODO: Sliding Window give a shot if long signals.
-            # TODO Non è robusto a valori particolari
             pad = int((d - self.max_points) / 2)
             x = x[:, pad:d - pad]
-            x = x[:self.max_points]  # To be sure we took the correct number of points
+            x = x[:, :self.max_points]  # To be sure we took the correct number of points
             x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
 
         if T == self.max_segments:

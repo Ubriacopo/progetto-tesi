@@ -19,7 +19,7 @@ class W2VBertFoundationEmbedder(FoundationEmbedder):
 
         input_features = x.input_features
         attn_mask = x.attention_mask
-
+        # todo lavora su questo
         if self.for_time_series:
             input_features = rearrange(x.input_features, "b T p d -> (b T) p d")
             attn_mask = rearrange(x.attention_mask, "b T p -> (b T) p")

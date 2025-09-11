@@ -13,11 +13,17 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
     def forward(self, x, mask=None) -> torch.Tensor:
         # TODO: Masking
         x = x.to(self.base_model.device)
+        x = x.pixel_values
+
+        if len(x.shape) == 4:
+            # Add a virtual batch
+            x = x.unsqueeze(0)
+
         if self.model_is_frozen:
             with torch.no_grad():
-                y = self.base_model(x.pixel_values)
+                y = self.base_model(x)
         else:
-            y = self.base_model(x.pixel_values)
+            y = self.base_model(x)
 
         y = y.last_hidden_state  # Take the real values.
         # Drop the [CLS] token

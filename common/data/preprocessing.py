@@ -3,10 +3,11 @@ import traceback
 from abc import abstractmethod, ABC
 from dataclasses import replace
 from pathlib import Path
-from typing import Optional, Text
+from typing import Optional, Text, TypeVar, Generic
 
 import numpy as np
 import pandas as pd
+import torch
 
 from common.data.audio import Audio
 from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, \
@@ -14,13 +15,17 @@ from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDat
 from common.data.eeg import EEG
 from common.data.eeg.transforms import EEGToMneRawFromChannels
 from common.data.loader import DataPointsLoader
+from common.data.media import sanitize_for_ast
 from common.data.sampler import Segmenter
+from common.data.utils import build_tensor_dict
 from common.data.video import Video
 
 SPEC_FILE_NAME: str = "spec.csv"
 
+T = TypeVar("T")
 
-class Preprocessor(ABC):
+
+class Preprocessor(ABC, Generic[T]):
     def __init__(self, output_path: str):
         """
         Creates a processed dataset in a target folder. Info of the new ds are contained in the spec.csv
@@ -28,7 +33,11 @@ class Preprocessor(ABC):
         self.output_path: str = output_path
 
     @abstractmethod
-    def preprocess(self, x: DatasetDataPoint) -> DatasetDataPoint | list[DatasetDataPoint]:
+    def preprocess(self, x: T) -> dict | list[dict]:
+        pass
+
+    @abstractmethod
+    def export(self, x: list[T], output_path: str) -> None:
         pass
 
     def run(self, loader: DataPointsLoader) -> bool:
@@ -39,7 +48,7 @@ class Preprocessor(ABC):
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
 
-            docs: list[DatasetDataPoint] = []
+            docs: list[dict] = []
 
             # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
             for i in loader.scan():
@@ -48,7 +57,7 @@ class Preprocessor(ABC):
                     continue  # This element was already processed.
 
                 [docs.append(e) for e in self.preprocess(i)]
-                df = pd.DataFrame([d.to_dict() for d in docs])
+                df = pd.DataFrame([d for d in docs])
                 if existing_df is not None:
                     df = pd.concat([df, existing_df], ignore_index=True)
 
@@ -65,28 +74,18 @@ class Preprocessor(ABC):
             return False
 
 
-"""
-    TODO: Era troppo bello pensare di fare una cosa cosi.
-        Ci serve almeno una fn per salvare i record generati. -> Abstract method o comunque gestione di torch like structures che salvo in "database".
-        Problema dello split in segmenti: Posso fare alcuni step prima?
-        Problema: Estrazione testo da audio come faccio?
-"""
-
-
-class SegmenterPreprocessor(Preprocessor):
+class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
                  ch_names: list[str], ch_types: list[str], pipeline: AgnosticDatasetTransformWrapper):
         super().__init__(output_path)
         self.segmenter: Segmenter = segmenter
-        # todo AgnosticDatasetTransformWrapper
         self.pipeline: AgnosticDatasetTransformWrapper = pipeline
         # EEG mapping for mne
         self.ch_names: list[str] = ch_names
         self.ch_types: list[str] = ch_types
 
-    def preprocess(self, x: AgnosticDatasetPoint) -> AgnosticDatasetPoint | list[AgnosticDatasetPoint]:
-        original_sample_id = x.eid
+    def preprocess(self, x: AgnosticDatasetPoint) -> dict | list[dict]:
         if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
 
@@ -95,49 +94,42 @@ class SegmenterPreprocessor(Preprocessor):
         assert x[EEG.modality_code()].data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
         segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
 
-        x_out_folder = self.output_path + x.eid + "/"
-        Path(x_out_folder).mkdir(parents=True, exist_ok=True)
-        x_segments = [self.preprocess_segment(x, idx, segment, x_out_folder) for idx, segment in enumerate(segments)]
+        x_segments = [self.preprocess_segment(x, segment) for idx, segment in enumerate(segments)]
 
-        eeg_out_path: str = self.output_path + f'{original_sample_id}'
-        x.export(eeg_out_path, self.output_path, only=EEG.modality_code())
+        output_path: str = self.output_path + f'{x.eid}'
+        self.export(x_segments, output_path)
+        # Return file specification
+        return_segments = [
+            {"index": idx, x.get_identifier(): x.eid, "segment": segment}
+            for idx, (x, segment) in enumerate(zip(x_segments, segments))
+        ]
+        return_segments = sanitize_for_ast(return_segments)
+        return return_segments
 
-        # EEG data are collected in files.
-        for x_segment in x_segments:
-            x_segment[EEG.modality_code()].file_path = x[EEG.modality_code()].file_path
-        """
-        TODO: Qualcosa del genere: MOLTO BUONO cosi
-        torch.save({
-            'eeg': torch.stack([sample['eeg'] for sample in a]),  # (17, 14, 8, 200)
-            'vid': torch.stack([sample['vid'] for sample in a]),   # (17, 400)
-            EFFICENTE anche cosi quindi posso tnere le mask e tutto
-            'aud': {
-                "in":torch.stack([sample['aud']["input_features"] for sample in a]),
-                "attn": torch.stack([sample['aud']["attention_mask"] for sample in a])
-            }
-        }, 'batched_file.pt')
-        """
-        return x_segments
-
-    def preprocess_segment(self, x: AgnosticDatasetPoint, idx: int,
-                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray], out_folder: str) \
-            -> AgnosticDatasetPoint:
+    def preprocess_segment(self, x: AgnosticDatasetPoint,
+                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray]) -> AgnosticDatasetPoint:
         if isinstance(segment[0], np.ndarray):
             segment = (segment[0].item(), segment[1].item())
 
-        y = x.clone(x.eid + "_" + str(idx))
+        y = x.clone(x.eid)  # entry_id is useless for this approach
         for arg, value in y.__dict__.items():
             if hasattr(value, "interval"):
                 value.__setattr__("interval", segment)
 
-        if self.pipeline is not None:
-            y = self.pipeline.call(y)
-
-        y.export(out_folder, self.output_path, EEG.modality_code())
+        if self.pipeline is None:
+            raise ValueError("pipeline is required for preprocessing")
+        y = self.pipeline.call(y)
         return y
+
+    def export(self, segments: list[AgnosticDatasetPoint], output_path: str):
+        objects = [s.to_dict() for s in segments]
+        torch.save(build_tensor_dict(objects), output_path + ".pt")
 
 
 class EEGSegmenterPreprocessor(Preprocessor):
+    def export(self, x: list[DatasetDataPoint | dict], output_path: str):
+        pass
+
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
                  ch_names: list[str], ch_types: list[str],
@@ -154,7 +146,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
         self.ch_names: list[str] = ch_names
         self.ch_types: list[str] = ch_types
 
-    def preprocess(self, x: EEGDatasetDataPoint) -> list[DatasetDataPoint]:
+    def preprocess(self, x: EEGDatasetDataPoint) -> list[dict]:
         # Process output from x (in samples) will be stored under /{output_path]/{x._entry_id}+SUFFIX
         original_sample_id = x.entry_id
 
@@ -184,7 +176,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
         for x_segment in x_segments:
             x_segment.eeg.file_path = os.path.relpath(Path(eeg_out_path).resolve(), self.output_path)
 
-        return x_segments
+        return [x.to_dict() for x in x_segments]
 
     def preprocess_segment(self, x: EEGDatasetDataPoint, idx: int,
                            segment: tuple[int | float | np.ndarray, int | float | np.ndarray], out_folder: str) \
