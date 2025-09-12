@@ -8,6 +8,7 @@ from torch import nn
 from transformers import AutoFeatureExtractor
 
 from .audio import Audio
+from ..transform import SequenceResampler, IDENTITY
 
 
 def check_audio_data(x, data_type: type):
@@ -90,10 +91,39 @@ class AudioZeroMasking(nn.Module):
             return x if not transposed else x.T
 
         if x_points < self.max_data_points:
-            x = torch.cat([x, torch.zeros(1, self.max_data_points - x_points)], dim=-1)
+            x = torch.cat([x, torch.zeros(x.shape[0], self.max_data_points - x_points)], dim=-1)
             return x if not transposed else x.T
 
         raise ValueError("Somehow you got here how can that be!")
+
+
+class AudioSequenceResampler(nn.Module):
+    def __init__(self, original_fs: int, sequence_duration_seconds: int,
+                 resampler: nn.Module = IDENTITY, channels_first: bool = False):
+        super().__init__()
+        self.sequence_length = original_fs * sequence_duration_seconds
+        self.resampler: nn.Module = resampler
+        self.channels_first = channels_first
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.channels_first:
+            x = x.T
+
+        segments = int(x.shape[0] / self.sequence_length)
+        if x.shape[0] % self.sequence_length != 0:
+            segments += 1
+
+        y: Optional[torch.Tensor] = None
+        for i in range(segments):
+            x_i = x[i * self.sequence_length:(i + 1) * self.sequence_length]
+            res = self.resampler(x_i)
+            if self.channels_first:
+                res = res.T
+            # We have new dimension that records the sequence.
+            res = res.unsqueeze(0)
+            y: torch.Tensor = torch.cat((y, res)) if y is not None else res
+
+        return y
 
 
 class ComputeFeatureHubert(nn.Module):
@@ -113,8 +143,10 @@ class W2VBertFeatureExtractorTransform(nn.Module):
         self.force_time_seq = force_time_seq
 
     def forward(self, x: torch.Tensor):
-        o = self.extractor(x, return_tensors="pt", padding=True)
+        if len(x.shape) == 3:
+            x = x.unbind(0)
 
+        o = self.extractor(x, return_tensors="pt", padding=True)
         if not self.force_time_seq:
             o["input_features"] = o["input_features"].squeeze()
             o["attention_mask"] = o["attention_mask"].squeeze()

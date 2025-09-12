@@ -13,8 +13,6 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
     def forward(self, x, mask=None) -> torch.Tensor:
         # TODO: Masking
         x = x.to(self.base_model.device)
-        x = x.pixel_values
-
         if len(x.shape) == 4:
             # Add a virtual batch
             x = x.unsqueeze(0)
@@ -25,13 +23,10 @@ class ViViTFoundationEmbedder(FoundationEmbedder):
         else:
             y = self.base_model(x)
 
-        y = y.last_hidden_state  # Take the real values.
+        # Take the real values.
+        y = y.last_hidden_state
         # Drop the [CLS] token
         tokens = y[:, 1:, :]
-
-        # tubelet = self.base_model.config.tubelet_size[-1]
-        # tokens = rearrange(tokens, "b (F p) D -> b F p D", F=tubelet)
-
         return tokens
 
     def get_output_shape(self, b: int = -1) -> tuple[int, ...]:

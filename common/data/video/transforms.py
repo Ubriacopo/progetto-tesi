@@ -1,11 +1,11 @@
 from dataclasses import replace
-from typing import Literal
+from typing import Literal, Optional
 
 import torch
 from moviepy import VideoFileClip
 from torch import nn
 from torchcodec.decoders import VideoDecoder
-from transformers import VivitImageProcessor, VivitModel, VivitForVideoClassification
+from transformers import VivitImageProcessor, VivitForVideoClassification
 
 from .video import Video
 
@@ -54,15 +54,34 @@ class SubclipVideo(nn.Module):
         return replace(x, data=x.data.subclipped(x.interval[0], x.interval[1]))
 
 
+class SequenceResampling(nn.Module):
+    def __init__(self, original_fps: int, sequence_duration_seconds: int, frames_resampler: nn.Module):
+        super().__init__()
+        self.sequence_length = original_fps * sequence_duration_seconds
+        self.frames_resampler = frames_resampler
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        T, c, h, w = x.shape
+        segments = T / self.sequence_length
+        points = x.unbind(0)
+        y: Optional[torch.Tensor] = None
+        for i in range(int(segments)):
+            segment_points = points[i * self.sequence_length:(i + 1) * self.sequence_length]
+            res = self.frames_resampler(torch.stack(segment_points))
+            res = res.unsqueeze(0)  # We have new dimension that records the sequence.
+            y: torch.Tensor = torch.cat((y, res)) if y is not None else res
+        return y
+
+
 class RegularFrameResampling(nn.Module):
     def __init__(self, max_length: int, device="cpu",
-                 padding: Literal['zero', 'none'] = 'zero', drop_mask: bool = True):
+                 padding: Literal['zero', 'last', 'none'] = 'zero', drop_mask: bool = True):
         super().__init__()
         self.max_length: int = max_length
         self.device = device
 
         # Possible padding choices
-        self.padding: Literal['zero', 'none'] = padding
+        self.padding: Literal['zero', 'last', 'none'] = padding
         self.drop_mask: bool = drop_mask
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -82,6 +101,13 @@ class RegularFrameResampling(nn.Module):
             # Video is not long enough so we need to pad
             pad = torch.zeros(self.max_length - T, c, h, w)
             # Add the missing frames
+            x = torch.cat([x, pad])
+            mask = torch.zeros(self.max_length, dtype=torch.bool, device=x.device)
+            mask[:T] = True  # We are padding right
+            return (x, mask) if not self.drop_mask else x
+
+        if self.padding == "last":
+            pad = x[-1].repeat(self.max_length - T)
             x = torch.cat([x, pad])
             mask = torch.zeros(self.max_length, dtype=torch.bool, device=x.device)
             mask[:T] = True  # We are padding right
