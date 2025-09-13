@@ -13,7 +13,7 @@ from common.data.audio import Audio
 from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, \
     AgnosticDatasetPoint, AgnosticDatasetTransformWrapper
 from common.data.eeg import EEG
-from common.data.eeg.transforms import EEGToMneRawFromChannels
+from common.data.eeg.transforms import EEGToMneRaw
 from common.data.loader import DataPointsLoader
 from common.data.media import sanitize_for_ast
 from common.data.sampler import Segmenter
@@ -45,11 +45,11 @@ class Preprocessor(ABC, Generic[T]):
             # Read an existing spec if it was computed.
             existing_df: Optional[pd.DataFrame] = None
             existing_path = self.output_path + SPEC_FILE_NAME
+            Path(self.output_path).mkdir(parents=True, exist_ok=True)
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
 
             docs: list[dict] = []
-            # todo make parent directory
             # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
             for i in loader.scan():
                 key = i.get_identifier()
@@ -154,7 +154,7 @@ class EEGSegmenterPreprocessor(Preprocessor):
             x.eeg.data = x.eeg.data.T  # Transpose
 
         assert x.eeg.data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
-        x.eeg = EEGToMneRawFromChannels(channel_names=self.ch_names, channel_types=self.ch_types)(x.eeg)
+        x.eeg = EEGToMneRaw(channel_names=self.ch_names, channel_types=self.ch_types)(x.eeg)
         if self.sample_pipeline is not None:
             x = call_pipelines(x, self.sample_pipeline)
 

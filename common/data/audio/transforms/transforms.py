@@ -7,8 +7,8 @@ from moviepy import AudioFileClip
 from torch import nn
 from transformers import AutoFeatureExtractor
 
-from .audio import Audio
-from ..transform import SequenceResampler, IDENTITY
+from common.data.audio.audio import Audio
+from common.data.transform import SequenceResampler, IDENTITY
 
 
 def check_audio_data(x, data_type: type):
@@ -63,6 +63,12 @@ class ToMono(nn.Module):
 
 class AudioZeroMasking(nn.Module):
     def __init__(self, max_length: int, fs: int, channels_first: bool = False):
+        """
+
+        :param max_length: Expressed in seconds.
+        :param fs:
+        :param channels_first:
+        """
         super().__init__()
         self.fs = fs
         self.max_length = max_length
@@ -120,7 +126,6 @@ class AudioSequenceResampler(nn.Module):
             if self.channels_first:
                 res = res.T
             # We have new dimension that records the sequence.
-            res = res.unsqueeze(0)
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
 
         return y

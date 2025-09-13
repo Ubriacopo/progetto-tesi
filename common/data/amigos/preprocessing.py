@@ -2,31 +2,32 @@ from __future__ import annotations
 
 from torch import nn
 from torchaudio.transforms import Resample
+from torchvision.transforms import v2
 from transformers import VivitImageProcessor
-import common.data.video.transforms as vidtransforms
-import common.data.audio.transforms as audtransforms
 
 from common.data.amigos.config import AmigosConfig
 from common.data.amigos.loader import AmigosPointsLoader
 from common.data.audio import Audio
-from common.data.audio.transforms import SubclipAudio, ToMono, W2VBertFeatureExtractorTransform, AudioZeroMasking, \
-    AudioToTensor
+from common.data.audio.transforms import AudioToTensor
+from common.data.audio.transforms.embedders import WavLmFeatureExtractorTransform, WavLmEmbedderTransform
+from common.data.audio.transforms.transforms import SubclipAudio, ToMono, AudioSequenceResampler, AudioZeroMasking
 from common.data.data_point import AgnosticDatasetTransformWrapper
 from common.data.eeg import EEG
-from common.data.eeg.transforms import EEGMneAddAnnotation, EEGToMneRawFromChannels, EEGResample, EEGToTensor, \
+from common.data.eeg.transforms import AddMneAddAnnotationTransform, EEGToMneRaw, EEGResample, EEGToTensor, \
     EEGToTimePatches
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
+from common.data.text import Text
+from common.data.transform import MultimediaPadding
 from common.data.video import Video
-from common.data.video.transforms import UnbufferedResize, SubclipVideo, VideoToTensor, RegularFrameResampling, \
-    ViVitImageProcessorTransform
+from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
+    ViVitImageProcessorTransform, VideoSequenceResampling
 from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
-from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedder
 
 
 def setup_vivit_image_processor() -> None:
     p = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
-    p.do_rescale, p.do_normalize, p.do_resize = True
+    p.do_rescale, p.do_normalize, p.do_resize = True, True, True
 
 
 class AmigosPreprocessorFactory:
@@ -35,37 +36,57 @@ class AmigosPreprocessorFactory:
         return AmigosPreprocessorFactory.default(output_path, max_length).run(AmigosPointsLoader(input_path))
 
     @staticmethod
-    def interleaved(output_path: str, max_length: int = 8):
+    def interleaved(output_path: str, max_length: int = 8, sub_media_max_length_seconds: int = 2):
         setup_vivit_image_processor()
+
+        target_fs = 200
+        eeg_transform = nn.Sequential(
+            EEGToMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
+            AddMneAddAnnotationTransform(),
+            EEGResample(target_fs, AmigosConfig.original_eeg_fs),
+            EEGToTensor(),
+            EEGToTimePatches(target_fs),
+        )
 
         vid_transform = nn.Sequential(
             # TODO Forse serve unbuffered resize per evitare di caricare troppa roba
-            vidtransforms.VideoToTensor(),
-            vidtransforms.ViVitImageProcessorTransform(),
-            vidtransforms.SequenceResampling(
-                original_fps=25, sequence_duration_seconds=2,
-                frames_resampler=vidtransforms.RegularFrameResampling(32, drop_mask=True)
+            SubclipVideo(),
+            VideoToTensor(),
+            ViVitImageProcessorTransform(),
+            v2.Lambda(lambda x: x.pixel_values),
+            VideoSequenceResampling(
+                original_fps=AmigosConfig.original_vid_fps, sequence_duration_seconds=sub_media_max_length_seconds,
+                frames_resampler=RegularFrameResampling(32, drop_mask=True)
             ),
-            ViViTFoundationEmbedder()
+            ViViTFoundationEmbedder(),
+            MultimediaPadding(int(max_length / sub_media_max_length_seconds)),
         )
 
+        target_audio_fs = 16000
         aud_transform = nn.Sequential(
-            audtransforms.AudioSequenceResampler(
-                original_fs=44100, sequence_duration_seconds=2,
-                resampler=Resample(44000, 16000)),
-            AudioZeroMasking(8, 16000),
-            W2VBertFeatureExtractorTransform(force_time_seq=True),
-            W2VBertFoundationEmbedder()
+            SubclipAudio(),
+            AudioToTensor(),
+            ToMono(),
+            AudioSequenceResampler(
+                original_fs=44100, sequence_duration_seconds=sub_media_max_length_seconds,
+                resampler=nn.Sequential(
+                    Resample(AmigosConfig.original_aud_fs, target_audio_fs),
+                    AudioZeroMasking(sub_media_max_length_seconds, target_audio_fs, channels_first=False),
+                )
+            ),
+            WavLmFeatureExtractorTransform(sampling_rate=target_audio_fs),
+            WavLmEmbedderTransform(),
+            MultimediaPadding(int(max_length / sub_media_max_length_seconds)),
         )
 
         return TorchExportsSegmenterPreprocessor(
             output_path=output_path,
             ch_names=AmigosConfig.CH_NAMES,
             ch_types=AmigosConfig.CH_TYPES,
-            # todo next is this
             segmenter=FixedIntervalsSegmenter(max_length),
             pipeline=AgnosticDatasetTransformWrapper(
                 "interleaved",
+                (EEG.modality_code(), eeg_transform),
                 (Video.modality_code(), vid_transform),
                 (Audio.modality_code(), aud_transform)
             )
@@ -74,7 +95,41 @@ class AmigosPreprocessorFactory:
     @staticmethod
     def default(output_path: str, max_length: int = 8) -> TorchExportsSegmenterPreprocessor:
         p = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
-        p.do_rescale, p.do_normalize, p.do_resize = True
+        p.do_rescale, p.do_normalize, p.do_resize = True, True, True
+
+        target_fs = 200
+        eeg_transform = nn.Sequential(
+            EEGToMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
+            AddMneAddAnnotationTransform(),
+            EEGResample(target_fs, AmigosConfig.original_eeg_fs),
+            EEGToTensor(),
+            EEGToTimePatches(target_fs),
+        )
+        max_vid_length = 32  # From ViVit
+        vid_transform = nn.Sequential(
+            SubclipVideo(),
+            VideoToTensor(),
+            ViVitImageProcessorTransform(),
+            v2.Lambda(lambda x: x.pixel_values),
+            # For ViVit masking makes no sense
+            RegularFrameResampling(max_length=max_vid_length, drop_mask=True),
+            ViViTFoundationEmbedder()
+        )
+
+        target_audio_fs = 16000
+        aud_transform = nn.Sequential(
+            SubclipAudio(),  # In the split interval
+            AudioToTensor(),  # Transform to a tensor object
+            ToMono(),  # Drop the dual channel audio and go to Mono
+            Resample(AmigosConfig.original_aud_fs, target_audio_fs),
+            AudioZeroMasking(max_length, target_audio_fs, channels_first=False),
+            WavLmFeatureExtractorTransform(max_length=max_length * target_audio_fs, sampling_rate=target_audio_fs),
+            WavLmEmbedderTransform(),
+        )
+
+        txt_transform = nn.Sequential(
+
+        )
 
         # todo EmbeddingsGeneratingPreprocessor cosi gestisce logica di aggregazione?
         return TorchExportsSegmenterPreprocessor(
@@ -84,40 +139,10 @@ class AmigosPreprocessorFactory:
             segmenter=FixedIntervalsSegmenter(max_length),
             pipeline=AgnosticDatasetTransformWrapper(
                 "preprocessing-default",
-                (
-                    Video.modality_code(),
-                    nn.Sequential(
-                        VideoToTensor(),
-                        ViVitImageProcessorTransform(),
-                        RegularFrameResampling(32, drop_mask=True),
-                        ViViTFoundationEmbedder()
-                    )
-                ),
-                (
-                    EEG.modality_code(),
-                    nn.Sequential(
-                        EEGToMneRawFromChannels(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
-                        EEGMneAddAnnotation(),
-                        EEGResample(200, 128),
-                        EEGToTensor(),
-                        EEGToTimePatches(200),
-                    )
-                ),
-                (
-                    Audio.modality_code(),
-                    # todo continua qui
-                    nn.Sequential(
-                        SubclipAudio(),
-                        AudioToTensor(),
-                        ToMono(),
-                        Resample(44000, 16000),
-                        AudioZeroMasking(8, 16000),
-                        # Lambda(lambda x: x.unsqueeze(0)),
-                        W2VBertFeatureExtractorTransform(force_time_seq=True),
-                        # tood unsqueeze non va prima
-                        W2VBertFoundationEmbedder()
-                    )
-                )
+                (Video.modality_code(), vid_transform),
+                (EEG.modality_code(), eeg_transform),
+                (Audio.modality_code(), aud_transform),
+                (Text.modality_code(), txt_transform)
             )
         )
 
@@ -132,10 +157,3 @@ class AmigosPreprocessorFactory:
                 "preprocessing-VATE",
             ),
         )
-
-
-if __name__ == "__main__":
-    AmigosPreprocessorFactory.run_default(
-        "../../../resources/AMIGOS/",
-        "../../../resources/AMIGOS/processed/"
-    )

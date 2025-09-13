@@ -2,7 +2,7 @@ from common.data.audio.transforms import SubclipAudio
 from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.deap.config import DeapConfig
 from common.data.deap.loader import DeapPointsLoader
-from common.data.eeg.transforms import EEGMneAddAnnotation
+from common.data.eeg.transforms import AddMneAddAnnotationTransform
 from common.data.preprocessing import EEGSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.video.transforms import UnbufferedResize, SubclipVideo
@@ -26,7 +26,7 @@ class DeapPreprocessorFactory:
                     SubclipVideo(),
                 ),
                 eeg_transform=(
-                    EEGMneAddAnnotation(),
+                    AddMneAddAnnotationTransform(),
                 ),
                 aud_transform=(
                     SubclipAudio(),

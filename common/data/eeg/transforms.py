@@ -31,7 +31,7 @@ class EEGToTensor(nn.Module):
         return x
 
 
-class EEGToMneRawFromChannels(nn.Module):
+class EEGToMneRaw(nn.Module):
     def __init__(self, channel_names: list[str], channel_types: list[str], verbose: bool = False):
         super().__init__()
         self.channel_names: list[str] = channel_names
@@ -41,6 +41,7 @@ class EEGToMneRawFromChannels(nn.Module):
     # todo refactor
     def forward(self, x: EEG) -> EEG:
         if x.data is None:
+            print("The load branch was used")
             fif = mne.io.read_raw_fif(x.file_path)
             segments = find_segment_by_descriptor(fif, x.eid)
             if len(segments) == 0 or len(segments) > 1:
@@ -50,13 +51,16 @@ class EEGToMneRawFromChannels(nn.Module):
             x.data = raw
             return x
 
+        if x.data.shape[0] != len(self.channel_names):
+            x.data = x.data.T
+
         info = mne.create_info(ch_names=self.channel_names, ch_types=self.channel_types, sfreq=x.fs)
         raw = mne.io.RawArray(x.data, info=info, verbose=self.verbose)
         x.data = raw
         return x
 
 
-class EEGMneAddAnnotation(nn.Module):
+class AddMneAddAnnotationTransform(nn.Module):
     def forward(self, x: EEG):
         raw: mne.io.BaseRaw = x.data
         if not isinstance(raw, mne.io.BaseRaw):

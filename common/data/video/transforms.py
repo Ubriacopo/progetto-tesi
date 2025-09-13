@@ -3,7 +3,7 @@ from typing import Literal, Optional
 
 import torch
 from moviepy import VideoFileClip
-from torch import nn
+from torch import nn, dtype
 from torchcodec.decoders import VideoDecoder
 from transformers import VivitImageProcessor, VivitForVideoClassification
 
@@ -22,9 +22,10 @@ def check_video_data(x, data_type: type):
 
 
 class VideoToTensor(nn.Module):
-    def __init__(self, device="cpu"):
+    def __init__(self, device="cpu", tensor_dtype: dtype = torch.float32):
         super().__init__()
         self.device = device
+        self.tensor_dtype = tensor_dtype
 
     def forward(self, x: Video) -> torch.Tensor:
         frames: torch.Tensor = x.data
@@ -33,8 +34,7 @@ class VideoToTensor(nn.Module):
             frames = VideoDecoder(x.file_path, device=self.device)[:]
         elif isinstance(x.data, VideoFileClip):
             frames = torch.stack([torch.tensor(frame) for frame in x.data.iter_frames()])
-
-        return frames
+        return frames.type(dtype=self.tensor_dtype)
 
 
 class UnbufferedResize(nn.Module):
@@ -54,7 +54,7 @@ class SubclipVideo(nn.Module):
         return replace(x, data=x.data.subclipped(x.interval[0], x.interval[1]))
 
 
-class SequenceResampling(nn.Module):
+class VideoSequenceResampling(nn.Module):
     def __init__(self, original_fps: int, sequence_duration_seconds: int, frames_resampler: nn.Module):
         super().__init__()
         self.sequence_length = original_fps * sequence_duration_seconds
@@ -62,10 +62,14 @@ class SequenceResampling(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, c, h, w = x.shape
-        segments = T / self.sequence_length
+        segments = int(T / self.sequence_length)
+
+        if T % self.sequence_length != 0:
+            segments += 1
+
         points = x.unbind(0)
         y: Optional[torch.Tensor] = None
-        for i in range(int(segments)):
+        for i in range(segments):
             segment_points = points[i * self.sequence_length:(i + 1) * self.sequence_length]
             res = self.frames_resampler(torch.stack(segment_points))
             res = res.unsqueeze(0)  # We have new dimension that records the sequence.

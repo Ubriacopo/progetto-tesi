@@ -9,7 +9,7 @@ from common.data.amigos.config import AmigosConfig
 from common.data.audio.transforms import AudioZeroMasking, AudioToTensor, ToMono
 from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.dataset import KDEEGPdSpecMediaDataset
-from common.data.eeg.transforms import EEGToMneRawFromChannels, EEGResample, EEGToTensor, EEGToTimePatches
+from common.data.eeg.transforms import EEGToMneRaw, EEGResample, EEGToTensor, EEGToTimePatches
 from common.data.video import VideoToTensor, RegularFrameResampling
 from common.data.video.transforms import ViVitImageProcessorTransform
 from models.FEEG.transforms import W2VBertFeatureExtractorTransform
@@ -47,7 +47,7 @@ def kd_train_dataset(amigos_path: str):
                     ToMono(),
                 ],
                 eeg_transform=[
-                    EEGToMneRawFromChannels(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
+                    EEGToMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
                     EEGResample(200, 128),
                     EEGToTensor(),
                     EEGToTimePatches(200),

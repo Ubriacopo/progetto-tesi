@@ -33,3 +33,8 @@ class FixedIntervalsSegmenter(Segmenter):
         stops = stops[~overlapping]
 
         return list(zip(starts, stops))
+
+
+class EEGFeatureIntervalSegmenter(Segmenter):
+    def compute_segments(self, sample: EEG) -> list[tuple[int, int]]:
+        pass
