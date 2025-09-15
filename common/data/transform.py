@@ -37,6 +37,23 @@ class SequenceResampler(nn.Module, ABC):
         return y
 
 
+class Parallel(nn.Module):
+    def __init__(self, *modules: nn.Module, as_dict: bool = False, keys=None):
+        super().__init__()
+        self.branches = nn.ModuleList(modules)
+        # Output a dictionary or a tuple.
+        self.as_dict = as_dict
+        self.keys = keys
+
+    def forward(self, x):
+        outs = [m(x) for m in self.branches]
+        if self.as_dict:
+            if self.keys is None or len(self.keys) != len(outs):
+                raise ValueError("keys must match number of modules")
+            return {k: v for k, v in zip(self.keys, outs)}
+        return tuple(outs)
+
+
 class MultimediaPadding(nn.Module):
     def __init__(self, max_length: int, drop_mask: bool = False, padding: Literal['zero', 'none', 'last'] = 'zero'):
         super(MultimediaPadding, self).__init__()

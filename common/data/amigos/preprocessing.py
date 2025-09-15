@@ -18,7 +18,7 @@ from common.data.eeg.transforms import AddMneAddAnnotationTransform, EEGToMneRaw
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.text import Text
-from common.data.transform import MultimediaPadding
+from common.data.transform import MultimediaPadding, Parallel
 from common.data.video import Video
 from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
     ViVitImageProcessorTransform, VideoSequenceResampling
@@ -74,9 +74,20 @@ class AmigosPreprocessorFactory:
                     AudioZeroMasking(sub_media_max_length_seconds, target_audio_fs, channels_first=False),
                 )
             ),
-            WavLmFeatureExtractorTransform(sampling_rate=target_audio_fs),
-            WavLmEmbedderTransform(),
-            MultimediaPadding(int(max_length / sub_media_max_length_seconds)),
+            Parallel(
+                nn.Sequential(
+                    # TODO Text extract here
+                ),
+                nn.Sequential(
+                    WavLmFeatureExtractorTransform(sampling_rate=target_audio_fs),
+                    WavLmEmbedderTransform(),
+                    MultimediaPadding(int(max_length / sub_media_max_length_seconds))
+                )
+            ),
+        )
+
+        txt_transform = nn.Sequential(
+            # TODO: embed
         )
 
         return TorchExportsSegmenterPreprocessor(
