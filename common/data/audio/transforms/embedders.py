@@ -14,6 +14,7 @@ class FlattenFeatureExtractorOutput(nn.Module):
 
 
 # Mono audio is supposed.
+# todo merge con altro che tanto vanno sempre a braccetto.
 class WavLmFeatureExtractorTransform(nn.Module):
     def __init__(self, model_name: str = "microsoft/wavlm-base", sampling_rate: int = None, max_length: int = None):
         super(WavLmFeatureExtractorTransform, self).__init__()
@@ -23,7 +24,8 @@ class WavLmFeatureExtractorTransform(nn.Module):
         self.sampling_fs: int = sampling_rate
         self.max_length = max_length
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    # todo refactor che non mi piace cosi
+    def forward(self, x: torch.Tensor) -> BatchFeature:
         if len(x.shape) == 2:
             y: Optional[BatchFeature] = None
             # I don't know why but the feature extractor masking fails if I pass batched data.
@@ -46,14 +48,17 @@ class WavLmFeatureExtractorTransform(nn.Module):
 
 
 class WavLmEmbedderTransform(nn.Module):
-    def __init__(self, model_name: str = "microsoft/wavlm-base"):
+    def __init__(self, model_name: str = "microsoft/wavlm-base", device=None):
         super(WavLmEmbedderTransform, self).__init__()
-        self.model = WavLMModel.from_pretrained(model_name)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.model = WavLMModel.from_pretrained(model_name, device_map=self.device)
 
     def forward(self, x: BatchFeature) -> torch.Tensor:
+        x = x.to(self.device)
         with torch.no_grad():
             y = self.model(**x)
         return y.last_hidden_state
+
 
 # todo make tests out of this
 # Questo fa quello che dovrebbe

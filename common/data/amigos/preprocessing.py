@@ -18,6 +18,7 @@ from common.data.eeg.transforms import AddMneAddAnnotationTransform, EEGToMneRaw
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.text import Text
+from common.data.text.transforms import Wav2VecExtractFromAudio, Speech2TextExtract, MiniLMEmbedderTransform
 from common.data.transform import MultimediaPadding, Parallel
 from common.data.video import Video
 from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
@@ -49,7 +50,6 @@ class AmigosPreprocessorFactory:
         )
 
         vid_transform = nn.Sequential(
-            # TODO Forse serve unbuffered resize per evitare di caricare troppa roba
             SubclipVideo(),
             VideoToTensor(),
             ViVitImageProcessorTransform(),
@@ -76,18 +76,19 @@ class AmigosPreprocessorFactory:
             ),
             Parallel(
                 nn.Sequential(
-                    # TODO Text extract here
+                    # TODO Custom audio cleaning is to do to see improvements?
+                    Wav2VecExtractFromAudio(fs=target_audio_fs),  # Works a bit better.
+                    # Speech2TextExtract(target_audio_fs  ),
+                    MiniLMEmbedderTransform(),
+                    v2.Lambda(lambda x: x["data"]),  # Drop the mask (We generate a new one).
+                    MultimediaPadding(int(max_length / sub_media_max_length_seconds))
                 ),
                 nn.Sequential(
                     WavLmFeatureExtractorTransform(sampling_rate=target_audio_fs),
                     WavLmEmbedderTransform(),
                     MultimediaPadding(int(max_length / sub_media_max_length_seconds))
-                )
+                ), as_dict=True, keys={Text.modality_code(), Audio.modality_code()},
             ),
-        )
-
-        txt_transform = nn.Sequential(
-            # TODO: embed
         )
 
         return TorchExportsSegmenterPreprocessor(
@@ -99,8 +100,10 @@ class AmigosPreprocessorFactory:
                 "interleaved",
                 (EEG.modality_code(), eeg_transform),
                 (Video.modality_code(), vid_transform),
-                (Audio.modality_code(), aud_transform)
+                (Audio.modality_code(), aud_transform),
+                expand_nested=True, nested_keys={Text.modality_code(), Audio.modality_code()},
             )
+
         )
 
     @staticmethod
@@ -134,8 +137,16 @@ class AmigosPreprocessorFactory:
             ToMono(),  # Drop the dual channel audio and go to Mono
             Resample(AmigosConfig.original_aud_fs, target_audio_fs),
             AudioZeroMasking(max_length, target_audio_fs, channels_first=False),
-            WavLmFeatureExtractorTransform(max_length=max_length * target_audio_fs, sampling_rate=target_audio_fs),
-            WavLmEmbedderTransform(),
+            Parallel(
+                nn.Sequential(
+                    Wav2VecExtractFromAudio(fs=target_audio_fs),
+                    MiniLMEmbedderTransform(),
+                ),
+                nn.Sequential(
+                    WavLmFeatureExtractorTransform(sampling_rate=target_audio_fs),
+                    WavLmEmbedderTransform(),
+                ), as_dict=True, keys={Text.modality_code(), Audio.modality_code()},
+            ),
         )
 
         txt_transform = nn.Sequential(

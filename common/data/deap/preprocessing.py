@@ -1,10 +1,14 @@
-from common.data.audio.transforms import SubclipAudio
-from common.data.data_point import EEGDatasetTransformWrapper
+from torch import nn
+
+from common.data.audio import Audio
+from common.data.data_point import AgnosticDatasetTransformWrapper
 from common.data.deap.config import DeapConfig
 from common.data.deap.loader import DeapPointsLoader
+from common.data.eeg import EEG
 from common.data.eeg.transforms import AddMneAddAnnotationTransform
-from common.data.preprocessing import EEGSegmenterPreprocessor
+from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
+from common.data.video import Video
 from common.data.video.transforms import UnbufferedResize, SubclipVideo
 
 
@@ -15,21 +19,27 @@ class DeapPreprocessorFactory:
 
     @staticmethod
     def default(output_path: str, max_length: int = 8):
-        return EEGSegmenterPreprocessor(
+        return TorchExportsSegmenterPreprocessor(
             output_path=output_path,
             segmenter=FixedIntervalsSegmenter(max_length),
-            sample_pipeline=None,
-            split_pipeline=EEGDatasetTransformWrapper(
-                name="preprocessing-default",
-                vid_transform=(
-                    UnbufferedResize((260, 260)),
-                    SubclipVideo(),
+            pipeline=AgnosticDatasetTransformWrapper(
+                "preprocessing-default",
+                (
+                    Video.modality_code(),
+                    nn.Sequential(
+                        UnbufferedResize((260, 260)),
+                        SubclipVideo(),
+                    )
                 ),
-                eeg_transform=(
-                    AddMneAddAnnotationTransform(),
+                (
+                    EEG.modality_code(),
+                    nn.Sequential(
+                        AddMneAddAnnotationTransform()
+                    ),
                 ),
-                aud_transform=(
-                    SubclipAudio(),
+                (
+                    Audio.modality_code(),
+                    nn.Sequential()
                 )
             ),
             ch_names=DeapConfig.CH_NAMES,

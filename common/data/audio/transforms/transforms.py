@@ -1,6 +1,5 @@
 from typing import Optional
 
-import numpy as np
 import torch
 import torchaudio
 from moviepy import AudioFileClip
@@ -8,7 +7,7 @@ from torch import nn
 from transformers import AutoFeatureExtractor
 
 from common.data.audio.audio import Audio
-from common.data.transform import SequenceResampler, IDENTITY
+from common.data.transform import IDENTITY
 
 
 def check_audio_data(x, data_type: type):

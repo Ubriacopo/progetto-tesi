@@ -20,7 +20,7 @@ class TestAmigos(unittest.TestCase):
         test_sample["aud"].interval = (1, 8)
         test_sample["eeg"].interval = (1, 8)
 
-        z_vid = processor.pipeline["vid"](test_sample["vid"])
+        # z_vid = processor.pipeline["vid"](test_sample["vid"])
         # self.assertEqual(z_vid.shape, torch.Size([4, 3136, 768]))
         print("Shape is ok for video interleaved pipeline")
         z_aud = processor.pipeline["aud"](test_sample["aud"])

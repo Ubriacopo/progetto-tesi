@@ -16,8 +16,6 @@ class EEGMediaDataset(torch.utils.data.Dataset, ABC):
         pass
 
 
-# TODO Agnostic one too
-# Embeddings ready is our choice
 class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, selected_device: device = None):
         self.device = selected_device
@@ -27,6 +25,7 @@ class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
 
         df = pd.read_csv(dataset_spec_file, index_col=False)
         df.to_dict(orient="records")
+        # todo not cache everything.
         self.objects = [AgnosticDatasetPoint.from_dict(d, self.base_path) for d in df.to_dict(orient="records")]
 
     def __getitem__(self, idx: int):

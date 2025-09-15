@@ -3,13 +3,9 @@ from __future__ import annotations
 import ast
 import dataclasses
 from abc import abstractmethod, ABC
-from collections.abc import Mapping, Sequence
 from typing import Any, Optional
 
-import numpy as np
-import torch
-
-_AST_OK = (str, bytes, bool, int, float, type(None))
+from common.data.utils import sanitize_for_ast
 
 
 @dataclasses.dataclass
@@ -76,37 +72,3 @@ class Media(ABC):
         return sanitize_for_ast(data)
 
 
-def sanitize_for_ast(obj):
-    # primitives already fine
-    if isinstance(obj, _AST_OK):
-        return obj
-
-    # Numpy scalars -> Python scalars
-    if isinstance(obj, np.generic):
-        return obj.item()
-    # Numpy arrays -> Nested lists (0-d -> scalar)
-    if isinstance(obj, np.ndarray):
-        return obj.item() if obj.ndim == 0 else obj.tolist()
-    # Torch tensors -> Nested lists (0-d -> scalar)
-    if isinstance(obj, torch.Tensor):
-        return obj.item() if obj.ndim == 0 else obj.tolist()
-
-    # Dataclass -> To Dict First
-    if dataclasses.is_dataclass(obj):
-        return sanitize_for_ast(dataclasses.asdict(obj))
-
-    # Mappings
-    if isinstance(obj, Mapping):
-        return {(k if isinstance(k, _AST_OK) else str(k)): sanitize_for_ast(v) for k, v in obj.items()}
-
-    # Sequences (but not str/bytes which were caught above)
-    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
-        typ = tuple if isinstance(obj, tuple) else list
-        return typ(sanitize_for_ast(x) for x in obj)
-
-    # Sets
-    if isinstance(obj, set):
-        return {sanitize_for_ast(x) for x in obj}
-
-    # Default is str representation
-    return str(obj)

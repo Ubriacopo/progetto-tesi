@@ -199,8 +199,13 @@ class AgnosticDatasetPoint(DatasetDataPoint):
 
 
 class AgnosticDatasetTransformWrapper:
-    def __init__(self, name: str, *transforms: tuple[str, nn.Sequential]):
-        self.name = name
+    def __init__(self, name: str, *transforms: tuple[str, nn.Module],
+                 # If nested are to expand and what keys we want to expand
+                 expand_nested: bool = False, nested_keys: set[str] = None):
+        self.name: str = name
+        self.expand_nested: bool = expand_nested
+        self.nested_keys: Optional[set[str]] = nested_keys
+
         for (k, o) in transforms:
             self.__setattr__(k, o)
 
@@ -215,4 +220,11 @@ class AgnosticDatasetTransformWrapper:
             if self.is_defined(key):
                 # Call each transform that maps to x definition
                 x[key] = self[key](value)
+
+                # If the generation implies expanding keys (Example would be audio that generates text as well)
+                # they are iterated and expanded. I can only work if result of pipeline is dict like
+                if (self.expand_nested and isinstance(x[key], dict)
+                        and len(shared := self.nested_keys.intersection(x[key].keys())) != 0):
+                    for expand_key in shared:
+                        x[expand_key] = x[key].pop(expand_key)
         return x

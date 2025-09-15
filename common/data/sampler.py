@@ -37,4 +37,4 @@ class FixedIntervalsSegmenter(Segmenter):
 
 class EEGFeatureIntervalSegmenter(Segmenter):
     def compute_segments(self, sample: EEG) -> list[tuple[int, int]]:
-        pass
+        pass  # TODO
