@@ -1,23 +1,17 @@
-import os.path
 import traceback
 from abc import abstractmethod, ABC
-from dataclasses import replace
 from pathlib import Path
-from typing import Optional, Text, TypeVar, Generic
+from typing import Optional, TypeVar, Generic
 
 import numpy as np
 import pandas as pd
 import torch
 
-from common.data.audio import Audio
-from common.data.data_point import DatasetDataPoint, EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, \
-    AgnosticDatasetPoint, AgnosticDatasetTransformWrapper
+from common.data.data_point import AgnosticDatasetPoint, AgnosticDatasetTransformWrapper
 from common.data.eeg import EEG
-from common.data.eeg.transforms import EEGToMneRaw
 from common.data.loader import DataPointsLoader
 from common.data.sampler import Segmenter
 from common.data.utils import build_tensor_dict, sanitize_for_ast
-from common.data.video import Video
 
 SPEC_FILE_NAME: str = "spec.csv"
 
@@ -100,7 +94,7 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         # Return file specification
         return_segments = [
             {"index": idx, x.get_identifier(): x.eid, "segment": segment}
-            for idx, (x, segment) in enumerate(zip(x_segments, segments))
+            for idx, (seg, segment) in enumerate(zip(x_segments, segments))
         ]
         return_segments = sanitize_for_ast(return_segments)
         return return_segments
@@ -121,5 +115,5 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         return y
 
     def export(self, segments: list[AgnosticDatasetPoint], output_path: str):
-        objects = [s.to_dict() for s in segments]
+        objects = [s.to_dict() if hasattr(s, "to_dict") else s for s in segments]
         torch.save(build_tensor_dict(objects), output_path + ".pt")

@@ -201,10 +201,10 @@ class AgnosticDatasetPoint(DatasetDataPoint):
 class AgnosticDatasetTransformWrapper:
     def __init__(self, name: str, *transforms: tuple[str, nn.Module],
                  # If nested are to expand and what keys we want to expand
-                 expand_nested: bool = False, nested_keys: set[str] = None):
+                 expand_nested: bool = False, nested_keys: list[str] = None):
         self.name: str = name
         self.expand_nested: bool = expand_nested
-        self.nested_keys: Optional[set[str]] = nested_keys
+        self.nested_keys: Optional[list[str]] = nested_keys
 
         for (k, o) in transforms:
             self.__setattr__(k, o)
@@ -216,15 +216,17 @@ class AgnosticDatasetTransformWrapper:
         return item in self.__dict__
 
     def call(self, x: AgnosticDatasetPoint):
+        y = {}
         for key, value in x.__dict__.items():
             if self.is_defined(key):
                 # Call each transform that maps to x definition
-                x[key] = self[key](value)
+                y[key] = self[key](value)
 
                 # If the generation implies expanding keys (Example would be audio that generates text as well)
                 # they are iterated and expanded. I can only work if result of pipeline is dict like
-                if (self.expand_nested and isinstance(x[key], dict)
-                        and len(shared := self.nested_keys.intersection(x[key].keys())) != 0):
-                    for expand_key in shared:
-                        x[expand_key] = x[key].pop(expand_key)
-        return x
+                if self.expand_nested and isinstance(y[key], dict):
+                    for expand_key in self.nested_keys:
+                        if expand_key in y[key]:
+                            y[expand_key] = y[key].pop(expand_key)
+
+        return y

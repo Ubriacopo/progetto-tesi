@@ -18,7 +18,7 @@ from common.data.eeg.transforms import AddMneAddAnnotationTransform, EEGToMneRaw
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.text import Text
-from common.data.text.transforms import Wav2VecExtractFromAudio, Speech2TextExtract, MiniLMEmbedderTransform
+from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform
 from common.data.transform import MultimediaPadding, Parallel
 from common.data.video import Video
 from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
@@ -47,6 +47,7 @@ class AmigosPreprocessorFactory:
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             EEGToTensor(),
             EEGToTimePatches(target_fs),
+            # todo call CBraMod
         )
 
         vid_transform = nn.Sequential(
@@ -80,7 +81,6 @@ class AmigosPreprocessorFactory:
                     Wav2VecExtractFromAudio(fs=target_audio_fs),  # Works a bit better.
                     # Speech2TextExtract(target_audio_fs  ),
                     MiniLMEmbedderTransform(),
-                    v2.Lambda(lambda x: x["data"]),  # Drop the mask (We generate a new one).
                     MultimediaPadding(int(max_length / sub_media_max_length_seconds))
                 ),
                 nn.Sequential(
@@ -101,7 +101,7 @@ class AmigosPreprocessorFactory:
                 (EEG.modality_code(), eeg_transform),
                 (Video.modality_code(), vid_transform),
                 (Audio.modality_code(), aud_transform),
-                expand_nested=True, nested_keys={Text.modality_code(), Audio.modality_code()},
+                expand_nested=True, nested_keys=[Text.modality_code(), Audio.modality_code()],
             )
 
         )
@@ -164,8 +164,10 @@ class AmigosPreprocessorFactory:
                 (Video.modality_code(), vid_transform),
                 (EEG.modality_code(), eeg_transform),
                 (Audio.modality_code(), aud_transform),
-                (Text.modality_code(), txt_transform)
-            )
+                (Text.modality_code(), txt_transform),
+                expand_nested=True,
+                nested_keys=[Text.modality_code(), Audio.modality_code()],
+            ),
         )
 
     @staticmethod

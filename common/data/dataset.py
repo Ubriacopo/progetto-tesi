@@ -1,13 +1,13 @@
 import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 import pandas as pd
 import torch
 from torch import device, nn
 
-from common.data.data_point import EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines, AgnosticDatasetPoint
+from common.data.data_point import EEGDatasetDataPoint, EEGDatasetTransformWrapper, call_pipelines
 
 
 class EEGMediaDataset(torch.utils.data.Dataset, ABC):
@@ -17,21 +17,53 @@ class EEGMediaDataset(torch.utils.data.Dataset, ABC):
 
 
 class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_spec_file: str, selected_device: device = None):
+    def __init__(self, dataset_spec_file: str, selected_device: device = None, cache_in_ram: bool = False):
         self.device = selected_device
         if selected_device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.base_path: str = str(Path(dataset_spec_file).parent)
+        self.df = pd.read_csv(dataset_spec_file, index_col=False)
+        self.df.to_dict(orient="records")
 
-        df = pd.read_csv(dataset_spec_file, index_col=False)
-        df.to_dict(orient="records")
-        # todo not cache everything.
-        self.objects = [AgnosticDatasetPoint.from_dict(d, self.base_path) for d in df.to_dict(orient="records")]
+        self.cache_in_ram: bool = cache_in_ram
+        self.ram_cache = dict()
+
+    def extract_entry(self, dictionary: dict | torch.Tensor, return_dictionary: dict, index: int):
+        """
+        Recursively extract entries from nested dictionaries. (Data is partitioned by type and not by sample).
+
+        :param dictionary:
+        :param return_dictionary:
+        :param index:
+        :return:
+        """
+        for key, value in dictionary.items():
+            # Base case.
+            if isinstance(value, torch.Tensor):
+                return_dictionary[key] = value[index].squeeze().to(self.device)
+            # Decompose other dictionaries when met.
+            if isinstance(value, dict):
+                return_dictionary[key] = self.extract_entry(value, {}, index)
+
+        return return_dictionary
 
     def __getitem__(self, idx: int):
-        o = self.objects[idx]
-        # todo has to be numpy serializable
-        return o
+        # Descriptor.
+        sample = self.df.iloc[idx].to_dict()
+        inner_idx, eid, segment = sample["index"], sample["eid"], sample["segment"]
+        if self.cache_in_ram:
+            # TODO empty cache if saturated. and see if it is good.
+            self.ram_cache[eid] = torch.load(self.base_path + "/" + eid + ".pt", mmap=True, map_location='cpu')
+            o = self.ram_cache[eid]
+        else:
+            o = torch.load(self.base_path + "/" + eid + ".pt", mmap=True, map_location='cpu')
+
+        # for key in o take the tensor at position inner_idx
+        item = self.extract_entry(o, {}, inner_idx)
+        return item
+
+    def __len__(self):
+        return len(self.df)
 
 
 class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
@@ -51,7 +83,6 @@ class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
             raise ValueError("EEG transform must be defined")
 
         self.base_transforms: EEGDatasetTransformWrapper = transforms
-
         self.eeg_transform: Optional[nn.Sequential] = transforms.eeg_transform
         self.vid_transform: Optional[nn.Sequential] = transforms.vid_transform
         self.aud_transform: Optional[nn.Sequential] = transforms.aud_transform
