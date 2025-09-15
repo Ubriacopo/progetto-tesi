@@ -125,7 +125,6 @@ class RegularFrameResampling(nn.Module):
         raise NotImplementedError("Given padding modality is invalid and input requires one.")
 
 
-# toddo ma va in preprocessing questo?
 # todo da metter in embedder zone
 # todo visionare bene con time sequences.
 class ViVitImageProcessorTransform(nn.Module):

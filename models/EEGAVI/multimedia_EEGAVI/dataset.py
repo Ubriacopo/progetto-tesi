@@ -11,6 +11,7 @@ from models.FEEG.transforms import W2VBertFeatureExtractorTransform
 from common.data.video.transforms import ViVitImageProcessorTransform
 
 
+# todo riscrivere
 def kd_train_dataset(amigos_path: str):
     return StackDataset(
         KDEEGPdSpecMediaDataset(

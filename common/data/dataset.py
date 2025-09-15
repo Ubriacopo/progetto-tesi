@@ -66,6 +66,12 @@ class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
         return len(self.df)
 
 
+class KDAgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
+    pass  # todo vedere di fare.
+    # TODO: Mi serve? Ho i dati gia pronti mi basta usare stesso seed su Torch Dataloader. e averne 1 per modello.
+    #           Fino a idee contrarie che possono creare problemi mi sembra ragionevole e facile evitare KdDataset
+
+
 class EEGPdSpecMediaDataset(EEGMediaDataset, ABC):
     def __init__(self, dataset_spec_file: str, transforms: EEGDatasetTransformWrapper, selected_device: device = None):
         super().__init__()
