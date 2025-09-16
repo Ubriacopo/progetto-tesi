@@ -5,8 +5,8 @@ import torch
 from einops import rearrange
 from torch import nn
 
-from .eeg import EEG
-from .mne_utils import find_segment_by_descriptor
+from common.data.eeg.eeg import EEG
+from common.data.eeg.mne_utils import find_segment_by_descriptor
 
 
 class EEGToTensor(nn.Module):

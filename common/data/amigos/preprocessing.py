@@ -15,6 +15,7 @@ from common.data.data_point import AgnosticDatasetTransformWrapper
 from common.data.eeg import EEG
 from common.data.eeg.transforms import AddMneAddAnnotationTransform, EEGToMneRaw, EEGResample, EEGToTensor, \
     EEGToTimePatches
+from common.data.eeg.transforms.embedder import CBraModEmbedderTransform
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.text import Text
@@ -47,7 +48,8 @@ class AmigosPreprocessorFactory:
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             EEGToTensor(),
             EEGToTimePatches(target_fs),
-            # todo call CBraMod
+            # TODO verify
+            CBraModEmbedderTransform()
         )
 
         vid_transform = nn.Sequential(
