@@ -7,21 +7,12 @@ from torch import nn
 from transformers import AutoFeatureExtractor
 
 from common.data.audio.audio import Audio
+from common.data.audio.transforms.utils import check_audio_data
 from common.data.transform import IDENTITY
 
 
-def check_audio_data(x, data_type: type):
-    if not isinstance(x, Audio):
-        raise TypeError("Given object is not of required type Audio")
-
-    if x.data is None:
-        raise ValueError("Audio has to be loaded first.")
-
-    if not isinstance(x.data, data_type):
-        raise TypeError("Given audio object is not valid")
-
-
 class AudioToTensor(nn.Module):
+    # noinspection PyMethodMayBeStatic
     def forward(self, x: Audio):
         if x.data is None:
             x, waveform = torchaudio.load(x.file_path)
@@ -35,6 +26,7 @@ class AudioToTensor(nn.Module):
 
 
 class SubclipAudio(nn.Module):
+    # noinspection PyMethodMayBeStatic
     def forward(self, x: Audio):
         aud: AudioFileClip = x.data
         check_audio_data(x, AudioFileClip)
@@ -50,9 +42,8 @@ class ToMono(nn.Module):
 
     def __init__(self, dim: int = 1, keepdim: bool = False):
         super().__init__()
-
-        self.keepdim = keepdim
-        self.dim = dim
+        self.keepdim: bool = keepdim
+        self.dim: int = dim
 
     def forward(self, x: torch.Tensor):
         if not isinstance(x, torch.Tensor):
@@ -137,25 +128,6 @@ class ComputeFeatureHubert(nn.Module):
 
     def forward(self, x: torch.Tensor):
         return torchaudio.functional.resample(x, self.original_fs, torchaudio.pipelines.HUBERT_BASE.sample_rate)
-
-
-# todo visionare bene con time sequences.
-class W2VBertFeatureExtractorTransform(nn.Module):
-    def __init__(self, model: str = "facebook/w2v-bert-2.0", force_time_seq: bool = False):
-        super().__init__()
-        self.extractor = AutoFeatureExtractor.from_pretrained(model)
-        self.force_time_seq = force_time_seq
-
-    def forward(self, x: torch.Tensor):
-        if len(x.shape) == 3:
-            x = x.unbind(0)
-
-        o = self.extractor(x, return_tensors="pt", padding=True)
-        if not self.force_time_seq:
-            o["input_features"] = o["input_features"].squeeze()
-            o["attention_mask"] = o["attention_mask"].squeeze()
-
-        return o
 
 
 class HubertBaseFeatureExtractor(nn.Module):
