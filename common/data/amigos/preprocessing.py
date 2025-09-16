@@ -12,10 +12,10 @@ from common.data.audio.transforms import AudioToTensor
 from common.data.audio.transforms.embedders import WavLmFeatureExtractorTransform, WavLmEmbedderTransform
 from common.data.audio.transforms.transforms import SubclipAudio, ToMono, AudioSequenceResampler, AudioZeroMasking
 from common.data.data_point import AgnosticDatasetTransformWrapper
+from common.data.ecg.ecg import ECG
 from common.data.eeg import EEG
-from common.data.eeg.transforms import AddMneAddAnnotationTransform, EEGToMneRaw, EEGResample, EEGToTensor, \
-    EEGToTimePatches
-from common.data.eeg.transforms.embedder import CBraModEmbedderTransform
+from common.data.eeg.transforms import EEGResample, EEGToTensor, EEGDataAsMneRaw, AddMneAnnotation, EEGToTimePatches
+from common.data.eeg.transforms import CBraModEmbedderTransform
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.text import Text
@@ -43,13 +43,20 @@ class AmigosPreprocessorFactory:
 
         target_fs = 200
         eeg_transform = nn.Sequential(
-            EEGToMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
-            AddMneAddAnnotationTransform(),
+            EEGDataAsMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
+            AddMneAnnotation(),
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             EEGToTensor(),
             EEGToTimePatches(target_fs),
             # TODO verify
-            CBraModEmbedderTransform()
+            Parallel(
+                nn.Sequential(
+                    CBraModEmbedderTransform()
+                ),
+                nn.Sequential(
+                    # Transform to extract ECG data. todo
+                ), as_dict=True, keys={EEG.modality_code(), ECG.modality_code()}
+            ),
         )
 
         vid_transform = nn.Sequential(
@@ -103,7 +110,14 @@ class AmigosPreprocessorFactory:
                 (EEG.modality_code(), eeg_transform),
                 (Video.modality_code(), vid_transform),
                 (Audio.modality_code(), aud_transform),
-                expand_nested=True, nested_keys=[Text.modality_code(), Audio.modality_code()],
+                expand_nested=True,
+                nested_keys=[
+                    # TODO Auto risoluzione di casi in cui una chiave si trova in altra.
+                    Text.modality_code(),
+                    Audio.modality_code(),
+                    ECG.modality_code(),
+                    EEG.modality_code()
+                ],
             )
 
         )
@@ -115,8 +129,8 @@ class AmigosPreprocessorFactory:
 
         target_fs = 200
         eeg_transform = nn.Sequential(
-            EEGToMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
-            AddMneAddAnnotationTransform(),
+            EEGDataAsMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
+            AddMneAnnotation(),
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             EEGToTensor(),
             EEGToTimePatches(target_fs),

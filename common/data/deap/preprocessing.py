@@ -5,7 +5,8 @@ from common.data.data_point import AgnosticDatasetTransformWrapper
 from common.data.deap.config import DeapConfig
 from common.data.deap.loader import DeapPointsLoader
 from common.data.eeg import EEG
-from common.data.eeg.transforms import AddMneAddAnnotationTransform
+from common.data.eeg.transforms import AddMneAnnotation
+
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
 from common.data.video import Video
@@ -34,7 +35,7 @@ class DeapPreprocessorFactory:
                 (
                     EEG.modality_code(),
                     nn.Sequential(
-                        AddMneAddAnnotationTransform()
+                        AddMneAnnotation()
                     ),
                 ),
                 (

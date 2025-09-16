@@ -1,7 +1,5 @@
 import unittest
 
-import torch
-
 from common.data.amigos.loader import AmigosPointsLoader
 from common.data.amigos.preprocessing import AmigosPreprocessorFactory
 

@@ -4,9 +4,9 @@ import torch
 from einops import rearrange
 from torch import nn
 
-from common.model.embedding.embedder_adapter import EmbedderAdapter
 from common.model.layers.attention.x_attention import GatedCrossAttentionBlock
 from common.model.layers.base import ModalContextEncoder
+from common.model.layers.modality_stream import ModalityStream
 from models.EEGAVI.transforms import media_locs_single_item
 
 
@@ -14,10 +14,10 @@ class EEGAVI(nn.Module):
     def __init__(self,
 
                  target_size: int,
-                 pivot_modality: tuple[str, EmbedderAdapter],  # EEG
+                 pivot_modality: ModalityStream,  # EEG
 
                  supporting_size_embedding: int,
-                 supporting_modalities: list[tuple[str, EmbedderAdapter]],
+                 supporting_modalities: list[ModalityStream],
                  use_modality_encoder: bool,
 
                  cross_attention_blocks: int,
@@ -31,7 +31,7 @@ class EEGAVI(nn.Module):
 
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if use_modality_encoder:
-            modality_mappings = {e[0]: i for i, e in enumerate(supporting_modalities)}
+            modality_mappings = {e.get_code(): i for i, e in enumerate(supporting_modalities)}
             self.modality_encoder = ModalContextEncoder(supporting_size_embedding, modality_mappings)
         # TODO: random disabler for each supporting modality for training robustness
         # What about modality gating? Cross Attention handles it!
@@ -51,15 +51,16 @@ class EEGAVI(nn.Module):
         kd_outputs: dict = {}
         z_supports: list[torch.Tensor] = []
 
-        base = x[self.pivot_modality[0]]
-        base_mask = mask[:, modalities_idx.index(self.pivot_modality[0])] if mask is not None else None
+        base = x[self.pivot_modality.get_code()]
+        base_mask = mask[:, modalities_idx.index(self.pivot_modality.get_code())] if mask is not None else None
 
-        z_base = self.pivot_modality[1](base, mask=base_mask, use_kd=use_kd)
+        z_base = self.pivot_modality(base, mask=base_mask, use_kd=use_kd)
         if isinstance(z_base, tuple):
-            kd_outputs[self.pivot_modality[0]] = z_base[1]
+            kd_outputs[self.pivot_modality.get_code()] = z_base[1]
             z_base = z_base[0]
 
-        for key, adapter in self.supporting_modalities:
+        for adapter in self.supporting_modalities:
+            key = adapter.get_code()
             supp = x[key]
             mod_mask = mask[:, modalities_idx.index(key)] if mask is not None else None
 

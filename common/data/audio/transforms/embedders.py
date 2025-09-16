@@ -14,9 +14,7 @@ class FlattenFeatureExtractorOutput(nn.Module):
             x.attention_mask = x.attention_mask.squeeze()
         return x
 
-    # Mono audio is supposed.
-
-
+# Mono audio is supposed.
 class WavLmFeatureExtractorTransform(nn.Module):
     def __init__(self, model_name: str = "microsoft/wavlm-base", sampling_rate: int = None, max_length: int = None):
         super(WavLmFeatureExtractorTransform, self).__init__()

@@ -7,7 +7,7 @@ from torchvision.transforms import v2
 from common.data.amigos.config import AmigosConfig
 from common.data.audio.transforms import ComputeFeatureHubert, HubertBaseFeatureExtractor
 from common.data.data_point import EEGDatasetTransformWrapper
-from common.data.video.transforms import ViVitImageProcessorTransform, ViVitFeatureExtractorTransform
+from common.data.video.transforms import ViVitImageProcessorTransform, ViVitForVideoClassificationEmbedderTransform
 
 
 # Transforms per AMIGOS
@@ -18,7 +18,7 @@ def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
             FaceCrop(),
             v2.Lambda(lambda x: x.to("cuda")),
             ViVitImageProcessorTransform(),
-            ViVitFeatureExtractorTransform(),
+            ViVitForVideoClassificationEmbedderTransform(),
         ],
         aud_transform=[
             # TODO Vedi se vera la frequenza di amigos e noi salvata cosi

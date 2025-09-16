@@ -2,11 +2,12 @@ from typing import Optional
 
 import mne
 import torch
+from cbramod.models.cbramod import CBraMod
 from einops import rearrange
 from torch import nn
 
 from common.data.eeg.eeg import EEG
-from common.data.eeg.mne_utils import find_segment_by_descriptor
+from common.data.eeg.utils import find_segment_by_descriptor
 
 
 class EEGToTensor(nn.Module):
@@ -39,6 +40,7 @@ class EEGDataAsMneRaw(nn.Module):
 
 
 class AddMneAnnotation(nn.Module):
+    # noinspection PyMethodMayBeStatic
     def forward(self, x: EEG):
         raw: mne.io.BaseRaw = x.data
         if not isinstance(raw, mne.io.BaseRaw):
@@ -76,3 +78,52 @@ class EEGResample(nn.Module):
             return raw.get_data()
 
         raise NotImplementedError("To call this pipeline you have to turn to MNE object or Tensor first")
+
+
+class EEGToTimePatches(nn.Module):
+    def __init__(self, points_per_patch: int, max_segments: int = 8):
+        super().__init__()
+        self.points_per_patch = points_per_patch
+        self.max_segments = max_segments
+
+        self.max_points = self.points_per_patch * self.max_segments
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        c, d = x.shape
+        # [16000] -> [T, points_per_patch]
+        T = d / self.points_per_patch
+
+        # Simplest case.
+        if T == self.max_segments:
+            x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
+            return x
+
+        if T > self.max_segments:
+            # Center crop. Alternative would be sliding window.
+            pad = int((d - self.max_points) / 2)
+            x = x[:, pad:d - pad]
+            x = x[:self.max_points]  # To be sure we took the correct number of points
+            x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
+            return x
+
+        # Do zero padding. TODO See if really so for CBraMod
+        x = torch.cat([x, torch.zeros(c, self.max_points - d)], dim=1)
+        x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
+        return x
+
+
+class CBraModEmbedderTransform(nn.Module):
+    def __init__(self, weights_path: str = "../../../dependencies/cbramod/pretrained_weights.pth",
+                 device=None, **kwargs):
+        super().__init__()
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.model = CBraMod(**kwargs).to(device)
+
+        if weights_path is not None:
+            self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO: Vedi se gestisce batch.
+        with torch.inference_mode():
+            y = self.model(x.float().to(self.device))
+        return y

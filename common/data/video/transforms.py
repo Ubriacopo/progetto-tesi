@@ -7,18 +7,8 @@ from torch import nn, dtype
 from torchcodec.decoders import VideoDecoder
 from transformers import VivitImageProcessor, VivitForVideoClassification
 
+from .utils import check_video_data
 from .video import Video
-
-
-def check_video_data(x, data_type: type):
-    if not isinstance(x, Video):
-        raise TypeError("Given object is not of required type Video")
-
-    if x.data is None:
-        raise ValueError("Video has to be loaded first.")
-
-    if not isinstance(x.data, data_type):
-        raise TypeError("Given video object is not valid")
 
 
 class VideoToTensor(nn.Module):
@@ -49,6 +39,7 @@ class UnbufferedResize(nn.Module):
 
 
 class SubclipVideo(nn.Module):
+    # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
         check_video_data(x, VideoFileClip)
         return replace(x, data=x.data.subclipped(x.interval[0], x.interval[1]))
@@ -125,8 +116,6 @@ class RegularFrameResampling(nn.Module):
         raise NotImplementedError("Given padding modality is invalid and input requires one.")
 
 
-# todo da metter in embedder zone
-# todo visionare bene con time sequences.
 class ViVitImageProcessorTransform(nn.Module):
     def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400",
                  processor: VivitImageProcessor = None, force_time_seq: bool = False):
@@ -151,7 +140,7 @@ class ViVitImageProcessorTransform(nn.Module):
         return x
 
 
-class ViVitFeatureExtractorTransform(nn.Module):
+class ViVitForVideoClassificationEmbedderTransform(nn.Module):
     def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", force_time_seq: bool = False, device=None):
         super().__init__()
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device

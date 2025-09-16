@@ -2,21 +2,8 @@ import mne
 import re
 
 
-# TODO ristruttura per usabilità
-# todo non mi servono questi 2 metodi ma almeno non devo pensare a come si chiamano
-def save_raw_fif(raw: mne.io.BaseRaw, path: str):
-    # Compressed FIF to save disk space.
-    raw.save(path, overwrite=True)  # e.g., "subject01_raw.fif"
-
-
-def load_raw_fif(path: str) -> mne.io.BaseRaw:
-    return mne.io.read_raw_fif(path, preload=True, verbose=False)
-
-
-# todo use dataclasses?
-def find_segment_by_descriptor(raw: mne.io.BaseRaw, segment_annotation_identifier):
+def find_segment_by_descriptor(raw: mne.io.BaseRaw, segment_annotation_identifier: str):
     ann = raw.annotations
-
     return [
         (description, onset, duration)
         for description, onset, duration in zip(ann.description, ann.onset, ann.duration)
@@ -52,9 +39,3 @@ def get_segment_raw(raw: mne.io.BaseRaw, onset_s: float, duration_s: float) -> m
     :return:
     """
     return raw.copy().crop(tmin=onset_s, tmax=onset_s + duration_s)
-
-
-# todo non serve una fn
-def get_eeg_data(raw: mne.io.BaseRaw):
-    picks = mne.pick_types(raw.info, eeg=True)
-    return raw.get_data(picks=picks)  # shape (n_channels, n_times)

@@ -1,16 +1,12 @@
 import dataclasses
 import os
 from pathlib import Path
-from typing import Optional
 
-from common.data.media import Media
+from common.data.signal.signal import Signal
 
 
 @dataclasses.dataclass
-class EEG(Media):
-    fs: float
-    interval: Optional[tuple[int, int]] = None
-
+class EEG(Signal):
     def export(self, base_path: str, output_path_to_relative: str = None):
         if self.data is None:
             raise ValueError("EEG data is not initialized so we cannot export")

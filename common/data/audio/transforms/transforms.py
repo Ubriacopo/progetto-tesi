@@ -4,7 +4,6 @@ import torch
 import torchaudio
 from moviepy import AudioFileClip
 from torch import nn
-from transformers import AutoFeatureExtractor
 
 from common.data.audio.audio import Audio
 from common.data.audio.transforms.utils import check_audio_data
