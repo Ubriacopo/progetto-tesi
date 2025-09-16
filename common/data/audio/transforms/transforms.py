@@ -119,24 +119,3 @@ class AudioSequenceResampler(nn.Module):
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
 
         return y
-
-
-class ComputeFeatureHubert(nn.Module):
-    def __init__(self, original_fs: int):
-        super().__init__()
-        self.original_fs = original_fs
-
-    def forward(self, x: torch.Tensor):
-        return torchaudio.functional.resample(x, self.original_fs, torchaudio.pipelines.HUBERT_BASE.sample_rate)
-
-
-class HubertBaseFeatureExtractor(nn.Module):
-    def __init__(self):
-        super().__init__()
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.model = torchaudio.pipelines.HUBERT_BASE.get_model().to(device)
-
-    def forward(self, x: torch.Tensor):
-        y, _ = self.model.extract_features(x)
-        y = y[-1][0].mean(0)  # TODO vedi non so bene cosa faccia.
-        return y
