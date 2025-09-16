@@ -42,7 +42,6 @@ class EEGAVI(nn.Module):
         self.projector = final_projector
 
     def forward(self, x: dict):
-        modalities_idx = list(zip(*x["order"]))[0]
         use_kd = "kd" in x and x["kd"]
         # TODO: Vedere poi
         mask = x["mask"] if "mask" in x else None
@@ -52,7 +51,7 @@ class EEGAVI(nn.Module):
         z_supports: list[torch.Tensor] = []
 
         base = x[self.pivot_modality.get_code()]
-        base_mask = mask[:, modalities_idx.index(self.pivot_modality.get_code())] if mask is not None else None
+        base_mask = None
 
         z_base = self.pivot_modality(base, mask=base_mask, use_kd=use_kd)
         if isinstance(z_base, tuple):
@@ -62,7 +61,7 @@ class EEGAVI(nn.Module):
         for adapter in self.supporting_modalities:
             key = adapter.get_code()
             supp = x[key]
-            mod_mask = mask[:, modalities_idx.index(key)] if mask is not None else None
+            mod_mask = None  # Masks are already pre-computed in structure dict?
 
             z_supp = adapter(supp, mask=mod_mask, use_kd=use_kd)
             if isinstance(z_supp, tuple):

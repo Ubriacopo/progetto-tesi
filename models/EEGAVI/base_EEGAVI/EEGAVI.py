@@ -1,5 +1,6 @@
 from einops.layers.torch import Rearrange
 from torch import nn
+from torchvision.transforms import v2
 
 from common.model.layers.ISAB import ISAB, PMA
 from common.model.layers.modality_stream import ModalityStream
@@ -17,6 +18,7 @@ def get_default_simple_EEGAVI():
         pivot_modality=ModalityStream(
             code="eeg",
             adapter=nn.Sequential(
+                v2.Lambda(lambda x: x[0]),
                 Rearrange("b c P D -> b D c P"),
                 nn.AdaptiveAvgPool2d((1, 1)),
                 nn.Flatten(start_dim=1),

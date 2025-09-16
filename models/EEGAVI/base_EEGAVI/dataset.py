@@ -1,20 +1,14 @@
-import torch
 from torch.utils.data import StackDataset
 from torchaudio.transforms import Resample
-from torchvision.transforms import Normalize, v2
-from torchvision.transforms.v2 import ToDtype
 from transformers import VivitImageProcessor
 
 from common.data.amigos.config import AmigosConfig
 from common.data.audio.transforms import AudioZeroMasking, AudioToTensor, ToMono
-from common.data.data_point import EEGDatasetTransformWrapper
-from common.data.dataset import KDEEGPdSpecMediaDataset
-from common.data.eeg.transforms import EEGToMneRaw, EEGResample, EEGToTensor, EEGToTimePatches
+from common.data.dataset import AgnosticEmbeddingsReadyPdSpecMediaDataset
+from common.data.eeg.transforms import EEGResample, EEGToTensor, EEGToTimePatches
 from common.data.video import VideoToTensor, RegularFrameResampling
 from common.data.video.transforms import ViVitImageProcessorTransform
 from models.FEEG.transforms import W2VBertFeatureExtractorTransform
-from models.VATE.dataset import VATE_AMIGOS_transforms
-
 
 def get_ViVit_processor():
     processor: VivitImageProcessor = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
@@ -24,6 +18,12 @@ def get_ViVit_processor():
     processor.do_normalize = True
 
     return processor
+
+
+def EEGAVI_train_dataset(amigos_path: str):
+    return StackDataset(
+        AgnosticEmbeddingsReadyPdSpecMediaDataset(amigos_path)
+    )
 
 
 def kd_train_dataset(amigos_path: str):

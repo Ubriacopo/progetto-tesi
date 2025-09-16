@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn.functional import softmax
 
 
 class SimpleFeedForward(nn.Module):

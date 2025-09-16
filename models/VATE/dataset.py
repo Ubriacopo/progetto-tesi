@@ -1,15 +1,8 @@
 from __future__ import annotations
 
-from einops.layers.torch import Rearrange
 from torch import nn
-from torchvision.transforms import v2
 
-from common.data.amigos.config import AmigosConfig
-from common.data.audio.transforms import ComputeFeatureHubert, HubertBaseFeatureExtractor
-from common.data.data_point import EEGDatasetTransformWrapper
-from common.data.video.transforms import ViVitImageProcessorTransform, ViVitForVideoClassificationEmbedderTransform
-
-
+""" 
 # Transforms per AMIGOS
 def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
     return EEGDatasetTransformWrapper(
@@ -33,6 +26,7 @@ def VATE_AMIGOS_transforms() -> EEGDatasetTransformWrapper:
             v2.Lambda(lambda x: None),
         ],
     )
+"""
 
 
 class FaceCrop(nn.Module):

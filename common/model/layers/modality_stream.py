@@ -25,17 +25,17 @@ class ModalityStream(nn.Module):
         if self.kd_head is None and self.use_kd:
             self.kh_head = KDHead(input_size=adapter_output_size, target_shape=kd_shape)
 
-    def forward(self, x: torch.Tensor, mask=None, use_kd=True) -> torch.Tensor:
-        # Pretty straightforward
-        y = self.adapter(x, mask)
+    def forward(self, x: dict | torch.Tensor, use_kd=True) -> torch.Tensor:
+        # Pretty straightforward todo ragiona masking ora sta in dict quindi ci va anche bene.
+        y = self.adapter(x)
         use_kd = use_kd and self.use_kd
 
         kd_y: Optional[torch.Tensor] = None
         if use_kd:
-            kd_y = self.kh_head(y, mask)
+            kd_y = self.kh_head(y)
 
         if self.post_kd_adapter is not None:
-            y = self.post_kd_adapter(y, mask)
+            y = self.post_kd_adapter(y)
 
         return (y, kd_y) if use_kd else y
 

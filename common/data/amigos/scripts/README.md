@@ -18,7 +18,4 @@ Face folder example output:
 > recordings, PXX_VideoID_face.mov corresponds to the face video for the stimuli video VideoID of participant XX.
 > In the zip files of group recordings, P(XX1,XX2,XX3,XX4)_VideoID_face.mov corresponds to the face video for the
 > stimuli video VideoID of participants XX1,XX2,XX3, and XX4. UserIDs are listed in the order the participants were sit,
-> on a front view, during the recording session from left to right.
-
-
-# Project Structure
+> on a front view, during the recording session from left to right. 
