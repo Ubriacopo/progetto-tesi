@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import dataclasses
 from abc import abstractmethod, ABC
 from typing import Any, Optional
@@ -11,7 +10,6 @@ from common.data.utils import sanitize_for_ast
 @dataclasses.dataclass
 class Media(ABC):
     data: Any
-    file_path: Optional[str]
     eid: Optional[str]
 
     def as_mod_tuple(self) -> tuple[str, Media]:

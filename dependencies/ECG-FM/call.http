@@ -1,0 +1,10 @@
+### GET request to example server
+POST http://localhost:7860/extract_features
+Content-Type: application/json
+
+{
+  "signal": [],
+  "fs": 100
+}
+
+###

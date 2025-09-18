@@ -2,12 +2,15 @@ import re
 from pathlib import Path
 from typing import Iterator
 
+import mne
 import numpy as np
 from moviepy import VideoFileClip
 
+from common.data.amigos.config import AmigosConfig
 from common.data.amigos.utils import extract_trial_data, load_participant_data
 from common.data.audio.audio import Audio
 from common.data.data_point import AgnosticDatasetPoint
+from common.data.ecg.ecg import ECG
 from common.data.eeg import EEG
 from common.data.loader import DataPointsLoader
 from common.data.text import Text
@@ -43,15 +46,27 @@ class AmigosPointsLoader(DataPointsLoader):
 
             media_path: str = str(v.resolve())
             clip = VideoFileClip(media_path)
-            vid = Video(data=clip, file_path=media_path, fps=clip.fps, resolution=clip.size, eid=experiment_id)
-            aud = Audio(data=clip.audio, file_path=media_path, fs=clip.audio.fps, eid=experiment_id)
-            eeg = EEG(data=eeg_data[0], file_path=None, fs=128, eid=experiment_id)
+            vid = Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id)
+            aud = Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id)
+
+            # Extract ECG and EEG data + metadata that could be useful
+            info = mne.create_info(
+                ch_names=AmigosConfig.CH_NAMES,
+                ch_types=AmigosConfig.CH_TYPES,
+                sfreq=AmigosConfig.original_eeg_fs
+            )
+
+            raw = mne.io.RawArray(eeg_data[0], info=info, verbose=False)
+            eeg = EEG(data=raw.copy().pick_types(eeg=True), fs=128, eid=experiment_id)
+            ecg = ECG(data=raw.copy().pick_types(ecg=True), fs=128, eid=experiment_id, leads=AmigosConfig.LEAD_NAMES)
+
             # Take from Audio
 
             # TODO Passare ad agnostic e veder se gira ancora tutto
             yield AgnosticDatasetPoint(
                 experiment_id,
                 eeg.as_mod_tuple(),
+                ecg.as_mod_tuple(),
                 vid.as_mod_tuple(),
                 aud.as_mod_tuple(),
             )
