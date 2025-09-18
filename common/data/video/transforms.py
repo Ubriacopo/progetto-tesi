@@ -5,7 +5,7 @@ import torch
 from moviepy import VideoFileClip
 from torch import nn, dtype
 from torchcodec.decoders import VideoDecoder
-from transformers import VivitImageProcessor, VivitForVideoClassification
+from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from .utils import check_video_data
 from .video import Video
@@ -138,6 +138,27 @@ class ViVitImageProcessorTransform(nn.Module):
             x["pixel_values"] = x["pixel_values"].squeeze(0)
 
         return x
+
+
+class ViVitEmbedderTransform(nn.Module):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", device=None):
+        super().__init__()
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.model = VivitModel.from_pretrained(model_name, device_map=device)
+        self.device = device
+
+    def forward(self, x) -> torch.Tensor:
+        if len(x.shape) == 4:
+            # Add a virtual batch
+            x = x.unsqueeze(0)
+
+        with torch.inference_mode():
+            y = self.model(x.to(self.device))
+
+        y = y.last_hidden_state
+        # Discard [CLS] token
+        tokens = y[:, 1:, :]
+        return tokens
 
 
 class ViVitForVideoClassificationEmbedderTransform(nn.Module):

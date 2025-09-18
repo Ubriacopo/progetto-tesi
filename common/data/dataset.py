@@ -38,7 +38,7 @@ class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
         self.cache_in_ram: bool = cache_in_ram
         self.ram_cache = dict()
 
-    def extract_entry(self, dictionary: dict | torch.Tensor, return_dictionary: dict, index: int):
+    def extract_entry(self, dictionary: dict | torch.Tensor, return_dictionary: dict, index: int) -> dict:
         """
         Recursively extract entries from nested dictionaries. (Data is partitioned by type and not by sample).
 
@@ -74,6 +74,24 @@ class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.df)
+
+
+class AgnosticMaskedEmbeddingsReadyPdSpecMediaDataset(AgnosticEmbeddingsReadyPdSpecMediaDataset):
+    # TODO vedi se serve.
+    def __init__(self, modalities: set[str],
+                 dataset_spec_file: str, selected_device: device = None, cache_in_ram: bool = False):
+        super().__init__(dataset_spec_file, selected_device, cache_in_ram)
+        self.modalities = modalities
+
+    def __getitem__(self, idx: int):
+        item = super().__getitem__(idx)
+        # Create a mask
+        item["mod_mask"] = torch.ones(len(item.keys()))
+
+        for modality in self.modalities:
+            if modality not in item:
+                item[modality] = torch.zeros(0)
+            item["mod_mask"] = item[modality]
 
 
 class KDAgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):

@@ -9,8 +9,10 @@ from common.model.layers.base import ModalContextEncoder
 from common.model.layers.modality_stream import ModalityStream
 from models.EEGAVI.transforms import media_locs_single_item
 
+import lightning as L
 
-class EEGAVI(nn.Module):
+
+class EEGAVI(L.LightningModule):
     def __init__(self,
 
                  target_size: int,
@@ -43,9 +45,6 @@ class EEGAVI(nn.Module):
 
     def forward(self, x: dict):
         use_kd = "kd" in x and x["kd"]
-        # TODO: Vedere poi
-        mask = x["mask"] if "mask" in x else None
-
         # Base Modality first
         kd_outputs: dict = {}
         z_supports: list[torch.Tensor] = []

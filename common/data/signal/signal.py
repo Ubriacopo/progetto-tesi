@@ -5,5 +5,5 @@ from common.data.media import Media
 
 
 class Signal(Media, ABC):
-    fs: float
+    fs: int
     interval: Optional[tuple[int, int]] = None

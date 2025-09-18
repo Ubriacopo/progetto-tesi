@@ -23,13 +23,7 @@ from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderT
 from common.data.transform import MultimediaPadding, Parallel
 from common.data.video import Video
 from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
-    ViVitImageProcessorTransform, VideoSequenceResampling
-from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
-
-
-def setup_vivit_image_processor() -> None:
-    p = VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
-    p.do_rescale, p.do_normalize, p.do_resize = True, True, True
+    ViVitImageProcessorTransform, VideoSequenceResampling, ViVitEmbedderTransform
 
 
 class AmigosPreprocessorFactory:
@@ -39,12 +33,11 @@ class AmigosPreprocessorFactory:
 
     @staticmethod
     def interleaved(output_path: str, max_length: int = 8, sub_media_max_length_seconds: int = 2):
-        setup_vivit_image_processor()
-
         target_fs = 200
         eeg_transform = nn.Sequential(
+            # TODO ma prendo subinterval?
             EEGDataAsMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
-            AddMneAnnotation(),
+            AddMneAnnotation(),  # To annotate where the sample is
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             EEGToTensor(),
             EEGToTimePatches(target_fs),
@@ -68,7 +61,7 @@ class AmigosPreprocessorFactory:
                 original_fps=AmigosConfig.original_vid_fps, sequence_duration_seconds=sub_media_max_length_seconds,
                 frames_resampler=RegularFrameResampling(32, drop_mask=True)
             ),
-            ViViTFoundationEmbedder(),
+            ViVitEmbedderTransform(),
             MultimediaPadding(int(max_length / sub_media_max_length_seconds)),
         )
 
@@ -88,7 +81,6 @@ class AmigosPreprocessorFactory:
                 nn.Sequential(
                     # TODO Custom audio cleaning is to do to see improvements?
                     Wav2VecExtractFromAudio(fs=target_audio_fs),  # Works a bit better.
-                    # Speech2TextExtract(target_audio_fs  ),
                     MiniLMEmbedderTransform(),
                     MultimediaPadding(int(max_length / sub_media_max_length_seconds))
                 ),
@@ -96,6 +88,7 @@ class AmigosPreprocessorFactory:
                     WavLmFeatureExtractorTransform(sampling_rate=target_audio_fs),
                     WavLmEmbedderTransform(),
                     MultimediaPadding(int(max_length / sub_media_max_length_seconds))
+                    # TODO add un "registro" text così sappiamo estratto per interval
                 ), as_dict=True, keys={Text.modality_code(), Audio.modality_code()},
             ),
         )
@@ -143,7 +136,7 @@ class AmigosPreprocessorFactory:
             v2.Lambda(lambda x: x.pixel_values),
             # For ViVit masking makes no sense
             RegularFrameResampling(max_length=max_vid_length, drop_mask=True),
-            ViViTFoundationEmbedder()
+            ViVitEmbedderTransform()
         )
 
         target_audio_fs = 16000
@@ -169,7 +162,6 @@ class AmigosPreprocessorFactory:
 
         )
 
-        # todo EmbeddingsGeneratingPreprocessor cosi gestisce logica di aggregazione?
         return TorchExportsSegmenterPreprocessor(
             output_path=output_path,
             ch_names=AmigosConfig.CH_NAMES,

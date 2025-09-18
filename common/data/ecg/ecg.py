@@ -6,6 +6,8 @@ from common.data.signal.signal import Signal
 
 
 class ECG(Signal):
+    leads: list
+
     def export(self, base_path: str, output_path_to_relative: str = None):
         pass
 

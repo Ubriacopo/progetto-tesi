@@ -45,6 +45,11 @@ def get_default_simple_EEGAVI():
                     nn.Linear(768, supporting_size_embedding),
                 ),
                 adapter_output_size=supporting_size_embedding
+            ),
+            ModalityStream(
+                code="txt",
+                adapter=nn.Sequential(),
+                adapter_output_size=supporting_size_embedding,
             )
         ],
         use_modality_encoder=True,
