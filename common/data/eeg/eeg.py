@@ -13,11 +13,6 @@ class EEG(Signal):
         out_path = base_path + "_raw.fif"
         self.data.save(out_path)
 
-        if output_path_to_relative is not None:
-            self.file_path = os.path.relpath(Path(out_path).resolve(), output_path_to_relative)
-        else:
-            self.file_path = str(Path(out_path).resolve())
-
     @staticmethod
     def modality_code() -> str:
         return "eeg"

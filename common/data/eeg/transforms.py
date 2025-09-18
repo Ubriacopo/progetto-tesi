@@ -97,8 +97,7 @@ class EEGToTimePatches(nn.Module):
 
 
 class CBraModEmbedderTransform(nn.Module):
-    def __init__(self, weights_path: str = "../../../dependencies/cbramod/pretrained_weights.pth",
-                 device=None, **kwargs):
+    def __init__(self, weights_path: str, device=None, **kwargs):
         super().__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model = CBraMod(**kwargs).to(device)
@@ -107,7 +106,10 @@ class CBraModEmbedderTransform(nn.Module):
             self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Vedi se gestisce batch.
+        if len(x.shape) == 3:
+            x = x.unsqueeze(0)  # Add the batch
+
         with torch.inference_mode():
-            y = self.model(x.float().to(self.device))
-        return y
+            # I don't know what is wrong with CBraMod. I made a mistake somewhere.
+            z = self.model(x.float().to("cpu"))
+        return z

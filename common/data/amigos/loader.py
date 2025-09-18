@@ -56,7 +56,7 @@ class AmigosPointsLoader(DataPointsLoader):
                 sfreq=AmigosConfig.original_eeg_fs
             )
 
-            raw = mne.io.RawArray(eeg_data[0], info=info, verbose=False)
+            raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
             eeg = EEG(data=raw.copy().pick_types(eeg=True), fs=128, eid=experiment_id)
             ecg = ECG(data=raw.copy().pick_types(ecg=True), fs=128, eid=experiment_id, leads=AmigosConfig.LEAD_NAMES)
 

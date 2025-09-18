@@ -13,13 +13,13 @@ from common.data.audio.transforms.embedders import WavLmFeatureExtractorTransfor
 from common.data.audio.transforms.transforms import SubclipAudio, ToMono, AudioSequenceResampler, AudioZeroMasking
 from common.data.data_point import AgnosticDatasetTransformWrapper
 from common.data.ecg.ecg import ECG
-from common.data.ecg.transforms import EcgFmEmbedderTransform
+from common.data.ecg.transforms import EcgFmEmbedderTransform, EcgDataAsTensor, EcgSequenceResampling
 from common.data.eeg import EEG
-from common.data.eeg.transforms import EEGResample, EEGToTensor, EEGDataAsMneRaw, AddMneAnnotation, EEGToTimePatches
 from common.data.eeg.transforms import CBraModEmbedderTransform
+from common.data.eeg.transforms import EEGResample, EEGToTensor, AddMneAnnotation, EEGToTimePatches
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FixedIntervalsSegmenter
-from common.data.signal.transforms import SubclipMneRaw, SignalSequenceResampling
+from common.data.signal.transforms import SubclipMneRaw, DataAsMneRaw, SignalToTensor
 from common.data.text import Text
 from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform
 from common.data.transform import MultimediaPadding, Parallel
@@ -34,15 +34,25 @@ class AmigosPreprocessorFactory:
         return AmigosPreprocessorFactory.default(output_path, max_length).run(AmigosPointsLoader(input_path))
 
     @staticmethod
-    def interleaved(output_path: str, max_length: int = 8, sub_media_max_length_seconds: int = 2,
-                    endpoint: str = "localhost:8000/extract_features"):
+    def interleaved(
+            output_path: str,
+            cbramod_weights_path: str = "../../../dependencies/cbramod/pretrained_weights.pth",
+            max_length: int = 8,
+            sub_media_max_length_seconds: int = 2,
+            endpoint: str = "localhost:7860/extract_features"
+
+    ):
         target_fs = 200
 
         ecg_transform = nn.Sequential(
             SubclipMneRaw(),
-            SignalSequenceResampling(
+            EcgDataAsTensor(),
+            EcgSequenceResampling(
+                # todo add masking
                 original_fs=AmigosConfig.original_eeg_fs,
                 sequence_duration_seconds=8,
+                resampler=AudioZeroMasking(8, 128),
+                channels_first=True,
             ),
             EcgFmEmbedderTransform(data_transform_fn=AmigosConfig.prepare_ecg, endpoint=endpoint),
             MultimediaPadding(int(max_length / 8)),
@@ -50,22 +60,11 @@ class AmigosPreprocessorFactory:
 
         eeg_transform = nn.Sequential(
             # TODO ma prendo subinterval? CONTROLLO
-            EEGDataAsMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
-            # todo remove?
-            AddMneAnnotation(),  # To annotate where the sample is
+            SubclipMneRaw(),
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
-            EEGToTensor(),
+            SignalToTensor(),
             EEGToTimePatches(target_fs),
-            # TODO verify
-            Parallel(
-                nn.Sequential(
-                    CBraModEmbedderTransform()
-                ),
-                nn.Sequential(
-                    # Transform to extract ECG data. todo
-                    EcgFmEmbedderTransform(endpoint=endpoint, data_transform_fn=AmigosConfig.prepare_ecg),
-                ), as_dict=True, keys={EEG.modality_code(), ECG.modality_code()}
-            ),
+            CBraModEmbedderTransform(cbramod_weights_path)
         )
 
         vid_transform = nn.Sequential(
@@ -139,7 +138,7 @@ class AmigosPreprocessorFactory:
 
         target_fs = 200
         eeg_transform = nn.Sequential(
-            EEGDataAsMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
+            DataAsMneRaw(AmigosConfig.CH_NAMES, AmigosConfig.CH_TYPES),
             AddMneAnnotation(),
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             EEGToTensor(),

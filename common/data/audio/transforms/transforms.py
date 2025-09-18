@@ -49,7 +49,7 @@ class ToMono(nn.Module):
             raise TypeError("Expected a torch.Tensor")
         return torch.mean(x, dim=self.dim, keepdim=self.keepdim)
 
-
+# todo move in signal and rename
 class AudioZeroMasking(nn.Module):
     def __init__(self, max_length: int, fs: int, channels_first: bool = False):
         """

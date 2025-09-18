@@ -82,11 +82,8 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
 
-        if x[EEG.modality_code()].data.shape[0] != len(self.ch_names):
-            x[EEG.modality_code()].data = x[EEG.modality_code()].data.T  # Transpose
-        assert x[EEG.modality_code()].data.shape[0] == len(self.ch_names), "Shape mismatch for EEG data"
-        segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
 
+        segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
         x_segments = [self.preprocess_segment(x, segment) for idx, segment in enumerate(segments)]
 
         output_path: str = self.output_path + f'{x.eid}'

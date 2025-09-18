@@ -25,9 +25,9 @@ class AmigosConfig:
     @staticmethod
     def prepare_ecg(ecg: ECG) -> ECG:
         # RA-LL  -> Lead II
-        ecg_II = ecg.data[:, 0]
+        ecg_II = ecg.data[:, 0, :]
         # LA-LL  -> Lead III
-        ecg_III = ecg.data[:, 1]
+        ecg_III = ecg.data[:, 1, :]
 
         I = ecg_II - ecg_III
         II = ecg_II
@@ -36,10 +36,11 @@ class AmigosConfig:
         aVL = I - II / 2
         aVF = II - I / 2
         zeros = np.zeros_like(I)
-
+        # TODO Controlla che sia ffettivamente corretto
         # shape [12, T] to be compliant with ECG-LM requirements
+        # todo axis=0 se no time seq
         signal_12xT = np.stack(
-            [I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=0
+            [I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=1
         )
 
         lead_names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]

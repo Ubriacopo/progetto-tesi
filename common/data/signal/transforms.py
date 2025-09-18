@@ -8,6 +8,12 @@ from common.data.signal.signal import Signal
 from common.data.transform import IDENTITY
 
 
+class SignalToTensor(nn.Module):
+    # noinspection PyMethodMayBeStatic
+    def forward(self, x: Signal) -> torch.Tensor:
+        return torch.from_numpy(x.data.get_data())
+
+
 class DataAsMneRaw(nn.Module):
     def __init__(self, channel_names: list[str], channel_types: list[str], verbose: bool = False):
         super().__init__()
@@ -40,6 +46,7 @@ class SubclipMneRaw(nn.Module):
         return x
 
 
+# todo non va bene per ECG
 class SignalSequenceResampling(nn.Module):
     def __init__(self, original_fs: int, sequence_duration_seconds: int,
                  resampler: nn.Module = IDENTITY, channels_first: bool = False):
