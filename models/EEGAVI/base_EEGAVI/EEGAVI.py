@@ -30,6 +30,14 @@ def get_default_simple_EEGAVI():
         supporting_size_embedding=supporting_size_embedding,
         supporting_modalities=[
             ModalityStream(
+                code="ecg",
+                adapter=nn.Sequential(
+
+                ),
+                adapter_output_size=768,
+            ),
+
+            ModalityStream(
                 code="vid",
                 adapter=nn.Sequential(
                     ISAB(768, 8, 10),
@@ -44,11 +52,13 @@ def get_default_simple_EEGAVI():
                     PMA(768, 8, 10),
                     nn.Linear(768, supporting_size_embedding),
                 ),
-                adapter_output_size=supporting_size_embedding
+                adapter_output_size=supporting_size_embedding,
+                kd_shape=vate_out_shape,
             ),
             ModalityStream(
                 code="txt",
                 adapter=nn.Sequential(),
+                kd_shape=vate_out_shape,
                 adapter_output_size=supporting_size_embedding,
             )
         ],

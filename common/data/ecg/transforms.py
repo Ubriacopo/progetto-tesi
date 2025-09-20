@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from copy import deepcopy
 from typing import List, Optional
 
 import requests
@@ -27,9 +28,8 @@ class ECGPayload:
     def from_ecg(ecg: ECG, data_transform_fn: Callable[[ECG], ECG]) -> ECGPayload:
         ecg = data_transform_fn(ecg)
         # For serialization
-        ecg.data = ecg.data.tolist()
         return ECGPayload(
-            signal=ecg.data,
+            signal=ecg.data.tolist(),
             fs=ecg.fs,
             patient_age=ecg.patient_age,
             patient_gender=ecg.patient_gender,
@@ -48,10 +48,17 @@ class EcgFmEmbedderTransform(nn.Module):
         obj = dataclasses.asdict(payload)
         obj = sanitize_for_ast(obj)
 
-        r = requests.post(f"http://{self.endpoint}", json=obj)
-        features = r.json()["features"]["values"]
-        features = torch.tensor(features).float()
-        return features
+        embeddings: Optional[torch.Tensor] = None
+        for i in obj["signal"]:
+            iter_obj = deepcopy(obj)
+            iter_obj["signal"] = i
+
+            r = requests.post(f"http://{self.endpoint}", json=iter_obj)
+            features = r.json()["features"]["values"]
+            features = torch.tensor(features).float()
+            embeddings = features if embeddings is None else torch.cat((embeddings, features), dim=0)
+
+        return embeddings
 
 
 class EcgDataAsTensor(nn.Module):

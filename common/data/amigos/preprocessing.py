@@ -22,7 +22,7 @@ from common.data.sampler import FixedIntervalsSegmenter
 from common.data.signal.transforms import SubclipMneRaw, DataAsMneRaw, SignalToTensor
 from common.data.text import Text
 from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform
-from common.data.transform import MultimediaPadding, Parallel
+from common.data.transform import MultimediaPadding, Parallel, ReplaceMedia
 from common.data.video import Video
 from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
     ViVitImageProcessorTransform, VideoSequenceResampling, ViVitEmbedderTransform
@@ -45,6 +45,7 @@ class AmigosPreprocessorFactory:
         target_fs = 200
 
         ecg_transform = nn.Sequential(
+            # todo non va bene perche mdofica originale
             SubclipMneRaw(),
             EcgDataAsTensor(),
             EcgSequenceResampling(
@@ -55,11 +56,10 @@ class AmigosPreprocessorFactory:
                 channels_first=True,
             ),
             EcgFmEmbedderTransform(data_transform_fn=AmigosConfig.prepare_ecg, endpoint=endpoint),
-            MultimediaPadding(int(max_length / 8)),
+            MultimediaPadding(2),
         )
 
         eeg_transform = nn.Sequential(
-            # TODO ma prendo subinterval? CONTROLLO
             SubclipMneRaw(),
             EEGResample(target_fs, AmigosConfig.original_eeg_fs),
             SignalToTensor(),

@@ -36,7 +36,10 @@ class AgnosticDatasetPoint(DatasetDataPoint):
     def clone(self, n_eid: str) -> AgnosticDatasetPoint:
         modalities: list[tuple[str, dict | Media]] = []
         for attr, value in self.__dict__.items():
-            if is_dataclass(value):
+            if hasattr(value, "clone"):
+                # Special case of Media.
+                modalities.append((attr, value.clone({"eid": n_eid})))
+            elif is_dataclass(value):
                 modalities.append((attr, replace(value, eid=n_eid)))
             else:
                 modalities.append((attr, value))

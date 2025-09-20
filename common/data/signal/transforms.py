@@ -42,6 +42,7 @@ class SubclipMneRaw(nn.Module):
         if not isinstance(x.data, mne.io.RawArray):
             raise TypeError("Raw array must be of type mne.io.RawArray")
         tmin, tmax = x.interval
+        # todo copy signal!
         x.data = x.data.crop(tmin=tmin, tmax=tmax)
         return x
 

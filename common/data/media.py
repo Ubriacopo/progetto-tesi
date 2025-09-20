@@ -4,6 +4,8 @@ import dataclasses
 from abc import abstractmethod, ABC
 from typing import Any, Optional
 
+import torch
+
 from common.data.utils import sanitize_for_ast
 
 
@@ -23,6 +25,18 @@ class Media(ABC):
     @abstractmethod
     def export(self, base_path: str, output_path_to_relative: str = None):
         pass
+
+    def clone(self, substitutions: dict):
+        new_object = dataclasses.replace(self)
+        for key, value in substitutions.items():
+            # Only substitute existing parameters when given.
+            if hasattr(self, key):
+                new_object.__setattr__(key, value)
+
+        if isinstance(self.data, torch.Tensor):
+            new_object.data = self.data.detach().clone()
+
+        return new_object
 
     @classmethod
     def restore_from_dict(cls, data: dict, base_path: str = None) -> Optional[Media]:

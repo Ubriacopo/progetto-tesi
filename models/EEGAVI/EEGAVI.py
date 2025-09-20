@@ -14,9 +14,9 @@ import lightning as L
 
 class EEGAVI(L.LightningModule):
     def __init__(self,
-
                  target_size: int,
-                 pivot_modality: ModalityStream,  # EEG
+                 # EEG
+                 pivot_modality: ModalityStream,
 
                  supporting_size_embedding: int,
                  supporting_modalities: list[ModalityStream],

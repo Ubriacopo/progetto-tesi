@@ -1,3 +1,4 @@
+import dataclasses
 from abc import ABC, abstractmethod
 from typing import Optional, Literal
 
@@ -6,6 +7,7 @@ import torch
 from torch import nn
 from torchvision.transforms import Lambda
 
+from common.data.media import Media
 from common.data.signal.signal import Signal
 
 IDENTITY = Lambda(lambda x: x)
@@ -85,3 +87,9 @@ class MultimediaPadding(nn.Module):
             return {"data": x, "mask": mask} if not self.drop_mask else x
 
         raise ValueError("Given padding strategy is not supported.")
+
+
+class ReplaceMedia(nn.Module):
+    # noinspection PyMethodMayBeStatic
+    def forward(self, x: Media):
+        return dataclasses.replace(x)
