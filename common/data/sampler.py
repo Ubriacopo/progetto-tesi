@@ -114,7 +114,7 @@ class RandomLogUniformIntervalsSegmenter(Segmenter):
                        coverage: np.ndarray,  # todo non serve coverage qui basta controlli
                        attempt: int = 0
                        ) -> bool:
-        # Try on saliency or on random
+        # Try on saliency or on random TODO
         pass
 
     @staticmethod
@@ -239,3 +239,128 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
 class EEGFeatureIntervalSegmenter(Segmenter):
     def compute_segments(self, sample: EEG) -> list[tuple[int, int]]:
         pass  # TODO
+
+# todo revisiona e studia e fai
+import numpy as np
+import mne
+from scipy.signal import welch
+from scipy.ndimage import gaussian_filter1d
+
+def compute_bandpower(psd, freqs, fmin, fmax):
+    """Integrate PSD between fmin-fmax."""
+    idx = np.logical_and(freqs >= fmin, freqs < fmax)
+    return np.trapz(psd[..., idx], freqs[idx], axis=-1)
+
+def trimmed_mean(x, trim=0.1, axis=0):
+    """Robust average across channels to suppress outliers."""
+    x_sorted = np.sort(x, axis=axis)
+    n = x.shape[axis]
+    lo = int(np.floor(trim * n))
+    hi = int(np.ceil((1.0 - trim) * n))
+    slicer = [slice(None)] * x.ndim
+    slicer[axis] = slice(lo, hi)
+    return x_sorted[tuple(slicer)].mean(axis=axis)
+
+def saliency_from_raw(
+    raw: mne.io.BaseRaw,
+    l_freq=0.5, h_freq=45.0, notch=50.0,
+    win_sec=0.256, hop_sec=0.1,
+    bands=((1,4), (4,8), (8,13), (13,30)),    # δ, θ, α, β
+    flux_weight=1.0, ll_weight=0.5, band_weight=1.0,
+    smooth_sigma=1.0,                          # in frames (Gaussian sigma)
+    refractory_sec=1.0,                        # min distance between peaks
+    peak_prom_z=1.0,                           # min z-prominence for peaks
+    picks="eeg"
+):
+    """
+    Returns:
+        times: (F,) times (sec) at frame centers
+        saliency: (F,) standardized saliency score
+        peak_times: (P,) seconds of saliency peaks (anchors)
+    """
+    raw = raw.copy().load_data()
+
+    # --- Preprocess ---
+    if notch:
+        raw.notch_filter(freqs=[notch], picks=picks)
+    raw.filter(l_freq=l_freq, h_freq=h_freq, picks=picks, method="fir", phase="zero-double", verbose=False)
+    raw.set_eeg_reference("average")
+    data = raw.get_data(picks=picks)  # (n_channels, n_samples)
+    sfreq = raw.info["sfreq"]
+    n_ch, n_samp = data.shape
+
+    # z-score per channel
+    data = (data - data.mean(axis=1, keepdims=True)) / (data.std(axis=1, keepdims=True) + 1e-8)
+
+    # --- Framing ---
+    win = int(round(win_sec * sfreq))
+    hop = int(round(hop_sec * sfreq))
+    if win < 8:
+        raise ValueError("win_sec too small for PSD")
+    starts = np.arange(0, n_samp - win + 1, hop, dtype=int)
+    centers = starts + win // 2
+    times = centers / sfreq
+
+    # Welch settings
+    # For short frames, use nperseg=win with no overlap to keep compute simple
+    nperseg = win
+    noverlap = 0
+    # Pre-allocate feature arrays
+    F = len(starts)
+    n_bands = len(bands)
+    bandpow = np.zeros((n_ch, F, n_bands), dtype=np.float32)
+    line_len = np.zeros((n_ch, F), dtype=np.float32)
+
+    # --- Feature extraction per frame ---
+    for j, s0 in enumerate(starts):
+        s1 = s0 + win
+        seg = data[:, s0:s1]  # (n_ch, win)
+
+        # PSD per channel
+        freqs, psd = welch(seg, fs=sfreq, nperseg=nperseg, noverlap=noverlap, axis=-1)
+        # bandpowers
+        for bidx, (fmin, fmax) in enumerate(bands):
+            bandpow[:, j, bidx] = compute_bandpower(psd, freqs, fmin, fmax)
+
+        # line length (per channel)
+        diff = np.abs(np.diff(seg, axis=-1))
+        line_len[:, j] = diff.mean(axis=-1)
+
+    # --- Normalize features over time (per channel) ---
+    def zscore(x, axis=-1, eps=1e-8):
+        mu = x.mean(axis=axis, keepdims=True)
+        sd = x.std(axis=axis, keepdims=True)
+        return (x - mu) / (sd + eps)
+
+    bandpow_z = zscore(bandpow, axis=1)   # (ch, F, bands)
+    ll_z = zscore(line_len, axis=1)       # (ch, F)
+
+    # --- Spectral flux (frame-to-frame change in bandpower) ---
+    flux = np.zeros_like(bandpow_z)
+    flux[:, 1:, :] = np.maximum(0.0, bandpow_z[:, 1:, :] - bandpow_z[:, :-1, :])  # positive changes
+    # Aggregate features across bands & channels
+    band_feat = trimmed_mean(bandpow_z.mean(axis=-1), trim=0.1, axis=0)     # (F,)
+    flux_feat = trimmed_mean(flux.mean(axis=-1), trim=0.1, axis=0)          # (F,)
+    ll_feat   = trimmed_mean(ll_z, trim=0.1, axis=0)                         # (F,)
+
+    # --- Combined saliency ---
+    sal = band_weight * band_feat + flux_weight * flux_feat + ll_weight * ll_feat
+    # Smooth a bit to reduce spikiness (sigma in frames)
+    if smooth_sigma and smooth_sigma > 0:
+        sal = gaussian_filter1d(sal, sigma=smooth_sigma, mode="nearest")
+
+    # Final z-score
+    sal = (sal - sal.mean()) / (sal.std() + 1e-8)
+
+    # --- Peak picking (non-maximum suppression + refractory) ---
+    # Simple prominence: sal must exceed its local median by peak_prom_z*std
+    peaks = []
+    last_t = -np.inf
+    refr_frames = int(round(refractory_sec / hop_sec))
+    for i in range(1, F-1):
+        if sal[i] > sal[i-1] and sal[i] > sal[i+1] and sal[i] >= peak_prom_z:
+            if (i - (peaks[-1] if peaks else -10**9)) >= refr_frames:
+                peaks.append(i)
+
+    peak_times = times[peaks]
+    return times, sal, peak_times
