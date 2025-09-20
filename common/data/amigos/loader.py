@@ -4,6 +4,7 @@ from typing import Iterator
 
 import mne
 import numpy as np
+import pandas as pd
 from moviepy import VideoFileClip
 
 from common.data.amigos.config import AmigosConfig
@@ -30,12 +31,15 @@ class AmigosPointsLoader(DataPointsLoader):
                 extract_trial_data(self.base_path + "pre_processed_py/", str(f))
 
         participant_data = load_participant_data(Path(self.base_path + "pre_processed_py/"))
+        participant_metadata = pd.read_excel(self.base_path + "Metadata_xlsx/Participant_Questionnaires.xlsx")
+
         face_video_folder = self.base_path + "face/"
         face_folder = Path(face_video_folder)
 
         for v in face_folder.iterdir():
             # [0] -> P40 [1] -> 18 [2] -> face(.mov) (Stemmed)
             person, video_id, _ = v.stem.split("_")
+            user_metadata = participant_metadata[participant_metadata["UserID"] == int(person[1:])].to_dict()
             # Add missing prefix zero to match the np data
             person = re.sub(r'([A-Z])(\d)\b', r'\g<1>0\2', person)
 
@@ -57,8 +61,23 @@ class AmigosPointsLoader(DataPointsLoader):
             )
 
             raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
-            eeg = EEG(data=raw.copy().pick_types(eeg=True), fs=128, eid=experiment_id)
-            ecg = ECG(data=raw.copy().pick_types(ecg=True), fs=128, eid=experiment_id, leads=AmigosConfig.LEAD_NAMES)
+            eeg = EEG(
+                # Signal Data
+                eid=experiment_id,
+                data=raw.copy().pick_types(eeg=True),
+                fs=AmigosConfig.original_eeg_fs,
+            )
+
+            ecg = ECG(
+                # Signal Data
+                eid=experiment_id,
+                data=raw.copy().pick_types(ecg=True),
+                fs=AmigosConfig.original_eeg_fs,
+                # ECG Specific
+                leads=AmigosConfig.LEAD_NAMES,
+                patient_gender=user_metadata["Gender"][0].upper(),
+                patient_age=user_metadata["Age"][0],
+            )
 
             # Take from Audio
 

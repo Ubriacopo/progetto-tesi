@@ -43,9 +43,7 @@ class AmigosPreprocessorFactory:
 
     ):
         target_fs = 200
-
         ecg_transform = nn.Sequential(
-            # todo non va bene perche mdofica originale
             SubclipMneRaw(),
             EcgDataAsTensor(),
             EcgSequenceResampling(
