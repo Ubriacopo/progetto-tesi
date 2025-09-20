@@ -65,6 +65,7 @@ class EEGResample(nn.Module):
 
 
 class EEGToTimePatches(nn.Module):
+    # todo non ricordo perche e come max_segemtns
     def __init__(self, points_per_patch: int, max_segments: int = 8):
         super().__init__()
         self.points_per_patch = points_per_patch
@@ -86,7 +87,7 @@ class EEGToTimePatches(nn.Module):
             # Center crop. Alternative would be sliding window.
             pad = int((d - self.max_points) / 2)
             x = x[:, pad:d - pad]
-            x = x[:self.max_points]  # To be sure we took the correct number of points
+            x = x[:, :self.max_points]  # To be sure we took the correct number of points
             x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
             return x
 

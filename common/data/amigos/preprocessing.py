@@ -18,11 +18,11 @@ from common.data.eeg import EEG
 from common.data.eeg.transforms import CBraModEmbedderTransform
 from common.data.eeg.transforms import EEGResample, EEGToTensor, AddMneAnnotation, EEGToTimePatches
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
-from common.data.sampler import FixedIntervalsSegmenter
+from common.data.sampler import FixedIntervalsSegmenter, RandomizedSizeIntervalsSegmenter
 from common.data.signal.transforms import SubclipMneRaw, DataAsMneRaw, SignalToTensor
 from common.data.text import Text
 from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform
-from common.data.transform import MultimediaPadding, Parallel, ReplaceMedia
+from common.data.transform import MultimediaPadding, Parallel
 from common.data.video import Video
 from common.data.video.transforms import SubclipVideo, VideoToTensor, RegularFrameResampling, \
     ViVitImageProcessorTransform, VideoSequenceResampling, ViVitEmbedderTransform
@@ -37,7 +37,7 @@ class AmigosPreprocessorFactory:
     def interleaved(
             output_path: str,
             cbramod_weights_path: str = "../../../dependencies/cbramod/pretrained_weights.pth",
-            max_length: int = 8,
+            max_length: int = 30,
             sub_media_max_length_seconds: int = 2,
             endpoint: str = "localhost:7860/extract_features"
 
@@ -49,12 +49,12 @@ class AmigosPreprocessorFactory:
             EcgSequenceResampling(
                 # todo add masking
                 original_fs=AmigosConfig.original_eeg_fs,
-                sequence_duration_seconds=8,
-                resampler=AudioZeroMasking(8, 128),
+                sequence_duration_seconds=6,
+                resampler=AudioZeroMasking(6, 128),
                 channels_first=True,
             ),
             EcgFmEmbedderTransform(data_transform_fn=AmigosConfig.prepare_ecg, endpoint=endpoint),
-            MultimediaPadding(2),
+            MultimediaPadding(5),
         )
 
         eeg_transform = nn.Sequential(
@@ -74,7 +74,7 @@ class AmigosPreprocessorFactory:
                 original_fps=AmigosConfig.original_vid_fps, sequence_duration_seconds=sub_media_max_length_seconds,
                 frames_resampler=RegularFrameResampling(32, drop_mask=True)
             ),
-            ViVitEmbedderTransform(),
+            ViVitEmbedderTransform(device="cpu"),
             MultimediaPadding(int(max_length / sub_media_max_length_seconds)),
         )
 
@@ -110,21 +110,17 @@ class AmigosPreprocessorFactory:
             output_path=output_path,
             ch_names=AmigosConfig.CH_NAMES,
             ch_types=AmigosConfig.CH_TYPES,
-            segmenter=FixedIntervalsSegmenter(max_length),
+            segmenter=RandomizedSizeIntervalsSegmenter(30, 10),
+            # FixedIntervalsSegmenter(max_length),
             pipeline=AgnosticDatasetTransformWrapper(
-                "interleaved",
+                "interleaved-rand",
                 (EEG.modality_code(), eeg_transform),
                 (ECG.modality_code(), ecg_transform),
                 (Video.modality_code(), vid_transform),
                 (Audio.modality_code(), aud_transform),
                 expand_nested=True,
-                nested_keys=[
-                    # TODO Auto risoluzione di casi in cui una chiave si trova in altra.
-                    Text.modality_code(),
-                    Audio.modality_code(),
-                    ECG.modality_code(),
-                    EEG.modality_code()
-                ],
+                # Order is important. You might override other stuff.
+                nested_keys=[Text.modality_code(), Audio.modality_code(), ],
             )
 
         )
