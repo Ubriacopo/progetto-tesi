@@ -5,6 +5,7 @@ from typing import Optional
 import numpy as np
 
 from common.data.eeg import EEG
+from common.data.eeg.saliency_extractor import EEGFeatureExtractor
 
 
 class Segmenter(ABC):
@@ -125,7 +126,10 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
         # returns start
         base_on_feature = np.random.random() < .5
         if base_on_feature:
-            pass  # TODO extract
+            # todo keep the extracted segments stored as they are computed once
+            extractor = EEGFeatureExtractor(eeg.data)
+            segments = extractor.pick_segments(d, d / 4)
+            return segments[0]
         else:
             return np.random.uniform(0., max(1e-9, t - d))
 
@@ -261,135 +265,3 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
             # Convert to seconds
             segments.append((start / sample.fs, stop / sample.fs))
         return segments
-
-
-# TODO Valuta quello che ce qua sotto
-import numpy as np
-from scipy.signal import stft
-
-
-def preprocess_raw(raw, l_freq=0.5, h_freq=40, notch=50):
-    raw = raw.copy().load_data()
-    raw.filter(l_freq, h_freq, phase='zero-double', verbose=False)
-    raw.notch_filter([notch, 2 * notch], phase='zero-double', verbose=False)
-    raw.set_eeg_reference('average')
-    raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + 1e-9))
-    return raw
-
-
-def artifact_weights_from_mne(raw, short_s, hop_s):
-    # hard: flat/rails; soft: muscle
-    ann = []
-    try:
-        ann.append(mne.preprocessing.annotate_flat(raw))
-    except Exception:
-        pass
-    try:
-        a_muscle, _ = mne.preprocessing.annotate_muscle_zscore(raw, ch_type='eeg', threshold=4.0,
-                                                               filter_freq=(30., 80.), min_length_good=0.2)
-        ann.append(a_muscle)
-    except Exception:
-        pass
-    if ann:
-        A = ann[0]
-        for a in ann[1:]: A += a
-        raw.set_annotations(A)
-
-    fs = raw.info['sfreq']
-    win = int(round(short_s * fs));
-    hop = int(round(hop_s * fs))
-    nF = 1 + (raw.n_times - win) // hop if raw.n_times >= win else 0
-    starts = np.arange(nF) * hop
-    w = np.ones(nF)
-    hard = np.zeros(nF, dtype=bool)
-    for on, dur, desc in zip(raw.annotations.onset, raw.annotations.duration, raw.annotations.description):
-        s = int(round((on - raw.first_time) * fs));
-        e = s + int(round(dur * fs))
-        i0 = max(0, (s - win) // hop + 1 if s > 0 else 0);
-        i1 = min(nF, e // hop + 1)
-        if 'BAD_flat' in desc or 'BAD' in desc and 'muscle' not in desc:
-            hard[i0:i1] = True
-        if 'muscle' in desc:
-            w[i0:i1] = np.minimum(w[i0:i1], 0.4)
-    w[hard] = 0.0
-    return starts, w
-
-
-def stft_features(X, fs, short_s, hop_s, bands=((0.5, 4), (4, 8), (8, 13), (13, 30))):
-    C, T = X.shape
-    nper = int(round(short_s * fs));
-    nover = nper - int(round(hop_s * fs))
-    feats = []
-    for c in range(C):
-        f, t, Z = stft(X[c], fs=fs, nperseg=nper, noverlap=nover, boundary=None, padded=False)
-        P = (Z.real ** 2 + Z.imag ** 2) + 1e-12  # (F, nF)
-        total = np.trapz(P, f, axis=0)
-        rel = [np.trapz(P[(f >= lo) & (f < hi)], f[(f >= lo) & (f < hi)], axis=0) / total for lo, hi in bands]
-        rel = np.stack(rel, axis=1)  # (nF, n_bands)
-        Pn = P / np.sum(P, axis=0, keepdims=True)
-        ent = -(Pn * np.log(Pn)).sum(axis=0)  # (nF,)
-        dpos = np.maximum(np.diff(P, axis=1), 0.0)
-        flux = np.r_[0.0, np.sqrt((dpos ** 2).sum(axis=0))]  # (nF,)
-        # time-domain on same framing
-        win = nper;
-        hop = nper - nover;
-        starts = (np.arange(P.shape[1]) * hop).astype(int)
-        frames = np.stack([X[c, s:s + win] for s in starts])
-        rms = np.sqrt((frames ** 2).mean(axis=1))
-        linelen = np.mean(np.abs(np.diff(frames, axis=1)), axis=1)
-        tkeo = np.mean(np.abs(frames[:, 1:-1] ** 2 - frames[:, :-2] * frames[:, 2:]), axis=1)
-        feats.append(np.c_[rel, ent, flux, rms, linelen, tkeo])  # (nF, n_feat)
-    names = [f"rel_{lo}-{hi}" for lo, hi in bands] + ["ent", "flux", "rms", "ll", "tkeo"]
-    return np.stack(feats, axis=0), names, starts  # (C, nF, n_feat), names, starts
-
-
-def rolling_robust_z(A, win):
-    # A: (C, nF, n_feat)
-    C, N, F = A.shape
-    Z = np.empty_like(A)
-    for c in range(C):
-        for ftr in range(F):
-            x = A[c, :, ftr]
-            med = np.array([np.median(x[max(0, i - win):i + 1]) for i in range(N)])
-            mad = np.array([np.median(np.abs(x[max(0, i - win):i + 1] - med[i])) for i in range(N)]) + 1e-9
-            Z[c, :, ftr] = (x - med) / (1.4826 * mad)
-    return Z
-
-
-def topk_mean(S, k_frac=0.4):
-    k = max(1, int(round(k_frac * S.shape[0])))
-    return np.sort(S, axis=0)[-k:].mean(axis=0)
-
-
-def poisson_disk_select(times, score, min_gap_s, need_n, fs):
-    keep_idx, last_end = [], -np.inf
-    order = np.argsort(score)[::-1]
-    gap = int(round(min_gap_s * fs))
-    for i in order:
-        t = times[i]
-        if t >= last_end:
-            keep_idx.append(i);
-            last_end = t + gap
-            if len(keep_idx) == need_n: break
-    return sorted(keep_idx)
-
-
-# ---- glue it together
-import mne
-
-
-def pick_short_segments(raw, SHORT=1.0, HOP=None, need_n=200):
-    if HOP is None: HOP = SHORT / 4
-    raw = preprocess_raw(raw)
-    X, fs = raw.get_data(picks='eeg'), raw.info['sfreq']
-    feats, names, starts = stft_features(X, fs, SHORT, HOP)
-    Z = rolling_robust_z(feats, win=int(round(30 / HOP)))  # 30 s window
-    # simple weights (tweakable)
-    w = np.array([0.5, 0.4, 0.5, 0.4] + [-0.4, 1.5, 0.7, 1.0, 1.0])[:Z.shape[2]]
-    S_ch = (Z * w).sum(axis=2)  # (C, nF)
-    S = topk_mean(S_ch, 0.4)  # (nF,)
-    _, wart = artifact_weights_from_mne(raw, SHORT, HOP)  # (nF,)
-    S_eff = wart * S
-    keep = poisson_disk_select(starts, S_eff, SHORT * 1.1, need_n, fs)
-    # convert frame starts to sample indices
-    return [int(starts[i]) for i in keep]

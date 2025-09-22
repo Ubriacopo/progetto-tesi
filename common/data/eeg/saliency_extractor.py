@@ -19,7 +19,69 @@ class EEGFeatureExtractor:
         # Per-channel standardization (z-score)
         self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + self.epsilon))
 
-    def pick_segments(self, duration: float, hop: float, bands: tuple[tuple], need_number: int):
+    # todo revisiona. Forse ci basta l'altro su start at max ranges. Probabilmente scartalo
+    def pick_intervals(self, lengths=(1.0, 2.0, 3.0, 4.0), bands: tuple[tuple] = ((0.5, 4), (4, 8), (8, 13), (13, 30)),
+                       hop: float = 0.5, need_number: int = 10, gap_factor: float = 1.1):
+        feats, names, starts = self._stft_features(duration_s=1.0, hop_s=hop, bands=bands)  # base=1s example
+        Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))
+
+        w_feat = np.array([0.5, 0.4, 0.5, 0.4] + [-0.4, 1.5, 0.7, 1.0, 1.0])[:Z.shape[2]]
+        S = (Z * w_feat).sum(axis=2)  # (C, nF)
+        k = max(1, int(round(self.k_frac * S.shape[0])))
+        S = np.sort(S, axis=0)[-k:].mean(axis=0)  # (nF,)
+        _, wart = self.artifact_weights_from_mne(1.0, hop)
+        S_eff = np.nan_to_num(S * wart, nan=-np.inf)  # (nF,)
+
+        # prefix sums for fast block means
+        pref = np.r_[0.0, np.cumsum(S_eff)]
+        fs = self.raw.info['sfreq']
+        frame = int(round(hop * fs))  # hop in samples
+        nF = len(S_eff)
+
+        # For each frame, pick best length
+        best_len = np.zeros(nF, dtype=float)
+        best_score = np.full(nF, -np.inf)
+        for L in lengths:
+            k = max(1, int(round(L / hop)))  # number of frames in this length
+            if k <= 0: continue
+            # block sums S[i:i+k] via prefix sums
+            block_sum = pref[k:] - pref[:-k]  # length nF - k + 1
+            block_mean = block_sum / k
+            # update best at valid i
+            valid = block_mean > best_score[:len(block_mean)]
+            best_score[:len(block_mean)][valid] = block_mean[valid]
+            best_len[:len(block_mean)][valid] = L
+
+        # Greedy variable-length selection with symmetric gap
+        gap_samples = lambda L: int(round(gap_factor * L * fs))
+        order = np.argsort(best_score)[::-1]
+        keep, keep_spans = [], []
+
+        for i in order:
+            L = best_len[i]
+            if L <= 0: continue
+            start_smp = int(starts[i])
+            stop_smp = start_smp + int(round(L * fs))
+            # symmetric spacing wrt other kept intervals
+            g = gap_samples(L)
+            conflict = False
+            for a, b in keep_spans:
+                if not (stop_smp + g <= a or b + g <= start_smp):
+                    conflict = True
+                    break
+            if conflict: continue
+            keep.append(i)
+            keep_spans.append((start_smp, stop_smp))
+            if len(keep) == need_number: break
+
+        # return (start, stop) in samples, time-sorted
+        out = sorted(keep_spans, key=lambda ab: ab[0])
+        return out
+
+    # Optional augmentation: with probability p (say 0.2), replace a 4 s clip by a 1–3 s centered sub-clip; pad+mask back to the 4 s token length so batches stay uniform.
+    # todo if shorter just crop center. O semplicemente fissi a 4s
+    def pick_segments(self, duration: float, hop: float,
+                      bands: tuple[tuple] = ((0.5, 4), (4, 8), (8, 13), (13, 30)), need_number: int = 30):
         feats, names, starts = self._stft_features(duration, hop, bands)
         Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))  # 30 s window
         # Simple weights (tweakable)
@@ -38,21 +100,20 @@ class EEGFeatureExtractor:
 
     @staticmethod
     def poisson_disk_select(times: list, score: np.ndarray, min_gap_s: float, need_n: int, fs: int):
-        keep_idx, last_end = [], -np.inf
+        keep_idx, keep_times, last_end = [], [], -np.inf
         order = np.argsort(score)[::-1]
 
         gap = int(round(min_gap_s * fs))
         for i in order:
             t = times[i]
 
-            if t >= last_end:
+            if all(abs(t - kt) >= gap for kt in keep_times):
                 keep_idx.append(i)
-                last_end = t + gap
-
+                keep_times.append(t)
                 if len(keep_idx) == need_n:
                     break
 
-        return sorted(keep_idx)
+        return sorted(keep_idx, key=lambda x: times[x])
 
     def rolling_robust_z(self, a, window):
         """
@@ -79,14 +140,14 @@ class EEGFeatureExtractor:
     def artifact_weights_from_mne(self, duration_s, hop_s):
         annotations = []
         try:
-            # TODO non pare essitere
-            annotations.append(mne.preprocessing.annotate_amplitude(self.raw))
+            ann, _ = mne.preprocessing.annotate_amplitude(self.raw, flat=1e-6, peak=150e-6)
+            annotations.append(ann)
         except Exception:
             pass
 
         try:
             a_muscle, _ = mne.preprocessing.annotate_muscle_zscore(
-                self.raw, ch_type='eeg', threshold=4.0, filter_freq=(30., 80.), min_length_good=0.2
+                self.raw, ch_type='eeg', threshold=4.0, filter_freq=(30., 45.), min_length_good=0.2
             )
             annotations.append(a_muscle)
         except Exception:
