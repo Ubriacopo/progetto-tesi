@@ -1,14 +1,14 @@
 import mne
 import numpy as np
-import torch
 from scipy.signal import stft
 
 
-class SaliencyExtractor:
+class EEGFeatureExtractor:
     epsilon: float = 1e-12
 
     def __init__(self, raw: mne.io.RawArray):
         self.raw = raw.copy().load_data()
+        self.k_frac = .4
 
     def process(self):
         # AMIGOS already does this.
@@ -17,10 +17,114 @@ class SaliencyExtractor:
         # self.raw.set_eeg_reference('average')
 
         # Per-channel standardization (z-score)
-        self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + 1e-9))
+        self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + self.epsilon))
 
-    def pick_segments(self, duration: float, hop: float):
-        self._stft_features()
+    def pick_segments(self, duration: float, hop: float, bands: tuple[tuple], need_number: int):
+        feats, names, starts = self._stft_features(duration, hop, bands)
+        Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))  # 30 s window
+        # Simple weights (tweakable)
+        w = np.array([0.5, 0.4, 0.5, 0.4] + [-0.4, 1.5, 0.7, 1.0, 1.0])[:Z.shape[2]]
+
+        S_channels = (Z * w).sum(axis=2)
+        k = max(1, int(round(self.k_frac * S_channels.shape[0])))
+        S = np.sort(S_channels, axis=0)[-k:].mean(axis=0)
+        S = np.nan_to_num(S, nan=-np.inf)
+
+        _, wart = self.artifact_weights_from_mne(duration, hop)  # (nF,)
+        S_eff = wart * S
+        keep = self.poisson_disk_select(starts, S_eff, duration * 1.1, need_number, self.raw.info['sfreq'])
+        # convert frame starts to sample indices
+        return [int(starts[i]) for i in keep]
+
+    @staticmethod
+    def poisson_disk_select(times: list, score: np.ndarray, min_gap_s: float, need_n: int, fs: int):
+        keep_idx, last_end = [], -np.inf
+        order = np.argsort(score)[::-1]
+
+        gap = int(round(min_gap_s * fs))
+        for i in order:
+            t = times[i]
+
+            if t >= last_end:
+                keep_idx.append(i)
+                last_end = t + gap
+
+                if len(keep_idx) == need_n:
+                    break
+
+        return sorted(keep_idx)
+
+    def rolling_robust_z(self, a, window):
+        """
+
+        :param a: (C, nF, n_feat)
+        :param window:
+        :return:
+        """
+        C, N, F = a.shape
+
+        window = max(1, int(window))
+        Z = np.empty_like(a)
+
+        for c in range(C):
+            for ftr in range(F):
+                x = a[c, :, ftr]
+                med = np.array([np.median(x[max(0, i - window):i + 1]) for i in range(N)])
+                mad = np.array([np.median(np.abs(x[max(0, i - window):i + 1] - med[i])) for i in range(N)])
+                mad = mad + self.epsilon  # Ad a minimum term
+                Z[c, :, ftr] = (x - med) / (1.4826 * mad)
+
+        return Z
+
+    def artifact_weights_from_mne(self, duration_s, hop_s):
+        annotations = []
+        try:
+            # TODO non pare essitere
+            annotations.append(mne.preprocessing.annotate_amplitude(self.raw))
+        except Exception:
+            pass
+
+        try:
+            a_muscle, _ = mne.preprocessing.annotate_muscle_zscore(
+                self.raw, ch_type='eeg', threshold=4.0, filter_freq=(30., 80.), min_length_good=0.2
+            )
+            annotations.append(a_muscle)
+        except Exception:
+            pass
+
+        fs = self.raw.info['sfreq']
+        window = int(round(duration_s * fs))
+        hop = int(round(hop_s * fs))
+        nF = (1 + (self.raw.n_times - window) // hop) if self.raw.n_times >= window else 0
+        if nF <= 0:
+            # No frames so we can limit ourselves to returning empty
+            return np.array([], dtype=int), np.array([], dtype=float)
+
+        if annotations:
+            A = annotations[0]
+            for a in annotations[1:]:
+                A += a
+            self.raw.set_annotations(A)
+
+        starts = np.arange(nF) * hop
+
+        w = np.ones(nF)
+        hard = np.zeros(nF, dtype=bool)
+
+        for onset, duration, description in zip(
+                self.raw.annotations.onset, self.raw.annotations.duration, self.raw.annotations.description
+        ):
+            s = int(round((onset - self.raw.first_time) * fs))
+            e = s + int(round(duration * fs))
+            i0 = max(0, (s - window) // hop + 1 if s > 0 else 0)
+            i1 = min(nF, e // hop + 1)
+            if 'BAD_flat' in description or 'BAD' in description and 'muscle' not in description:
+                hard[i0:i1] = True
+            if 'muscle' in description:
+                w[i0:i1] = np.minimum(w[i0:i1], 0.4)
+
+        w[hard] = 0.0
+        return starts, w
 
     def _stft_features(self, duration_s: float, hop_s: float, bands=((0.5, 4), (4, 8), (8, 13), (13, 30))):
         x, fs = self.raw.get_data(picks='eeg'), self.raw.info['sfreq']
@@ -32,37 +136,39 @@ class SaliencyExtractor:
             raise ValueError("Samples and overlap must be positive")
 
         f, t_sec, Z0 = stft(x[0], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
-        starts = np.round(t_sec * fs).astype(int)  # shape (nF,)
-        nF = len(starts)
+        centers = np.round(t_sec * fs).astype(int)
+        starts_all = np.clip(centers - n_samples // 2, 0, max(0, T - n_samples))
+        nF = len(starts_all)
 
         feats = []
         for c in range(C):
             _, _, Z = stft(x[c], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
 
             P = (Z.real ** 2 + Z.imag ** 2) + self.epsilon
-            nF_use = min(nF, P.shape[1])
-            if nF_use != P.shape[1] or nF_use != nF:
-                # Trim to the common length if STFT gave one extra/less column due to edge effects
-                P = P[:, :nF_use]
 
-            total_P = np.trapezoid(P, f, axis=0)
+            nF_use = min(nF, P.shape[1])
+            starts_use = starts_all[:nF_use]
+            if nF_use <= 0:
+                raise RuntimeError("No frames produced; check duration_s/hop_s vs signal length")
+
+            P = P[:, :nF_use]
+
+            total_P = np.trapezoid(P, f, axis=0) + self.epsilon
             relative_P = [
                 np.trapezoid(P[(f >= lo) & (f < hi)], f[(f >= lo) & (f < hi)], axis=0) / total_P
                 for lo, hi in bands
             ]
 
-            P_normalized = P / np.sum(P, axis=0, keepdims=True)
-            entropy = -(P_normalized * np.log(P_normalized)).sum(axis=0)
+            P_normalized = P / (np.sum(P, axis=0, keepdims=True) + self.epsilon)
+            entropy = -(P_normalized * np.log(P_normalized + self.epsilon)).sum(axis=0)
 
-            positive_change = np.maximum(np.diff(P, axis=1), 0.)
+            mag = np.sqrt(P)  # Magnitude
+            mag = mag / (mag.sum(axis=0, keepdims=True) + self.epsilon)
+            positive_change = np.maximum(np.diff(mag, axis=1), 0.0)
             spectral_flux = np.r_[0.0, np.sqrt((positive_change ** 2).sum(axis=0))]
 
             # Time domain same framing
-            local_window = n_samples
-            local_hop = n_overlap - n_samples
-
-            starts = np.arange(P.shape[[1]] * local_hop).astype(int)
-            frames = np.stack([x[c, s:s + local_window] for s in starts])
+            frames = np.stack([x[c, s:s + n_samples] for s in starts_use])
             rms = np.sqrt((frames ** 2).mean(axis=1))
 
             line_length = np.mean(np.abs(np.diff(frames, axis=1)), axis=1)
@@ -76,7 +182,10 @@ class SaliencyExtractor:
                     rms,  # Root-mean-square per frame
                     line_length,  # Line length per frame: average absolute first difference; proxies “spikiness/complexity”.
                     tkeo  # Teager–Kaiser Energy Operator averaged per frame; captures bursty, high-frequency energy
-                ])  # (nF, n_feat)
+                ])
 
-        return np.stack(feats, axis=0), [f"rel_{lo}-{hi}" for lo, hi in bands] + ["ent", "flux", "rms", "ll",
-                                                                                  "tkeo"], starts
+        return (
+            np.stack(feats, axis=0),
+            [f"rel_{lo}-{hi}" for lo, hi in bands] + ["ent", "flux", "rms", "ll", "tkeo"],
+            starts_all
+        )
