@@ -77,7 +77,7 @@ class EEGFeatureExtractor:
                 Z[c, :, ftr] = (x - med) / (1.4826 * mad)
 
         return Z
-
+    # todo fix
     def artifact_weights_from_mne(self, duration_s, hop_s):
         annotations = []
         try:

@@ -61,11 +61,21 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
     MEDIUM_KEY = "M"
     LONG_KEY = "L"
 
-    def __init__(self, min_length: int, max_length: int, num_segments: int,
+    def __init__(self,
+                 min_length: int,
+                 max_length: int,
+                 num_segments: int,
+                 anchor_identification_hop: float,
                  jitter_frac: dict = None,
-                 coverage_resolution_sec: float = 0.1, coverage_cap_k: int = 5,
-                 same_iou_max=None, cross_iou_max: float = 0.7):
+                 coverage_resolution_sec: float = 0.1,
+                 coverage_cap_k: int = 5,
+                 same_iou_max=None,
+                 cross_iou_max: float = 0.7,
+                 return_seconds: bool = True,
+                 extraction_jitter: float = .1
+                 ):
         super().__init__(max_length)
+        self.anchor_identification_hop: float = anchor_identification_hop
         # todo dataclass
         self.same_iou_max: dict = same_iou_max
         if self.same_iou_max is None:
@@ -83,6 +93,8 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
         self.min_length: int = min_length
 
         self.max_attempts = 4  # After 4 you fail for a duration.
+        self.return_seconds: bool = return_seconds  # If False return sampled points.
+        self.extraction_jitter: float = extraction_jitter
 
     def sample_duration_log_uniform(self):
         uniform = np.random.uniform(0., 1.)
@@ -99,8 +111,7 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
         t = sample.data.duration
 
         extractor = EEGFeatureExtractor(sample.data)
-        # To times
-        candidate_anchors = extractor.pick_segments(self.SHORT_LENGTH, 0.5) / sample.data.duration
+        candidate_anchors = extractor.pick_segments(self.SHORT_LENGTH, self.anchor_identification_hop)
         anchors = {self.SHORT_KEY: [], self.MEDIUM_KEY: [], self.LONG_KEY: [], }
 
         # Coverage tracker in seconds (no index math)
@@ -111,38 +122,40 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
             self.LONG_KEY: np.zeros(num_slots, dtype=np.int16),
         }
 
-        for duration in [self.sample_duration_log_uniform() for _ in range(self.num_segments)]:
+        for duration in sorted([self.sample_duration_log_uniform() for _ in range(self.num_segments)]):
             key = self.classify_duration(duration)
-            ok: bool = self.extract(
+            ok, candidate_anchors = self.extract(
                 eeg=sample,
                 t=t, d=duration,
                 type_key=key,
                 candidate_anchors=candidate_anchors,
                 anchors=anchors[key],
                 segments=buckets,
-                extraction_jitter=.1,
                 coverage=coverages[key]
             )
 
             if not ok:
                 print(f"Something went wrong for interval {duration} and duration will be discarded")
+
+        if self.return_seconds:
+            return [(bucket.start / sample.fs, bucket.stop / sample.fs) for bucket in buckets]
         return [(bucket.start, bucket.stop) for bucket in buckets]
 
-    def decide_start_anchor(self, eeg: EEG, t: float, d: float, candidate_anchors: np.ndarray,
-                            segments: list[Segment]) -> float:
+    def decide_start_anchor(self, eeg: EEG, t: float, d: float, candidate_anchors: np.ndarray) \
+            -> tuple[float, float, Optional[int]]:
         # returns start
         base_on_feature = np.random.random() < .5
         if base_on_feature:
-            # todo keep the extracted segments stored as they are computed once
-            selected_candidate = np.random.choice(np.ones(len(candidate_anchors)))
-            candidate_anchors = np.delete(candidate_anchors, selected_candidate)
-            # TODO CEnter crop o ltro boh che nes o
-            return selected_candidate + int(d * eeg.fs) / 2
+            selected_candidate = np.random.choice(len(candidate_anchors))
+            # For now keep it simple: All our segments have a duration of 4 seconds if short.
+            start = int(candidate_anchors[selected_candidate])
+            return start, start + self.SHORT_LENGTH * eeg.fs, selected_candidate
         else:
-            return np.random.uniform(0., max(1e-9, t - d))
+            start = int(np.random.uniform(0., max(1e-9, (t - d) * eeg.fs)))
+            return start, int(start + d * eeg.fs), None
 
     def decide_start_dependent(self, eeg: EEG, t: float, d: float, anchors: list[int],
-                               segments: list[Segment], jitter_frac: float) -> tuple[float, Optional[int]]:
+                               segments: list[Segment], jitter_frac: float) -> tuple[float, float, Optional[int]]:
         # Short segments. Potential Anchors
         potential_anchors = [
             Anchor(segment.start, segment.stop, idx)
@@ -157,12 +170,13 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
 
             anchor_segment = segments[anchor]
             center = (anchor_segment.start + anchor_segment.stop) / 2 + np.random.uniform(-jitter_frac, jitter_frac) * d
-            start = np.clip(center - d / 2, 0., max(0., t - d))
-            return start, anchor
+            start = int(np.clip(center - d / 2 * eeg.fs, 0, max(0, int((t - d) * eeg.fs))))
+            return start, int(start + d * eeg.fs), anchor
 
         else:  # Randomly pick a point
             # Completely random point
-            return np.random.uniform(0., max(1e-9, t - d)), None
+            start = int(np.random.uniform(0, max(1e-9, (t - d) * eeg.fs)))
+            return start, int(start + d * eeg.fs), None
 
     @staticmethod
     def _iou_1d(x_start, x_stop, y_start, y_stop) -> float:
@@ -172,11 +186,11 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
         return inter / union if union > 0 else 0.
 
     # Intersection over Union (Set Theory).
-    def ok_iou(self, start, stop, bucket_type, segments) -> bool:
-        for i_start, i_stop, i_bucket_type, _ in segments:
-            iou = self._iou_1d(start, stop, i_start, i_stop)
+    def ok_iou(self, start, stop, bucket_type, segments: list[Segment], ) -> bool:
+        for segment in segments:
+            iou = self._iou_1d(start, stop, segment.start, segment.stop)
             # Matching type has to respect same IoU overlap threshold
-            if bucket_type == i_bucket_type:
+            if bucket_type == segment.category_code:
                 if iou > self.same_iou_max[bucket_type]:
                     return False
             # Respect the cross IoU overlap threshold
@@ -204,7 +218,6 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
                 anchors: list[int],
                 # (start, stop, type, duration)
                 segments: list[Segment],
-                extraction_jitter: float,
                 coverage: np.ndarray,
                 attempt: int = 0
                 ):
@@ -224,36 +237,39 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
         """
         # At chance center on short + jitter or just sample randomly
         if attempt > self.max_attempts:
-            return False  # Could not extract
+            return False, candidate_anchors  # Could not extract
 
-        anchor_appended = False
+        extracted_anchor, reference_anchor = None, None
         if type_key == self.SHORT_KEY:
             # Short extraction.
-            start = self.decide_start_anchor(eeg, t, d, candidate_anchors, segments, )
+            start, stop, extracted_anchor = self.decide_start_anchor(eeg, t, d, candidate_anchors)
         else:
-            start, anchor = self.decide_start_dependent(eeg, t, d, anchors, segments, self.jitter_frac[type_key])
-            if anchor is not None:
-                anchors.append(anchor)
-                # In order to rollback if next checks fail
-                anchor_appended = True
+            # Longer segments extraction.
+            jitter = self.jitter_frac[type_key]
+            start, stop, reference_anchor = self.decide_start_dependent(eeg, t, d, anchors, segments, jitter)
 
-        # Calculate end point
-        stop = start + d
         if not self.ok_iou(start, stop, type_key, segments) or not self.check_coverage(start, stop, coverage):
-            if anchor_appended: anchors.pop()
             return self.extract(
-                eeg, t, d, type_key, candidate_anchors, anchors, segments, extraction_jitter, coverage, attempt + 1
+                eeg, t, d, type_key, candidate_anchors, anchors, segments, coverage, attempt + 1
             )
 
-        # Tiny jitter to avoid identical cuts.
-        if extraction_jitter > 0:
-            jitter = (np.random.uniform(-1, 1) * extraction_jitter) * d
-            start = float(np.clip(start + jitter, 0., max(0., t - d)))
-            stop = start + d
+        # Tiny jitter to avoid identical cuts. todo non va a punti ma a secondi quiesto
+        if self.extraction_jitter > 0:
+            jitter = (np.random.uniform(-1, 1) * self.extraction_jitter) * d * eeg.fs
+            start = int(np.clip(start + jitter, 0, max(0, eeg.fs * int(t - d))))
+            stop = start + d * eeg.fs
 
         segments.append(Segment(start, stop, type_key, d))
         self.add_coverage(start, stop, coverage)
-        return True
+
+        if extracted_anchor is not None:
+            # Remove extracted element as it was taken.
+            candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
+        if reference_anchor is not None:
+            # This anchor was used so we "register" its usage
+            anchors.append(reference_anchor)
+
+        return True, candidate_anchors
 
 
 class RandomizedSizeIntervalsSegmenter(Segmenter):
