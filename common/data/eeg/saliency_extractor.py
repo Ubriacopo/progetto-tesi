@@ -19,65 +19,6 @@ class EEGFeatureExtractor:
         # Per-channel standardization (z-score)
         self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + self.epsilon))
 
-    # todo revisiona. Forse ci basta l'altro su start at max ranges. Probabilmente scartalo
-    def pick_intervals(self, lengths=(1.0, 2.0, 3.0, 4.0), bands: tuple[tuple] = ((0.5, 4), (4, 8), (8, 13), (13, 30)),
-                       hop: float = 0.5, need_number: int = 10, gap_factor: float = 1.1):
-        feats, names, starts = self._stft_features(duration_s=1.0, hop_s=hop, bands=bands)  # base=1s example
-        Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))
-
-        w_feat = np.array([0.5, 0.4, 0.5, 0.4] + [-0.4, 1.5, 0.7, 1.0, 1.0])[:Z.shape[2]]
-        S = (Z * w_feat).sum(axis=2)  # (C, nF)
-        k = max(1, int(round(self.k_frac * S.shape[0])))
-        S = np.sort(S, axis=0)[-k:].mean(axis=0)  # (nF,)
-        _, wart = self.artifact_weights_from_mne(1.0, hop)
-        S_eff = np.nan_to_num(S * wart, nan=-np.inf)  # (nF,)
-
-        # prefix sums for fast block means
-        pref = np.r_[0.0, np.cumsum(S_eff)]
-        fs = self.raw.info['sfreq']
-        frame = int(round(hop * fs))  # hop in samples
-        nF = len(S_eff)
-
-        # For each frame, pick best length
-        best_len = np.zeros(nF, dtype=float)
-        best_score = np.full(nF, -np.inf)
-        for L in lengths:
-            k = max(1, int(round(L / hop)))  # number of frames in this length
-            if k <= 0: continue
-            # block sums S[i:i+k] via prefix sums
-            block_sum = pref[k:] - pref[:-k]  # length nF - k + 1
-            block_mean = block_sum / k
-            # update best at valid i
-            valid = block_mean > best_score[:len(block_mean)]
-            best_score[:len(block_mean)][valid] = block_mean[valid]
-            best_len[:len(block_mean)][valid] = L
-
-        # Greedy variable-length selection with symmetric gap
-        gap_samples = lambda L: int(round(gap_factor * L * fs))
-        order = np.argsort(best_score)[::-1]
-        keep, keep_spans = [], []
-
-        for i in order:
-            L = best_len[i]
-            if L <= 0: continue
-            start_smp = int(starts[i])
-            stop_smp = start_smp + int(round(L * fs))
-            # symmetric spacing wrt other kept intervals
-            g = gap_samples(L)
-            conflict = False
-            for a, b in keep_spans:
-                if not (stop_smp + g <= a or b + g <= start_smp):
-                    conflict = True
-                    break
-            if conflict: continue
-            keep.append(i)
-            keep_spans.append((start_smp, stop_smp))
-            if len(keep) == need_number: break
-
-        # return (start, stop) in samples, time-sorted
-        out = sorted(keep_spans, key=lambda ab: ab[0])
-        return out
-
     # Optional augmentation: with probability p (say 0.2), replace a 4 s clip by a 1–3 s centered sub-clip; pad+mask back to the 4 s token length so batches stay uniform.
     # todo if shorter just crop center. O semplicemente fissi a 4s
     def pick_segments(self, duration: float, hop: float,
@@ -96,7 +37,7 @@ class EEGFeatureExtractor:
         S_eff = wart * S
         keep = self.poisson_disk_select(starts, S_eff, duration * 1.1, need_number, self.raw.info['sfreq'])
         # convert frame starts to sample indices
-        return [int(starts[i]) for i in keep]
+        return np.array([int(starts[i]) for i in keep])
 
     @staticmethod
     def poisson_disk_select(times: list, score: np.ndarray, min_gap_s: float, need_n: int, fs: int):
