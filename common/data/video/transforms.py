@@ -140,7 +140,9 @@ class ViVitImageProcessorTransform(nn.Module):
 
         return x
 
-
+# todo a non cpu bound (it is faster just iterate). -> BATCH (chunk) -> MICRO-BATCH
+# TODO controlla gia che ci sei che passando un botto di zeri non si abbiano problemi di masking e altro
+# -> I punti non sono batchati solo per sequenze lunghe ho il problema.
 class ViVitEmbedderTransform(nn.Module):
     def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", device=None):
         super().__init__()

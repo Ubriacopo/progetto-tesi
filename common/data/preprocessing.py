@@ -42,14 +42,13 @@ class Preprocessor(ABC, Generic[T]):
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
 
-            docs: list[dict] = []
             # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
             for i in loader.scan():
                 key = i.get_identifier()
                 if existing_df is not None and existing_df[key].str.contains(i.eid).any():
                     continue  # This element was already processed.
 
-                [docs.append(e) for e in self.preprocess(i)]
+                docs = [e for e in self.preprocess(i)]
                 df = pd.DataFrame([d for d in docs])
                 if existing_df is not None:
                     df = pd.concat([df, existing_df], ignore_index=True)
