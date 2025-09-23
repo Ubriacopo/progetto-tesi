@@ -1,7 +1,7 @@
 import traceback
 from abc import abstractmethod, ABC
 from pathlib import Path
-from typing import Optional, TypeVar, Generic
+from typing import Optional, TypeVar, Generic, Callable, Iterable
 
 import numpy as np
 import pandas as pd
@@ -81,7 +81,6 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
     def preprocess(self, x: AgnosticDatasetPoint) -> dict | list[dict]:
         if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
-
 
         segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
         x_segments = [self.preprocess_segment(x, segment) for idx, segment in enumerate(segments)]

@@ -15,6 +15,9 @@ feature_extractor = VivitFeatureExtractor(size=224, num_frames=32)
 
 - Vedi di fare questo se effettivamente teniamo all samples in un .pt anche di durata molto diversa
 ```py
+import gzip
+import shutil
+
 with open("./resources/AMIGOS/processed-interleaved/P01_31.pt", "rb") as f_in, gzip.open("./resources/AMIGOS/processed-interleaved/P01_31.pt.gz", "wb") as f_out:
     shutil.copyfileobj(f_in, f_out)
 ```
