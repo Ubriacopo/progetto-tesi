@@ -1,3 +1,5 @@
+from typing import Optional, Tuple
+
 import mne
 import numpy as np
 from scipy.signal import stft
@@ -6,8 +8,24 @@ from scipy.signal import stft
 class EEGFeatureExtractor:
     epsilon: float = 1e-12
 
-    def __init__(self, raw: mne.io.RawArray):
+    def __init__(self, raw: mne.io.RawArray, weights: Optional[np.ndarray] = None):
+        """
+        Wanted weights are only for feats not for bands. These are passed at point extraction.
+        :param raw:
+        :param weights: Entropy - Spectral Flux - RMS - Line Length - TKEO (Teager-Kaiser)
+        """
         self.raw = raw.copy().load_data()
+
+        if weights is not None and weights.shape[0] != 9:
+            raise ValueError(f"The shape of weights should be of 9 not {weights.shape[0]}")
+
+        self.weights: np.ndarray = weights
+        if self.weights is None:
+            self.weights = np.array(
+                # Entropy - Spectral Flux - RMS - Line Length - TKEO (Teager-Kaiser)
+                [-0.4, 1.5, 0.7, 1.0, 1.0]
+            )
+
         self.k_frac = .4
 
     def process(self):
@@ -19,14 +37,18 @@ class EEGFeatureExtractor:
         # Per-channel standardization (z-score)
         self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + self.epsilon))
 
-    # Optional augmentation: with probability p (say 0.2), replace a 4 s clip by a 1–3 s centered sub-clip; pad+mask back to the 4 s token length so batches stay uniform.
-    # todo if shorter just crop center. O semplicemente fissi a 4s
     def pick_segments(self, duration: float, hop: float,
-                      bands: tuple[tuple] = ((0.5, 4), (4, 8), (8, 13), (13, 30)), need_number: int = 30):
+                      bands: tuple[tuple, ...] = ((0.5, 4), (4, 8), (8, 13), (13, 30)),
+                      band_weights: tuple[float, ...] = (0.5, 0.4, 0.5, 0.4),
+                      need_number: int = 30):
+
+        if len(bands) != len(band_weights):
+            raise ValueError(f"Shape mismatch between bands and weights: {len(bands)}!= {len(band_weights)}")
+
         feats, names, starts = self._stft_features(duration, hop, bands)
+
         Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))  # 30 s window
-        # Simple weights (tweakable)
-        w = np.array([0.5, 0.4, 0.5, 0.4] + [-0.4, 1.5, 0.7, 1.0, 1.0])[:Z.shape[2]]
+        w = np.concatenate((band_weights, self.weights))[:Z.shape[2]]
 
         S_channels = (Z * w).sum(axis=2)
         k = max(1, int(round(self.k_frac * S_channels.shape[0])))
@@ -51,6 +73,7 @@ class EEGFeatureExtractor:
             if all(abs(t - kt) >= gap for kt in keep_times):
                 keep_idx.append(i)
                 keep_times.append(t)
+
                 if len(keep_idx) == need_n:
                     break
 
@@ -77,6 +100,7 @@ class EEGFeatureExtractor:
                 Z[c, :, ftr] = (x - med) / (1.4826 * mad)
 
         return Z
+
     # todo fix
     def artifact_weights_from_mne(self, duration_s, hop_s):
         annotations = []
@@ -135,7 +159,7 @@ class EEGFeatureExtractor:
         n_samples = int(round(duration_s * fs))
         n_overlap = n_samples - int(round(hop_s * fs))
         if n_samples <= 0 or n_overlap <= 0:
-            raise ValueError("Samples and overlap must be positive")
+            raise ValueError("Both samples and overlap must be positive")
 
         f, t_sec, Z0 = stft(x[0], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
         centers = np.round(t_sec * fs).astype(int)
@@ -172,10 +196,9 @@ class EEGFeatureExtractor:
             # Time domain same framing
             frames = np.stack([x[c, s:s + n_samples] for s in starts_use])
             rms = np.sqrt((frames ** 2).mean(axis=1))
-
             line_length = np.mean(np.abs(np.diff(frames, axis=1)), axis=1)
-            # Tagger–Kaiser Energy Operator averaged per frame; captures bursty, high-frequency energy.
             tkeo = np.mean(np.abs(frames[:, 1:-1] ** 2 - frames[:, :-2] * frames[:, 2:]), axis=1)
+
             feats.append(
                 np.c_[
                     np.stack(relative_P, axis=1),  # Relative bandpower per frame

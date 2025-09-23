@@ -18,7 +18,8 @@ from common.data.eeg import EEG
 from common.data.eeg.transforms import CBraModEmbedderTransform
 from common.data.eeg.transforms import EEGResample, EEGToTensor, AddMneAnnotation, EEGToTimePatches
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
-from common.data.sampler import FixedIntervalsSegmenter, RandomizedSizeIntervalsSegmenter
+from common.data.sampler import FixedIntervalsSegmenter, RandomizedSizeIntervalsSegmenter, \
+    FeatureAndRandomLogUniformIntervalsSegmenter
 from common.data.signal.transforms import SubclipMneRaw, DataAsMneRaw, SignalToTensor
 from common.data.text import Text
 from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform
@@ -110,7 +111,11 @@ class AmigosPreprocessorFactory:
             output_path=output_path,
             ch_names=AmigosConfig.CH_NAMES,
             ch_types=AmigosConfig.CH_TYPES,
-            segmenter=RandomizedSizeIntervalsSegmenter(30, 10),
+            segmenter=FeatureAndRandomLogUniformIntervalsSegmenter(
+                min_length=2, max_length=32, num_segments=20,
+                anchor_identification_hop=0.125,
+                extraction_jitter=0.1  # TODO: Tweak this one a little or plain disable it
+            ),
             # FixedIntervalsSegmenter(max_length),
             pipeline=AgnosticDatasetTransformWrapper(
                 "interleaved-rand",
@@ -176,7 +181,10 @@ class AmigosPreprocessorFactory:
             output_path=output_path,
             ch_names=AmigosConfig.CH_NAMES,
             ch_types=AmigosConfig.CH_TYPES,
-            segmenter=FixedIntervalsSegmenter(max_length),
+            segmenter=FeatureAndRandomLogUniformIntervalsSegmenter(
+                min_length=2, max_length=12, num_segments=20,
+                anchor_identification_hop=0.125, extraction_jitter=.1
+            ),
             pipeline=AgnosticDatasetTransformWrapper(
                 "preprocessing-default",
                 (Video.modality_code(), vid_transform),
