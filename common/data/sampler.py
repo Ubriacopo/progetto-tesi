@@ -140,7 +140,7 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
             self.anchor_modality.max_length, self.anchor_identification_hop,
             bands=((4, 8), (8, 13), (13, 30)), band_weights=(0.4, 0.5, 0.4)
         )
-        # todo vedi di far lavorare solo con punti e non secondi qui
+
         num_slots = int(np.ceil(sample.data.duration / self.coverage_resolution_sec))
         anchors = {spec.key: [] for spec in self.features_specs}
         # Coverage tracker in seconds (no index math)
