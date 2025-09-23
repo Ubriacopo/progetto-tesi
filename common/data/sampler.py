@@ -30,7 +30,7 @@ class FixedIntervalsSegmenter(Segmenter):
         stops = np.minimum(starts + self.max_length, length).astype(int)
 
         # Avoid overlaps (0s durations make no sense)
-        overlapping = starts - stops == 0
+        overlapping = (starts - stops) == 0
         starts = starts[~overlapping]
         stops = stops[~overlapping]
 
@@ -127,7 +127,7 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
 
     def classify_duration(self, duration: float) -> Feature:
         for feature in self.features_specs:
-            if duration < feature.max_length:
+            if duration <= feature.max_length:
                 return feature
         raise ValueError("Extracted segment is not a valid duration for the given specs")
 
@@ -184,7 +184,7 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
         potential_anchors = [
             Anchor(segment.start, segment.stop, idx)
             for idx, segment in enumerate(segments)
-            if segment.feature_spec == self.anchor_modality.max_length
+            if segment.feature_spec == self.anchor_modality
         ]
 
         # At random, we might want to go for non anchored.
@@ -195,7 +195,8 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
             anchor: int = np.random.choice(free_potential_anchors)
 
             anchor_segment = segments[anchor]
-            center = (anchor_segment.start + anchor_segment.stop) / 2 + np.random.uniform(-jitter_frac, jitter_frac) * d
+            center = (anchor_segment.start + anchor_segment.stop) / 2
+            center += np.random.uniform(-jitter_frac, jitter_frac) * d * eeg.fs
             start = int(np.clip(center - d / 2 * eeg.fs, 0, max(0, int((t - d) * eeg.fs))))
             return start, int(start + d * eeg.fs), anchor
 
@@ -281,8 +282,8 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
             jitter = np.random.uniform(-1, 1) * self.extraction_jitter
             jitter *= d * eeg.fs  # To points of EEG
             # Get start and stop points.
-            start = int(np.clip(start + jitter, 0, max(0, eeg.fs * int(t - d))))
-            stop = start + d * eeg.fs
+            start = int(np.clip(start + jitter, 0, max(0, int(eeg.fs * (t - d)))))
+            stop = int(start + d * eeg.fs)
 
         ok_iou = self.ok_iou(start, stop, base_feature, segments)
         if not ok_iou or not self.check_coverage(eeg, start, stop, coverage):
