@@ -16,7 +16,7 @@ class EEGFeatureExtractor:
         """
         self.raw = raw.copy().load_data()
 
-        if weights is not None and weights.shape[0] != 9:
+        if weights is not None and weights.shape[0] != 5:
             raise ValueError(f"The shape of weights should be of 9 not {weights.shape[0]}")
 
         self.weights: np.ndarray = weights
@@ -157,9 +157,13 @@ class EEGFeatureExtractor:
         C, T = x.shape
 
         n_samples = int(round(duration_s * fs))
-        n_overlap = n_samples - int(round(hop_s * fs))
-        if n_samples <= 0 or n_overlap <= 0:
-            raise ValueError("Both samples and overlap must be positive")
+        hop_samples = int(round(hop_s * fs))
+        n_overlap = max(0, n_samples - max(1, hop_samples))
+
+        if n_samples <= 0:
+            raise ValueError("duration_s must be > 0")
+        if hop_samples > n_samples and self.raw.n_times < n_samples + hop_samples:
+            raise ValueError("hop_s too large for duration_s and signal length")
 
         f, t_sec, Z0 = stft(x[0], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
         centers = np.round(t_sec * fs).astype(int)
