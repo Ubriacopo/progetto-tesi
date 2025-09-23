@@ -283,7 +283,10 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
 
         ok_iou = self.ok_iou(start, stop, base_feature, segments)
         if not ok_iou or not self.check_coverage(eeg, start, stop, coverage):
-            print(f"Check failed for ({start}-{stop}). Problem was  {'iou' if not ok_iou else 'coverage'}")
+            print(
+                f"Check failed for ({start}-{stop}) ({base_feature.key}).\n"
+                f"Problem was: {'IoU' if not ok_iou else 'coverage'}.\n"
+                f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.\n\n")
             return self.extract(eeg, t, d, base_feature, candidate_anchors, anchors, segments, coverage, attempt + 1)
 
         segments.append(Segment(start=start, stop=stop, feature_spec=base_feature, duration=d))
@@ -291,6 +294,8 @@ class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
 
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
+            print(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
+                  f"candidate_anchors: {candidate_anchors}.\n\n")
             candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
         if reference_anchor is not None:
             # This anchor was used so we "register" its usage
