@@ -140,15 +140,19 @@ class ViVitImageProcessorTransform(nn.Module):
 
         return x
 
-# todo a non cpu bound (it is faster just iterate). -> BATCH (chunk) -> MICRO-BATCH
-# TODO controlla gia che ci sei che passando un botto di zeri non si abbiano problemi di masking e altro
-# -> I punti non sono batchati solo per sequenze lunghe ho il problema.
+
 class ViVitEmbedderTransform(nn.Module):
-    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", device=None):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", device=None,
+                 map_to=None, mini_batch_size: int = None):
         super().__init__()
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model = VivitModel.from_pretrained(model_name, device_map=device)
+
         self.device = device
+        # If the device is the same we don't have to remap.
+        self.map_to = map_to if map_to is not None and map_to != self.device else None
+
+        self.mini_batch_size: int = mini_batch_size
 
     def forward(self, x) -> torch.Tensor:
         if len(x.shape) == 4:
@@ -161,6 +165,9 @@ class ViVitEmbedderTransform(nn.Module):
         y = y.last_hidden_state
         # Discard [CLS] token
         tokens = y[:, 1:, :]
+        # Move to CPU if wanted
+        if self.map_to is not None:
+            tokens = tokens.to(self.map_to)
         return tokens
 
 

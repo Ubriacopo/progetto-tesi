@@ -75,7 +75,7 @@ class AmigosPreprocessorFactory:
                 original_fps=AmigosConfig.original_vid_fps, sequence_duration_seconds=sub_media_max_length_seconds,
                 frames_resampler=RegularFrameResampling(32, drop_mask=True)
             ),
-            ViVitEmbedderTransform(device="cpu"),
+            ViVitEmbedderTransform(device="cuda:0", map_to="cpu"),
             MultimediaPadding(int(max_length / sub_media_max_length_seconds)),
         )
 
