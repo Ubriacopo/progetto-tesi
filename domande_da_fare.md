@@ -33,3 +33,7 @@
 - Audio paralinguistico (prosodia, pitch, energy) → a volte correla più con EEG/affetto del contenuto semantico.
 - Use self-distillation over training iterations
 - Projection to reconstruct e,v,a (all mods) -> self supervision. Siglip prima di gatedXAttention
+- 
+- Does it make sense for my foundation model to use the music track? It is kinda hard to get the audio and to map it to video but not impossible
+- This supposes that I have the video I do not I only have face recordings and a highlight start index (in seconds) Most listed youtube links have been taken down So going for other clips of the same media might result in time unalignments
+#### Seems like for DEAP the mapping just cant be done

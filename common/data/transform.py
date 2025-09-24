@@ -2,13 +2,11 @@ import dataclasses
 from abc import ABC, abstractmethod
 from typing import Optional, Literal
 
-import mne
 import torch
 from torch import nn
 from torchvision.transforms import Lambda
 
 from common.data.media import Media
-from common.data.signal.signal import Signal
 
 IDENTITY = Lambda(lambda x: x)
 

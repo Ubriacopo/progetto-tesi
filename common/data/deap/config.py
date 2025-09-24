@@ -1,6 +1,6 @@
 class DeapConfig:
     class EEG:
-        original_fs: int = 128
+        fs: int = 128
 
     class Video:
         fps: int = 50
