@@ -7,9 +7,15 @@ class AmigosConfig:
     """
     Static information on AMIGOS.
     """
-    original_aud_fs = 44100
-    original_eeg_fs = 128
-    original_vid_fps = 25
+
+    class Video:
+        fps: int = 25
+
+    class EEG:
+        fs: int = 128
+
+    class Audio:
+        fs = 44100
 
     CH_NAMES = [
         # EEG Channels (14)

@@ -74,3 +74,45 @@ class SignalSequenceResampling(nn.Module):
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
 
         return y
+
+
+class SignalZeroMasking(nn.Module):
+    def __init__(self, max_length: int, fs: int, channels_first: bool = False):
+        """
+
+        :param max_length: Expressed in seconds.
+        :param fs:
+        :param channels_first:
+        """
+        super().__init__()
+        self.fs = fs
+        self.max_length = max_length
+
+        self.max_data_points = self.max_length * fs
+        self.channels_first = channels_first
+
+    def forward(self, x: torch.Tensor):
+        transposed = False
+        if len(x.shape) == 2 and not self.channels_first:
+            transposed = True
+            x = x.T
+
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+
+        x_points = x.shape[-1]
+        if x_points > self.max_data_points:
+            # Truncate
+            pad = int((x_points - self.max_data_points) / 2)
+            x = x[:, pad:x_points - pad]
+            x = x[:, :self.max_data_points]
+            return x if not transposed else x.T
+
+        if x_points == self.max_data_points:
+            return x if not transposed else x.T
+
+        if x_points < self.max_data_points:
+            x = torch.cat([x, torch.zeros(x.shape[0], self.max_data_points - x_points)], dim=-1)
+            return x if not transposed else x.T
+
+        raise ValueError("Somehow you got here how can that be!")

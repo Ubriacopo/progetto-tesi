@@ -3,7 +3,8 @@ from torchaudio.transforms import Resample
 from transformers import VivitImageProcessor
 
 from common.data.amigos.config import AmigosConfig
-from common.data.audio.transforms import AudioZeroMasking, AudioToTensor, ToMono
+from common.data.audio.transforms import AudioToTensor, ToMono
+from common.data.signal.transforms import SignalZeroMasking
 from common.data.dataset import AgnosticEmbeddingsReadyPdSpecMediaDataset
 from common.data.eeg.transforms import EEGResample, EEGToTensor, EEGToTimePatches
 from common.data.video import VideoToTensor, RegularFrameResampling
@@ -66,7 +67,7 @@ def kd_train_dataset(amigos_path: str):
                     ],
                     aud_transform=[
                         Resample(44000, 16000),
-                        AudioZeroMasking(8, 16000),
+                        SignalZeroMasking(8, 16000),
                         W2VBertFeatureExtractorTransform(),
                     ]
                 ),

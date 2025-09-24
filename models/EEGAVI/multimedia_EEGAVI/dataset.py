@@ -2,7 +2,8 @@ from torch.utils.data import StackDataset
 from torchaudio.transforms import Resample
 from torchvision.transforms import v2
 
-from common.data.audio.transforms import AudioToTensor, AudioZeroMasking, ToMono
+from common.data.audio.transforms import AudioToTensor, ToMono
+from common.data.signal.transforms import SignalZeroMasking
 from common.data.data_point import EEGDatasetTransformWrapper
 from common.data.dataset import KDEEGPdSpecMediaDataset
 from common.data.eeg.transforms import EEGToMneRaw, EEGResample, EEGToTensor, EEGToTimePatches
@@ -27,7 +28,7 @@ def kd_train_dataset(amigos_path: str):
                 aud_transform=[
                     AudioToTensor(),
                     Resample(44000, 16000),
-                    AudioZeroMasking(8, 16000),
+                    SignalZeroMasking(8, 16000),
                     ToMono(),
                 ],
                 eeg_transform=[
