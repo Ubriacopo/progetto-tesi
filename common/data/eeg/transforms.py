@@ -65,8 +65,7 @@ class EEGResample(nn.Module):
 
 
 class EEGToTimePatches(nn.Module):
-    # todo non ricordo perche e come max_segemtns
-    def __init__(self, points_per_patch: int, max_segments: int = 8):
+    def __init__(self, points_per_patch: int, max_segments: int):
         super().__init__()
         self.points_per_patch = points_per_patch
         self.max_segments = max_segments
@@ -75,25 +74,40 @@ class EEGToTimePatches(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         c, d = x.shape
-        # [16000] -> [T, points_per_patch]
         T = d / self.points_per_patch
 
-        # Simplest case.
-        if T == self.max_segments:
-            x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
-            return x
-
+        # Special case in which the extracted time sequence is longer than allowed
+        # (This should never occur)
         if T > self.max_segments:
             # Center crop. Alternative would be sliding window.
+            print(f"Warning: Somehow you got more T than allowed ({T} > {self.max_segments}).\n"
+                  "Center-cropping is applied but investigate if this behaviour is desired.")
             pad = int((d - self.max_points) / 2)
             x = x[:, pad:d - pad]
             x = x[:, :self.max_points]  # To be sure we took the correct number of points
             x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
             return x
 
-        # Do zero padding. TODO See if really so for CBraMod
-        x = torch.cat([x, torch.zeros(c, self.max_points - d)], dim=1)
-        x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
+        missing_points = d % self.points_per_patch
+        if missing_points != 0:
+            # We have to pad the last one
+            x = torch.nn.functional.pad(x, (0, missing_points))
+
+        x = rearrange(x, 'c (t d) -> c t d', t=T)
+        return x
+
+
+class EegTimePadding(nn.Module):
+    def __init__(self, max_length: int):
+        super().__init__()
+        self.max_length: int = max_length
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        T = x.shape[-2]
+        if self.max_length > T:
+            x = torch.nn.functional.pad(x, (0, 0, 0, self.max_length - T))
+
+        x = x.squeeze()
         return x
 
 

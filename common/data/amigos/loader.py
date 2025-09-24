@@ -57,22 +57,21 @@ class AmigosPointsLoader(DataPointsLoader):
             info = mne.create_info(
                 ch_names=AmigosConfig.CH_NAMES,
                 ch_types=AmigosConfig.CH_TYPES,
-                sfreq=AmigosConfig.original_eeg_fs
+                sfreq=AmigosConfig.EEG.fs
             )
-
             raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
+
             eeg = EEG(
-                # Signal Data
                 eid=experiment_id,
                 data=raw.copy().pick_types(eeg=True),
-                fs=AmigosConfig.original_eeg_fs,
+                fs=AmigosConfig.EEG.fs,
             )
 
             ecg = ECG(
                 # Signal Data
                 eid=experiment_id,
                 data=raw.copy().pick_types(ecg=True),
-                fs=AmigosConfig.original_eeg_fs,
+                fs=AmigosConfig.EEG.fs,
                 # ECG Specific
                 leads=AmigosConfig.LEAD_NAMES,
                 patient_gender=user_metadata["Gender"][0].upper(),

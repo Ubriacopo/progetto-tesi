@@ -53,7 +53,7 @@ class Feature:
     jitter_frac: float
 
     def __lt__(self, other):
-        return self.max_length < other.i_max_length
+        return self.max_length < other.max_length
 
 
 @dataclasses.dataclass

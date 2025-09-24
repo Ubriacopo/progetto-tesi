@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from common.data.amigos.config import AmigosConfig
+from common.data.amigos.loader import AmigosPointsLoader
 from common.data.audio import Audio
 from common.data.audio.config import AudTargetConfig
 from common.data.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
@@ -25,7 +26,7 @@ def amigos_interleaved_preprocessor(
         ),
         aud_config: AudTargetConfig = AudTargetConfig(),
         vid_config: VidTargetConfig = VidTargetConfig(),
-        eeg_config: EegTargetConfig = EegTargetConfig(),
+        eeg_config: EegTargetConfig = EegTargetConfig("../../../dependencies/cbramod/pretrained_weights.pth"),
         ecg_config: EcgTargetConfig = EcgTargetConfig(AmigosConfig.prepare_ecg),
 ):
     return TorchExportsSegmenterPreprocessor(
@@ -51,7 +52,7 @@ def amigos_default_preprocessor(
         ),
         aud_config: AudTargetConfig = AudTargetConfig(),
         vid_config: VidTargetConfig = VidTargetConfig(),
-        eeg_config: EegTargetConfig = EegTargetConfig(),
+        eeg_config: EegTargetConfig = EegTargetConfig("../../../dependencies/cbramod/pretrained_weights.pth"),
         ecg_config: EcgTargetConfig = EcgTargetConfig(AmigosConfig.prepare_ecg),
 ):
     return TorchExportsSegmenterPreprocessor(
@@ -69,3 +70,9 @@ def amigos_default_preprocessor(
             nested_keys=[Text.modality_code(), Audio.modality_code()],
         ),
     )
+
+
+if __name__ == "__main__":
+    # Test the methods:
+    interleaved_processor = amigos_interleaved_preprocessor(32, "./test/interleaved")
+    interleaved_processor.run(AmigosPointsLoader("../../../resources/AMIGOS/"))
