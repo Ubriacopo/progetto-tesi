@@ -38,7 +38,7 @@ def amigos_interleaved_preprocessor(
             "interleaved_preprocessor",
             aud_wav2vec_interleaved_txt_extract_transform_pipe(aud_config, AmigosConfig.Audio.fs, output_max_length),
             vid_vivit_interleaved_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
-            eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs),
+            eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
             nested_keys=[Text.modality_code(), Audio.modality_code(), ],
         )
@@ -63,7 +63,7 @@ def amigos_default_preprocessor(
         pipeline=AgnosticDatasetTransformWrapper(
             "default_preprocessor",
             vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
-            eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs),
+            eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
             ecg_default_transform_pipe(ecg_config),
             aud_wav2vec_default_txt_extract_transform_pipe(aud_config, AmigosConfig.Audio.fs, output_max_length),
             expand_nested=True,

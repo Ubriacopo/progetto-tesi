@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 
 import mne
@@ -85,30 +86,43 @@ class EEGToTimePatches(nn.Module):
             pad = int((d - self.max_points) / 2)
             x = x[:, pad:d - pad]
             x = x[:, :self.max_points]  # To be sure we took the correct number of points
-            x = rearrange(x, "c (t d) -> c t d", t=self.max_segments)
+            x = rearrange(x, "c (t d) -> c t d", d=self.points_per_patch)
             return x
 
-        missing_points = d % self.points_per_patch
+        next_multiple = math.ceil(d / self.points_per_patch) * self.points_per_patch
+        missing_points = next_multiple - d
         if missing_points != 0:
             # We have to pad the last one
             x = torch.nn.functional.pad(x, (0, missing_points))
 
-        x = rearrange(x, 'c (t d) -> c t d', t=T)
+        x = rearrange(x, 'c (t d) -> c t d', d=self.points_per_patch)
         return x
 
 
 class EegTimePadding(nn.Module):
-    def __init__(self, max_length: int):
+    def __init__(self, max_length: int, drop_mask: bool = False, first_dim_batch: bool = True):
         super().__init__()
         self.max_length: int = max_length
+        self.first_dim_batch: bool = first_dim_batch  # When the dim is batch but always 1
+        self.drop_mask: bool = drop_mask
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> dict | torch.Tensor:
+        if self.first_dim_batch:
+            x = x.squeeze(0)
+
+        if not len(x.shape) == 3:
+            raise ValueError(f"Expected 3D tensor, got {x.shape}. We want (c, T, D)")
+
         T = x.shape[-2]
+        # Channels x T (Easier to use later).
+        mask = torch.zeros(self.max_length).bool()
         if self.max_length > T:
             x = torch.nn.functional.pad(x, (0, 0, 0, self.max_length - T))
+            # Set time steps first. We get a simpler MASK like this.
+            x = rearrange(x, 'c t d -> t c d')
+            mask[:T] = True  # Zeros
 
-        x = x.squeeze()
-        return x
+        return {"data": x, "mask": mask} if not self.drop_mask else x
 
 
 class CBraModEmbedderTransform(nn.Module):
