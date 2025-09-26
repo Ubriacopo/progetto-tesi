@@ -69,7 +69,7 @@ class MultimediaPadding(nn.Module):
         T = x.shape[0]
         if T > self.max_length:
             raise ValueError("We suppose to have a max sequence length during sampling."
-                             "A larger value is therefore impossible")
+                             f"A larger value is therefore impossible. ({T} > {self.max_length})")
 
         # The input x is okay so we can just return it.
         if T == self.max_length:

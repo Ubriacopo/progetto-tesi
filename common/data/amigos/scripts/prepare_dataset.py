@@ -8,6 +8,7 @@ from common.data.amigos.preprocessing import amigos_interleaved_preprocessor
 from common.data.audio.config import AudTargetConfig
 from common.data.ecg.config import EcgTargetConfig
 from common.data.eeg.config import EegTargetConfig
+from common.data.text.config import TxtTargetConfig
 from common.data.video.config import VidTargetConfig
 
 parser = argparse.ArgumentParser()
@@ -42,6 +43,12 @@ if "ecg_config" in cfg:
     for k, v in cfg["ecg_config"].items():
         setattr(ecg_config, k, v)
     kwargs["ecg_config"] = ecg_config
+
+if "txt_config" in cfg:
+    txt_config = TxtTargetConfig(cfg["txt_config"]["registry_store_path"])
+    for k, v in cfg["txt_config"].items():
+        setattr(txt_config, k, v)
+    kwargs["txt_config"] = txt_config
 
 if "segmenter" in cfg:
     segmenter_type = cfg["segmenter"]["type"]

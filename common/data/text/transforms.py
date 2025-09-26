@@ -1,3 +1,5 @@
+import re
+
 import torch
 import torchaudio
 from torch import nn
@@ -48,12 +50,14 @@ class Wav2VecExtractFromAudio(nn.Module):
             raise ValueError("Be sure tor resample the input to the correct sample rate")
 
     @timed()
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> str | list[str]:
         batched_input: bool = len(x.shape) > 1
         with torch.inference_mode():
             y, _ = self.model(x.to(self.device))
 
-        transcript = self.decoder(y) if not batched_input else [self.decoder(b) for b in y.unbind(0)]
+        transcript = re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(y)) if not batched_input else [
+            re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(b)) for b in y.unbind(0)
+        ]
 
         return transcript
 
@@ -101,5 +105,9 @@ class TextRegistry(nn.Module):
 
     def forward(self, transcript: str) -> str:
         with open(self.store_path, "a", encoding="utf-8") as f:
-            f.write(" ".join(transcript) + "\n")
+            if isinstance(transcript, list):
+                f.write(f"{"[MEDIA-DIVIDER]".join(transcript)}\n")
+            else:
+                f.write(transcript + "\n")
+
         return transcript

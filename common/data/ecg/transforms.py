@@ -18,10 +18,8 @@ from common.data.utils import sanitize_for_ast, timed
 class ECGPayload:
     signal: List[List[float]]  # ECG signal data: [leads, samples], e.g., [12, 5000]
     fs: Optional[int] = None  # Sampling rate in Hz (default: 500)
-    # TODO: posso estrarli
     patient_age: Optional[int] = None  # Patient age in years
     patient_gender: Optional[str] = None  # Patient gender (M/F)"
-    # TODO capire come estrarlik
     lead_names: Optional[List[str]] = None  # Lead names (default: 12-lead standard)
 
     @staticmethod
@@ -92,7 +90,6 @@ class EcgSequenceResampling(nn.Module):
             res = self.resampler(x_i)
             if self.channels_first:
                 res = res.T
-            # TODO Sablgiata questa concat (dovrebbe fare su un livello piu atlo
             res = res.unsqueeze(0)
             # We have new dimension that records the sequence.
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
