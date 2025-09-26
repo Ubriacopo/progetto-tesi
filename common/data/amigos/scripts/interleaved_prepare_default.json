@@ -25,5 +25,9 @@
   },
   "aud_config": {
     "i_max_length": 0.96
+  },
+  "txt_config": {
+    "i_max_length": 4,
+    "registry_store_path": "../../../../resources/AMIGOS/p-interleaved-d/extracted-text.txt"
   }
 }

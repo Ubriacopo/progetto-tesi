@@ -88,3 +88,18 @@ class MiniLMEmbedderTransform(nn.Module):
         embeddings = torch.Tensor(embeddings).to(self.device)
 
         return embeddings
+
+
+class TextRegistry(nn.Module):
+    def __init__(self, store_path: str):
+        """
+        Might not be the smartest or best approach, but it just will serve our purpose.
+        :param store_path: Where to store the extracted text
+        """
+        super(TextRegistry, self).__init__()
+        self.store_path = store_path
+
+    def forward(self, transcript: str) -> str:
+        with open(self.store_path, "a", encoding="utf-8") as f:
+            f.write(" ".join(transcript) + "\n")
+        return transcript

@@ -9,11 +9,13 @@ from common.data.audio.transforms import SubclipAudio, AudioToTensor, ToMono, Au
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform
 from common.data.signal.transforms import SignalZeroMasking
 from common.data.text import Text
-from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform
+from common.data.text.config import TxtTargetConfig
+from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform, TextRegistry
 from common.data.transform import Parallel, MultimediaPadding
 
 
-def aud_wav2vec_interleaved_txt_extract_transform_pipe(target_config: AudTargetConfig, fs: int, max_length: int) \
+def aud_wav2vec_interleaved_txt_extract_transform_pipe(
+        target_config: AudTargetConfig, target_txt_config: TxtTargetConfig, fs: int, max_length: int) \
         -> tuple[str, nn.Module]:
     return Audio.modality_code(), nn.Sequential(
         SubclipAudio(),
@@ -26,11 +28,11 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(target_config: AudTargetC
         ),
         Parallel(
             nn.Sequential(
-                # TODO Custom audio cleaning is to do to see improvements?
+                # TODO Custom audio cleaning is to do to see improvements. -> Possible Improvement
                 Wav2VecExtractFromAudio(fs=target_config.fs),  # Works a bit better.
+                TextRegistry(store_path=target_txt_config.registry_store_path),
                 MiniLMEmbedderTransform(),
-                # TODO add un "registro" text così sappiamo OG estratto per interval
-                MultimediaPadding(max_length=math.ceil(max_length / target_config.i_max_length))
+                MultimediaPadding(max_length=math.ceil(max_length / target_txt_config.i_max_length))
             ),
             nn.Sequential(
                 WavLmFeatureExtractorTransform(sampling_rate=target_config.fs),

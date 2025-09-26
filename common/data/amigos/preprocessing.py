@@ -14,6 +14,7 @@ from common.data.eeg.default_transform_pipe import eeg_transform_pipe
 from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import FeatureAndRandomLogUniformIntervalsSegmenter, Segmenter
 from common.data.text import Text
+from common.data.text.config import TxtTargetConfig
 from common.data.video.config import VidTargetConfig
 from common.data.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
     vid_vivit_default_transform_pipe
@@ -26,6 +27,7 @@ def amigos_interleaved_preprocessor(
         ),
         aud_config: AudTargetConfig = AudTargetConfig(),
         vid_config: VidTargetConfig = VidTargetConfig(),
+        txt_config: TxtTargetConfig = TxtTargetConfig("./gen-text-out.txt"),
         eeg_config: EegTargetConfig = EegTargetConfig("../../../dependencies/cbramod/pretrained_weights.pth"),
         ecg_config: EcgTargetConfig = EcgTargetConfig(AmigosConfig.prepare_ecg),
 ):
@@ -36,7 +38,9 @@ def amigos_interleaved_preprocessor(
         segmenter=segmenter,
         pipeline=AgnosticDatasetTransformWrapper(
             "interleaved_preprocessor",
-            aud_wav2vec_interleaved_txt_extract_transform_pipe(aud_config, AmigosConfig.Audio.fs, output_max_length),
+            aud_wav2vec_interleaved_txt_extract_transform_pipe(
+                aud_config, txt_config, AmigosConfig.Audio.fs, output_max_length
+            ),
             vid_vivit_interleaved_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
             eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),

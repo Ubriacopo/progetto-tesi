@@ -42,7 +42,7 @@ class AmigosConfig:
         aVL = I - II / 2
         aVF = II - I / 2
         zeros = np.zeros_like(I)
-        # TODO Controlla che sia ffettivamente corretto
+
         # shape [12, T] to be compliant with ECG-LM requirements
         # todo axis=0 se no time seq
         signal_12xT = np.stack(

@@ -79,8 +79,6 @@ class AmigosPointsLoader(DataPointsLoader):
             )
 
             # Take from Audio
-
-            # TODO Passare ad agnostic e veder se gira ancora tutto
             yield AgnosticDatasetPoint(
                 experiment_id,
                 eeg.as_mod_tuple(),

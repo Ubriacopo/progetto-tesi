@@ -54,23 +54,25 @@ def build_tensor_dict(samples: list[dict | torch.Tensor] | tuple):
     :param samples: Objects to store. Fields that are str are ignored. Unrecognizable types beyond tensors, nums, list and dicts raise exceptions.
     :return: The build tensor dictionary where samples are stacked together.
     """
-    first = samples[0]
-    if isinstance(first, torch.Tensor):
-        return torch.stack(samples)
+    try:
+        first = samples[0]
+        if isinstance(first, torch.Tensor):
+            return torch.stack(samples)
 
-    if isinstance(first, dict) or isinstance(first, BatchFeature):
-        return {k: build_tensor_dict([s[k] for s in samples]) for k in first.keys()}
+        if isinstance(first, dict) or isinstance(first, BatchFeature):
+            return {k: build_tensor_dict([s[k] for s in samples]) for k in first.keys()}
 
-    if isinstance(first, (list, tuple)):
-        return type(first)(build_tensor_dict(items) for items in zip(*samples))
+        if isinstance(first, (list, tuple)):
+            return type(first)(build_tensor_dict(items) for items in zip(*samples))
 
-    if isinstance(first, str):
-        print("String data won't be persisted. Only tensors")
-        return torch.empty(0)
+        if isinstance(first, str):
+            print("String data won't be persisted. Only tensors")
+            return torch.empty(0)
 
-    else:
-        raise TypeError(f"Unsupported type: {type(first)}")
-
+        else:
+            raise TypeError(f"Unsupported type: {type(first)}")
+    except Exception as e:
+        raise e
 
 def sanitize_for_ast(obj):
     # primitives already fine
