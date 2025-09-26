@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+import gzip
+import shutil
+import time
+from contextlib import suppress
+from functools import wraps
+from pathlib import Path
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -103,3 +109,58 @@ def sanitize_for_ast(obj):
 
 
 _AST_OK = (str, bytes, bool, int, float, type(None))
+
+
+def compress_pt_in_folder(path_to_dir: str, verbose: bool = True):
+    if not Path(path_to_dir).exists():
+        raise FileNotFoundError(f"Folder {path_to_dir} does not exist")
+    if not Path(path_to_dir).is_dir():
+        raise NotADirectoryError(f"Folder {path_to_dir} is not a directory")
+
+    path = Path(path_to_dir)
+    pt_files = [file for file in path.iterdir() if file.glob("*.pt")]
+    for pt_file in pt_files:
+        print("Compressing file {}".format(pt_file)) if verbose else None
+        with open(pt_file, "rb") as f_in, gzip.open(Path(str(pt_file) + ".gz"), "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        print("Compressed file {}".format(pt_file)) if verbose else None
+
+
+def decompress_pt(path_to_pt: str, map_location: str = "cpu"):
+    gz_file_path = Path(path_to_pt).with_suffix(".gz")
+    if not gz_file_path.exists():
+        raise FileNotFoundError(f"File {str(gz_file_path)} does not exist")
+
+    with gzip.open(gz_file_path, "rb") as f_in:
+        return torch.load(f_in, map_location=map_location)
+
+
+def timed(label: str = None, longer_than: float = 0.5):
+    def decorator(fn):
+        SUPPRESS: bool = False  # TODO: read from env or something +  use logger nzot print
+
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            # Disable the function entirely
+            if SUPPRESS:
+                return fn(*args, **kwargs)
+
+            start = time.perf_counter()
+            result = fn(*args, **kwargs)
+            end = time.perf_counter()
+
+            # If called on a class instance, use its class name
+            if args and hasattr(args[0], "__class__"):
+                cls_name = args[0].__class__.__name__
+            else:
+                cls_name = fn.__name__
+
+            tag = label or f"{cls_name}.{fn.__name__}"
+            # Maybe really short times are ignorable
+            if longer_than < end - start:
+                print(f"{tag} took {end - start:.3f} seconds")
+            return result
+
+        return wrapper
+
+    return decorator

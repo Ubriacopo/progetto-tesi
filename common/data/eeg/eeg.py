@@ -1,6 +1,4 @@
 import dataclasses
-import os
-from pathlib import Path
 
 from common.data.signal.signal import Signal
 

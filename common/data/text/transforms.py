@@ -4,6 +4,8 @@ from torch import nn
 from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoModel
 from sentence_transformers import SentenceTransformer
 
+from common.data.utils import timed
+
 
 class GreedyCTCDecoder(torch.nn.Module):
     def __init__(self, labels, blank=0):
@@ -18,6 +20,7 @@ class GreedyCTCDecoder(torch.nn.Module):
         self.labels = labels
         self.blank = blank
 
+    @timed()
     def forward(self, emission: torch.Tensor) -> str:
         """Given a sequence emission over labels, get the best path string
         Args:
@@ -44,6 +47,7 @@ class Wav2VecExtractFromAudio(nn.Module):
         if fs != bundle.sample_rate:
             raise ValueError("Be sure tor resample the input to the correct sample rate")
 
+    @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batched_input: bool = len(x.shape) > 1
         with torch.inference_mode():
@@ -63,6 +67,7 @@ class Speech2TextExtract(nn.Module):
         self.processor = Speech2TextProcessor.from_pretrained(model_name, device_map=self.device)
         self.fs = fs
 
+    @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         i = self.processor(x, sampling_rate=self.fs, return_tensors="pt")
         generated_ids = self.model.generate(**i.to(self.device))
@@ -77,6 +82,7 @@ class MiniLMEmbedderTransform(nn.Module):
         # self.preprocessor
         self.model = SentenceTransformer(model_name, device=self.device)
 
+    @timed()
     def forward(self, x: list[str]) -> torch.Tensor:
         embeddings = self.model.encode(x)
         embeddings = torch.Tensor(embeddings).to(self.device)

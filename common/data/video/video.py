@@ -1,6 +1,4 @@
 import dataclasses
-import os
-from pathlib import Path
 from typing import Tuple, Optional
 
 from common.data.media import Media

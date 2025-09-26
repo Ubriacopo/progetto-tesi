@@ -4,11 +4,11 @@ from typing import Literal, Optional
 import torch
 from moviepy import VideoFileClip
 from torch import nn, dtype
-from torchcodec.decoders import VideoDecoder
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from .utils import check_video_data
 from .video import Video
+from ..utils import timed
 
 
 class VideoToTensor(nn.Module):
@@ -19,10 +19,7 @@ class VideoToTensor(nn.Module):
 
     def forward(self, x: Video) -> torch.Tensor:
         frames: torch.Tensor = x.data
-
-        if x.data is None:
-            frames = VideoDecoder(x.file_path, device=self.device)[:]
-        elif isinstance(x.data, VideoFileClip):
+        if isinstance(x.data, VideoFileClip):
             frames = torch.stack([torch.tensor(frame) for frame in x.data.iter_frames()])
         return frames.type(dtype=self.tensor_dtype)
 
@@ -52,6 +49,7 @@ class VideoSequenceResampling(nn.Module):
         self.sequence_length = original_fps * sequence_duration_seconds
         self.frames_resampler = frames_resampler
 
+    @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, c, h, w = x.shape
         segments = int(T / self.sequence_length)
@@ -80,6 +78,7 @@ class RegularFrameResampling(nn.Module):
         self.padding: Literal['zero', 'last', 'none'] = padding
         self.drop_mask: bool = drop_mask
 
+    @timed()
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         T, c, h, w = x.shape
 
@@ -128,6 +127,8 @@ class ViVitImageProcessorTransform(nn.Module):
 
         self.force_time_seq = force_time_seq
 
+    @torch.inference_mode()
+    @timed()
     def forward(self, x):
         if isinstance(x, torch.Tensor) and len(x.shape) == 3:
             x = [x]
@@ -154,6 +155,7 @@ class ViVitEmbedderTransform(nn.Module):
 
         self.mini_batch_size: int = mini_batch_size
 
+    @timed()
     def forward(self, x) -> torch.Tensor:
         if len(x.shape) == 4:
             # Add a virtual batch
@@ -178,8 +180,9 @@ class ViVitForVideoClassificationEmbedderTransform(nn.Module):
         self.model = VivitForVideoClassification.from_pretrained(model_name, device_map=device)
         self.force_time_seq = force_time_seq
 
+    @timed()
     def forward(self, x):
-        with torch.no_grad():
+        with torch.inference_mode():
             x["pixel_values"] = x["pixel_values"].unsqueeze(0)
             x = x.to(self.model.device)  # In case they differ!
             x = self.model(**x).logits.squeeze(0)

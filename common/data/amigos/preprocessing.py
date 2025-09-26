@@ -74,5 +74,5 @@ def amigos_default_preprocessor(
 
 if __name__ == "__main__":
     # Test the methods:
-    interleaved_processor = amigos_interleaved_preprocessor(32, "./test/interleaved")
+    interleaved_processor = amigos_interleaved_preprocessor(32, "../../../resources/AMIGOS/p-interleaved/")
     interleaved_processor.run(AmigosPointsLoader("../../../resources/AMIGOS/"))

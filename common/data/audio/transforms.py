@@ -9,10 +9,12 @@ from transformers import AutoFeatureExtractor, BatchFeature, WavLMModel
 from common.data.audio import Audio
 from common.data.audio.audio import Audio
 from common.data.transform import IDENTITY
+from common.data.utils import timed
 
 
 class AudioToTensor(nn.Module):
     # noinspection PyMethodMayBeStatic
+    @timed()
     def forward(self, x: Audio):
         if x.data is None:
             x, waveform = torchaudio.load(x.file_path)
@@ -27,6 +29,7 @@ class AudioToTensor(nn.Module):
 
 class SubclipAudio(nn.Module):
     # noinspection PyMethodMayBeStatic
+    @timed()
     def forward(self, x: Audio):
         aud: AudioFileClip = x.data
         check_audio_data(x, AudioFileClip)
@@ -51,14 +54,15 @@ class ToMono(nn.Module):
         return torch.mean(x, dim=self.dim, keepdim=self.keepdim)
 
 
-class AudioSequenceResampler(nn.Module):
-    def __init__(self, original_fs: int, sequence_duration_seconds: int,
+class AudioSequencePartitioning(nn.Module):
+    def __init__(self, fs: int, sequence_duration_seconds: int,
                  resampler: nn.Module = IDENTITY, channels_first: bool = False):
         super().__init__()
-        self.sequence_length = original_fs * sequence_duration_seconds
+        self.sequence_length = round(fs * sequence_duration_seconds)
         self.resampler: nn.Module = resampler
         self.channels_first = channels_first
 
+    @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.channels_first:
             x = x.T
@@ -108,6 +112,7 @@ class WavLmFeatureExtractorTransform(nn.Module):
         self.sampling_fs: int = sampling_rate
         self.max_length = max_length
 
+    @timed()
     def forward(self, x: torch.Tensor) -> BatchFeature:
         fs = self.sampling_fs
         if len(x.shape) != 2:
@@ -134,6 +139,7 @@ class WavLmEmbedderTransform(nn.Module):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model = WavLMModel.from_pretrained(model_name, device_map=self.device)
 
+    @timed()
     def forward(self, x: BatchFeature) -> torch.Tensor:
         x = x.to(self.device)
         with torch.no_grad():
@@ -146,6 +152,7 @@ class HubertBaseComputeFeature(nn.Module):
         super().__init__()
         self.original_fs = original_fs
 
+    @timed()
     def forward(self, x: torch.Tensor):
         return torchaudio.functional.resample(x, self.original_fs, torchaudio.pipelines.HUBERT_BASE.sample_rate)
 
@@ -156,6 +163,7 @@ class HubertBaseFeatureExtractorTransform(nn.Module):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = torchaudio.pipelines.HUBERT_BASE.get_model().to(device)
 
+    @timed()
     def forward(self, x: torch.Tensor):
         y, _ = self.model.extract_features(x)
         y = y[-1][0].mean(0)  # TODO vedi non so bene cosa faccia.
@@ -168,6 +176,7 @@ class W2VBertFeatureExtractorTransform(nn.Module):
         self.extractor = AutoFeatureExtractor.from_pretrained(model)
         self.force_time_seq = force_time_seq
 
+    @timed()
     def forward(self, x: torch.Tensor) -> BatchFeature:
         if len(x.shape) == 3:
             x = x.unbind(0)

@@ -36,8 +36,7 @@ class DeapPointsLoader(DataPointsLoader):
                 fps, size = clip.fps, clip.size
                 yield AgnosticDatasetPoint(
                     eid,
-                    # Ricorda che noi abbiamo piu channel di quelli che sono realmente di EEG. todo dividere ecg e altre info da qui
-                    EEG(data=trial, file_path=None, fs=128, eid=eid).as_mod_tuple(),
-                    Video(data=clip, file_path=media_path, fps=fps, resolution=size, eid=eid).as_mod_tuple(),
+                    EEG(data=trial, fs=128, eid=eid).as_mod_tuple(),
+                    Video(data=clip, fps=fps, resolution=size, eid=eid).as_mod_tuple(),
                     ("labels", {"values": labels}),
                 )

@@ -8,7 +8,7 @@ from einops import rearrange
 from torch import nn
 
 from common.data.eeg.eeg import EEG
-from common.data.eeg.utils import find_segment_by_descriptor
+from common.data.utils import timed
 
 
 class EEGToTensor(nn.Module):
@@ -49,6 +49,7 @@ class EEGResample(nn.Module):
         self.tfreq = tfreq
         self.verbose = verbose
 
+    @timed()
     def forward(self, x: EEG | torch.Tensor) -> EEG | torch.Tensor:
         if isinstance(x, EEG):
             raw: mne.io.RawArray = x.data
@@ -73,6 +74,7 @@ class EEGToTimePatches(nn.Module):
 
         self.max_points = self.points_per_patch * self.max_segments
 
+    @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         c, d = x.shape
         T = d / self.points_per_patch
@@ -106,6 +108,7 @@ class EegTimePadding(nn.Module):
         self.first_dim_batch: bool = first_dim_batch  # When the dim is batch but always 1
         self.drop_mask: bool = drop_mask
 
+    @timed()
     def forward(self, x: torch.Tensor) -> dict | torch.Tensor:
         if self.first_dim_batch:
             x = x.squeeze(0)
@@ -134,6 +137,7 @@ class CBraModEmbedderTransform(nn.Module):
         if weights_path is not None:
             self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
 
+    @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if len(x.shape) == 3:
             x = x.unsqueeze(0)  # Add the batch

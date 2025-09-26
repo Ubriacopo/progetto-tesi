@@ -11,7 +11,7 @@ from common.data.data_point import AgnosticDatasetPoint, AgnosticDatasetTransfor
 from common.data.eeg import EEG
 from common.data.loader import DataPointsLoader
 from common.data.sampler import Segmenter
-from common.data.utils import build_tensor_dict, sanitize_for_ast
+from common.data.utils import build_tensor_dict, sanitize_for_ast, timed
 
 SPEC_FILE_NAME: str = "spec.csv"
 
@@ -77,6 +77,7 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         self.ch_names: list[str] = ch_names
         self.ch_types: list[str] = ch_types
 
+    @timed()
     def preprocess(self, x: AgnosticDatasetPoint) -> dict | list[dict]:
         if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
@@ -94,6 +95,7 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         return_segments = sanitize_for_ast(return_segments)
         return return_segments
 
+    @timed()
     def preprocess_segment(self, x: AgnosticDatasetPoint,
                            segment: tuple[int | float | np.ndarray, int | float | np.ndarray]) -> AgnosticDatasetPoint:
         if isinstance(segment[0], np.ndarray):

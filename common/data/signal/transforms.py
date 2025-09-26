@@ -88,7 +88,7 @@ class SignalZeroMasking(nn.Module):
         self.fs = fs
         self.max_length = max_length
 
-        self.max_data_points = self.max_length * fs
+        self.max_data_points = round(self.max_length * fs)
         self.channels_first = channels_first
 
     def forward(self, x: torch.Tensor):

@@ -11,7 +11,7 @@ from torch import nn
 
 from common.data.ecg.ecg import ECG
 from common.data.transform import IDENTITY
-from common.data.utils import sanitize_for_ast
+from common.data.utils import sanitize_for_ast, timed
 
 
 @dataclasses.dataclass
@@ -43,6 +43,7 @@ class EcgFmEmbedderTransform(nn.Module):
         self.endpoint: str = endpoint
         self.data_transform_fn = data_transform_fn
 
+    @timed()
     def forward(self, x: ECG):
         payload = ECGPayload.from_ecg(x, self.data_transform_fn)
         obj = dataclasses.asdict(payload)
@@ -76,6 +77,7 @@ class EcgSequenceResampling(nn.Module):
         self.resampler: nn.Module = resampler
         self.channels_first = channels_first
 
+    @timed()
     def forward(self, x: ECG) -> ECG:
         if self.channels_first:
             x.data = x.data.T
