@@ -8,7 +8,6 @@ from torch import device
 from common.data.data_point import AgnosticDatasetTransformWrapper, AgnosticDatasetPoint
 
 
-# todo experiment at least once.
 class AgnosticProcessingPdMediaDataset(torch.utils.data.Dataset, ABC):
     def __init__(self, dataset_spec_file: str, pipeline: AgnosticDatasetTransformWrapper):
         super().__init__()

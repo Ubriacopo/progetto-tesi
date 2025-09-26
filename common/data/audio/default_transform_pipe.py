@@ -18,14 +18,11 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(
         target_config: AudTargetConfig, target_txt_config: TxtTargetConfig, fs: int, max_length: int) \
         -> tuple[str, nn.Module]:
     return Audio.modality_code(), nn.Sequential(
+        # TODO ma vero: Prima estrai testo poi fai audio sequence partitioning (deve essere scorporato da txt)
         SubclipAudio(),
         AudioToTensor(),
         ToMono(),
         Resample(orig_freq=fs, new_freq=target_config.fs),
-        AudioSequencePartitioning(
-            fs=target_config.fs, sequence_duration_seconds=target_config.i_max_length,
-            resampler=SignalZeroMasking(max_length=target_config.i_max_length, fs=target_config.fs),
-        ),
         Parallel(
             nn.Sequential(
                 # TODO Custom audio cleaning is to do to see improvements. -> Possible Improvement
@@ -35,6 +32,10 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(
                 MultimediaPadding(max_length=math.ceil(max_length / target_txt_config.i_max_length))
             ),
             nn.Sequential(
+                AudioSequencePartitioning(
+                    fs=target_config.fs, sequence_duration_seconds=target_config.i_max_length,
+                    resampler=SignalZeroMasking(max_length=target_config.i_max_length, fs=target_config.fs),
+                ),
                 WavLmFeatureExtractorTransform(sampling_rate=target_config.fs),
                 WavLmEmbedderTransform(),
                 MultimediaPadding(max_length=math.ceil(max_length / target_config.i_max_length))

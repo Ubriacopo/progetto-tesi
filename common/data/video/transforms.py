@@ -43,7 +43,6 @@ class SubclipVideo(nn.Module):
 
 
 class VideoSequenceResampling(nn.Module):
-    # todo add un max segments -> altrimenti video di 20s genera per 2s 10 segmenti e questi sono magari tosti.
     def __init__(self, original_fps: int, sequence_duration_seconds: int, frames_resampler: nn.Module):
         super().__init__()
         self.sequence_length = original_fps * sequence_duration_seconds
