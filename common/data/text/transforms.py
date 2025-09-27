@@ -3,10 +3,13 @@ import re
 import torch
 import torchaudio
 from torch import nn
+from torchaudio.transforms import Resample
 from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoModel, \
-    AutoModelForSpeechSeq2Seq, AutoProcessor
+    AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from sentence_transformers import SentenceTransformer
 
+from common.data.audio.transforms import ToMono
+from common.data.text import Text
 from common.data.utils import timed
 
 
@@ -69,30 +72,24 @@ class WhisperTextExtractFromAudio(nn.Module):
     def __init__(self, fs: int, device=None, model_id="openai/whisper-large-v3"):
         super(WhisperTextExtractFromAudio, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
-        self.model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
-        self.model.to(self.device)
+        self.torch_dtype = torch.float16 if not device is "cpu" else torch.float32
 
         self.fs = fs
         self.processor = AutoProcessor.from_pretrained(model_id)
+        self.pipe = pipeline(
+            "automatic-speech-recognition", model="openai/whisper-large-v3", return_timestamps=True,
+            device=self.device, torch_dtype=self.torch_dtype,
+        )
 
+    # TODO: funziona ma senza cuda va stra lento. vedi se caricabile su cuda
+    @timed()
     def forward(self, x: torch.Tensor) -> list[str]:
-        y = self.processor(x, sampling_rate=self.fs, return_tensors="pt", padding="longest", return_attention_mask=True)
-        y = y.to(self.device)
-        # Default generator Kwargs
-        gen_kwargs = {
-            "max_new_tokens": 448,
-            "num_beams": 1,
-            "condition_on_prev_tokens": False,
-            "compression_ratio_threshold": 1.35,  # zlib compression ratio threshold (in token space)
-            "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
-            "logprob_threshold": -1.0,
-            "no_speech_threshold": 0.6,
-            "return_timestamps": True,
-        }
-
-        pred_ids = self.model.generate(**y, **gen_kwargs)
-        pred_text = self.processor.batch_decode(pred_ids, skip_special_tokens=True, decode_with_timestamps=False)
-        return pred_text
+        # 16 kHz mono float32 in [-1, 1]
+        if len(x.shape) != 1:
+            out = self.pipe(x.numpy(), generate_kwargs={"language": "english"}, batch_size=x.shape[0])
+        else:
+            out = self.pipe(x.numpy(), generate_kwargs={"language": "english"})
+        return out["text"]
 
 
 class Speech2TextExtract(nn.Module):
@@ -144,3 +141,48 @@ class TextRegistry(nn.Module):
                 f.write(transcript + "\n")
 
         return transcript
+
+
+class WhisperClipTextExtract(nn.Module):
+    def __init__(self, model_id: str = "openai/whisper-large-v3", device=None):
+        super(WhisperClipTextExtract, self).__init__()
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.torch_dtype = torch.float16 if device != "cpu" else torch.float32
+        self.pipe = pipeline(  # 1 minuto
+            "automatic-speech-recognition", model=model_id, return_timestamps="word",
+            device=self.device, torch_dtype=self.torch_dtype
+        )
+
+    @timed()
+    def forward(self, x: Text) -> Text:
+        aud = x.base_audio.to_soundarray()
+        aud = ToMono()(torch.tensor(aud))
+        aud = aud.float()
+        aud = Resample(orig_freq=x.base_audio.fps, new_freq=16000)(aud)
+
+        with torch.inference_mode():
+            out = self.pipe(
+                aud.numpy(),  # 16 kHz mono, float32 in [-1,1]
+                chunk_length_s=20,  # ~Whisper context
+                stride_length_s=(2, 1),  # left/right buffer
+                generate_kwargs=dict(num_beams=1, language="english", condition_on_prev_tokens=True),
+            )
+
+        x.text_context = out
+        return x
+
+
+class SubclipTextExtract(nn.Module):
+    # noinspection PyMethodMayBeStatic
+    def forward(self, x: Text) -> str:
+        start, stop = x.interval
+        text = ""
+        # todo subchunking cosi non va nested  (i_max_inerval)
+        for chunk in x.text_context["chunks"]:
+            ch_start, ch_stop = chunk["timestamp"]
+            # todo none non va bene eprhce il controllo non va a prossmita dovrei avere + duraiton
+            start_valid = ch_start >= start if ch_start is not None else stop >= ch_stop >= start
+            stop_valid = ch_stop <= stop if ch_stop is not None else start <= ch_start <= stop
+            if stop_valid and start_valid:
+                text += chunk["text"]
+        return text

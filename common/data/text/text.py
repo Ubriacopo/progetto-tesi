@@ -1,12 +1,19 @@
 import dataclasses
 import os
 from pathlib import Path
+from typing import Any, Optional
+
+from moviepy import AudioFileClip
 
 from common.data.media import Media
 
 
 @dataclasses.dataclass
 class Text(Media):
+    base_audio: Optional[AudioFileClip] = None
+    text_context: Optional[dict] = None
+    interval: Optional[tuple[int, int]] = None
+
     def export(self, base_path: str, output_path_to_relative: str = None):
         out_path = base_path + f'{self.eid}.txt'
         with open(out_path, "w", encoding="utf-8") as f:

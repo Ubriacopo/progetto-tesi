@@ -78,6 +78,12 @@ class AmigosPointsLoader(DataPointsLoader):
                 patient_age=user_metadata["Age"][0],
             )
 
+            txt = Text(
+                eid=experiment_id,
+                data=clip.audio.copy(),
+                base_audio=clip.audio.copy()
+            )
+
             # Take from Audio
             yield FlexibleDatasetPoint(
                 experiment_id,
@@ -85,4 +91,5 @@ class AmigosPointsLoader(DataPointsLoader):
                 ecg.as_mod_tuple(),
                 vid.as_mod_tuple(),
                 aud.as_mod_tuple(),
+                txt.as_mod_tuple()
             )

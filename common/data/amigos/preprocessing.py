@@ -15,6 +15,7 @@ from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import EegFeaturesAndRandLogUIntervalsSegmenter, Segmenter
 from common.data.text import Text
 from common.data.text.config import TxtTargetConfig
+from common.data.text.default_transform_pipe import txt_from_aud_interleaved_txt_extract_transform_pipe
 from common.data.video.config import VidTargetConfig
 from common.data.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
     vid_vivit_default_transform_pipe
@@ -44,7 +45,7 @@ def amigos_interleaved_preprocessor(
             vid_vivit_interleaved_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
             eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
-            nested_keys=[Text.modality_code(), Audio.modality_code(), ],
+            txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
         )
     )
 

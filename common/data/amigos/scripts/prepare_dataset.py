@@ -62,4 +62,4 @@ processor = amigos_interleaved_preprocessor(
     **kwargs
 )
 
-processor.run(AmigosPointsLoader(cfg["data_path"]))
+processor.run(AmigosPointsLoader(cfg["data_path"]), workers=1)
