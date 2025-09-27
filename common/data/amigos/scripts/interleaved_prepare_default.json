@@ -3,7 +3,7 @@
   "data_path": "../../../../resources/AMIGOS/",
   "output_path": "../../../../resources/AMIGOS/p-interleaved-d/",
   "segmenter": {
-    "type": "FeatureAndRandomLogUniformIntervalsSegmenter",
+    "type": "EegFeaturesAndRandLogUIntervalsSegmenter",
     "kwargs": {
       "min_length": 2,
       "max_length": 32,

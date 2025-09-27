@@ -27,13 +27,13 @@ class DatasetDataPoint(ABC):
         pass
 
 
-class AgnosticDatasetPoint(DatasetDataPoint):
+class FlexibleDatasetPoint(DatasetDataPoint):
     def __init__(self, eid: str | int, *modality: tuple[str, dict | Media]):
         self.eid = eid
         for (k, o) in modality:
             self.__setattr__(k, o)
 
-    def clone(self, n_eid: str) -> AgnosticDatasetPoint:
+    def clone(self, n_eid: str) -> FlexibleDatasetPoint:
         modalities: list[tuple[str, dict | Media]] = []
         for attr, value in self.__dict__.items():
             if hasattr(value, "clone"):
@@ -44,7 +44,7 @@ class AgnosticDatasetPoint(DatasetDataPoint):
             else:
                 modalities.append((attr, value))
 
-        return AgnosticDatasetPoint(n_eid, *modalities)
+        return FlexibleDatasetPoint(n_eid, *modalities)
 
     def to_dict(self) -> dict:
         o = {self.get_identifier(): self.eid}
@@ -68,11 +68,11 @@ class AgnosticDatasetPoint(DatasetDataPoint):
         return "eid"
 
     @staticmethod
-    def from_dict(o: dict, base_path: str = None) -> AgnosticDatasetPoint:
+    def from_dict(o: dict, base_path: str = None) -> FlexibleDatasetPoint:
         objects = []
         for attr, value in o.items():
             # Only exception we can handle inside the DatasetPoint
-            if attr == AgnosticDatasetPoint.get_identifier():
+            if attr == FlexibleDatasetPoint.get_identifier():
                 continue
 
             if isinstance(value, str):
@@ -87,7 +87,7 @@ class AgnosticDatasetPoint(DatasetDataPoint):
             else:
                 objects.append((attr, value))
         # Flexible to any new structure
-        return AgnosticDatasetPoint(o["eid"], *objects)
+        return FlexibleDatasetPoint(o["eid"], *objects)
 
     def export(self, base_path: str = None, relative_path: str = None, *exceptions: str, only: str = None):
         # Only one execution branch
@@ -109,7 +109,7 @@ class AgnosticDatasetPoint(DatasetDataPoint):
             value.export(base_path, relative_path)
 
 
-class AgnosticDatasetTransformWrapper:
+class FlexibleDatasetTransformWrapper:
     def __init__(self, name: str, *transforms: tuple[str, nn.Module],
                  # If nested are to expand and what keys we want to expand
                  expand_nested: bool = False, nested_keys: list[str] = None):
@@ -135,7 +135,7 @@ class AgnosticDatasetTransformWrapper:
     def is_defined(self, item: str):
         return item in self.__dict__
 
-    def call(self, x: AgnosticDatasetPoint):
+    def call(self, x: FlexibleDatasetPoint):
         y = {}
         for key, value in x.__dict__.items():
             if self.is_defined(key):

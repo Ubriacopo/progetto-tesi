@@ -3,7 +3,7 @@
   "data_path": "../../../../resources/DEAP/",
   "output_path": "../../../../resources/DEAP/p-interleaved-d",
   "segmenter": {
-    "type": "FeatureAndRandomLogUniformIntervalsSegmenter",
+    "type": "EegFeaturesAndRandLogUIntervalsSegmenter",
     "kwargs": {
       "min_length": 2,
       "max_length": 32,

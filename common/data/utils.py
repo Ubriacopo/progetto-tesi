@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime
 import gzip
 import shutil
 import time
@@ -13,6 +14,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import BatchFeature
+
+from base_config import BaseConfig
 
 
 def dataset_information(dataset: Dataset, image_size: tuple[int, int]) -> tuple[torch.Tensor, torch.Tensor]:
@@ -73,6 +76,7 @@ def build_tensor_dict(samples: list[dict | torch.Tensor] | tuple):
             raise TypeError(f"Unsupported type: {type(first)}")
     except Exception as e:
         raise e
+
 
 def sanitize_for_ast(obj):
     # primitives already fine
@@ -137,14 +141,13 @@ def decompress_pt(path_to_pt: str, map_location: str = "cpu"):
         return torch.load(f_in, map_location=map_location)
 
 
-def timed(label: str = None, longer_than: float = 0.5):
+def timed(label: str = None, longer_than: float = 0.5, suppress_timed: bool = BaseConfig.SUPPRESS_TIMED):
     def decorator(fn):
-        SUPPRESS: bool = False  # TODO: read from env or something +  use logger nzot print
 
         @wraps(fn)
         def wrapper(*args, **kwargs):
             # Disable the function entirely
-            if SUPPRESS:
+            if suppress_timed:
                 return fn(*args, **kwargs)
 
             start = time.perf_counter()
@@ -160,7 +163,7 @@ def timed(label: str = None, longer_than: float = 0.5):
             tag = label or f"{cls_name}.{fn.__name__}"
             # Maybe really short times are ignorable
             if longer_than < end - start:
-                print(f"{tag} took {end - start:.3f} seconds")
+                print(f"{datetime.today().strftime('%Y-%m-%d')}:{tag} took {end - start:.3f} seconds ({start} - {end})")
             return result
 
         return wrapper

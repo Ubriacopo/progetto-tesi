@@ -10,7 +10,7 @@ from moviepy import VideoFileClip
 from common.data.amigos.config import AmigosConfig
 from common.data.amigos.utils import extract_trial_data, load_participant_data
 from common.data.audio.audio import Audio
-from common.data.data_point import AgnosticDatasetPoint
+from common.data.data_point import FlexibleDatasetPoint
 from common.data.ecg.ecg import ECG
 from common.data.eeg import EEG
 from common.data.loader import DataPointsLoader
@@ -23,7 +23,7 @@ class AmigosPointsLoader(DataPointsLoader):
         super().__init__()
         self.base_path: str = base_path
 
-    def scan(self) -> Iterator[AgnosticDatasetPoint]:
+    def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "pre_processed_py/")
 
         if not processed_data.exists():
@@ -79,7 +79,7 @@ class AmigosPointsLoader(DataPointsLoader):
             )
 
             # Take from Audio
-            yield AgnosticDatasetPoint(
+            yield FlexibleDatasetPoint(
                 experiment_id,
                 eeg.as_mod_tuple(),
                 ecg.as_mod_tuple(),

@@ -5,7 +5,7 @@ from transformers import VivitImageProcessor
 from common.data.amigos.config import AmigosConfig
 from common.data.audio.transforms import AudioToTensor, ToMono
 from common.data.signal.transforms import SignalZeroMasking
-from common.data.dataset import AgnosticEmbeddingsReadyPdSpecMediaDataset
+from common.data.dataset import FlexibleEmbeddingsSpecMediaDataset
 from common.data.eeg.transforms import EEGResample, EEGToTensor, EEGToTimePatches
 from common.data.video import VideoToTensor, RegularFrameResampling
 from common.data.video.transforms import ViVitImageProcessorTransform
@@ -23,7 +23,7 @@ def get_ViVit_processor():
 
 def EEGAVI_train_dataset(amigos_path: str):
     return StackDataset(
-        AgnosticEmbeddingsReadyPdSpecMediaDataset(amigos_path)
+        FlexibleEmbeddingsSpecMediaDataset(amigos_path)
     )
 
 

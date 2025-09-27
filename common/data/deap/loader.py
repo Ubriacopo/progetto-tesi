@@ -4,7 +4,7 @@ from typing import Iterator
 import numpy as np
 from moviepy import VideoFileClip
 
-from common.data.data_point import AgnosticDatasetPoint
+from common.data.data_point import FlexibleDatasetPoint
 from common.data.eeg import EEG
 from common.data.loader import DataPointsLoader
 from common.data.video import Video
@@ -15,7 +15,7 @@ class DeapPointsLoader(DataPointsLoader):
         super().__init__()
         self.base_path = base_path
 
-    def scan(self) -> Iterator[AgnosticDatasetPoint]:
+    def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "data_preprocessed_python/")
 
         for i in processed_data.iterdir():
@@ -34,7 +34,7 @@ class DeapPointsLoader(DataPointsLoader):
 
                 clip = VideoFileClip(media_path)
                 fps, size = clip.fps, clip.size
-                yield AgnosticDatasetPoint(
+                yield FlexibleDatasetPoint(
                     eid,
                     EEG(data=trial, fs=128, eid=eid).as_mod_tuple(),
                     Video(data=clip, fps=fps, resolution=size, eid=eid).as_mod_tuple(),

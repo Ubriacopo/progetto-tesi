@@ -69,8 +69,7 @@ MEDIUM_FEATURE = Feature("M", 16, .35, .7, .3)
 LONG_FEATURE = Feature("L", 32, .25, .7, .4)
 
 
-# TODO: Rename
-class FeatureAndRandomLogUniformIntervalsSegmenter(Segmenter):
+class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
     def __init__(self,
                  min_length: int,
                  max_length: int,
@@ -316,15 +315,12 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
 
     def compute_segments(self, sample: EEG) -> list[tuple[float, float]]:
         segments = []
-        # TODO Sbaglaito su start
-        #   Ma con shutils funziona bene pare.
         for _ in range(self.num_segments):
             # Random duration: 0.5–30 s, expressed in samples.
-            dur = np.random.randint(int(0.5 * sample.fs), int(self.max_length * sample.fs))
-            # Pick a valid start (so stop doesn’t exceed max_length)
-            max_start = int((sample.data.duration - self.max_length) * sample.fs) - dur
-            start = np.random.randint(0, max_start)
+            dur = np.random.rand(1) * self.max_length
+            max_start = self.max_length - dur
+
+            start = np.random.rand(1) * max_start
             stop = start + dur
-            # Convert to seconds
-            segments.append((start / sample.fs, stop / sample.fs))
+            segments.append((start, stop))
         return segments

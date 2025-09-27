@@ -1,5 +1,8 @@
 import traceback
 from abc import abstractmethod, ABC
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures.process import ProcessPoolExecutor
+from itertools import batched
 from pathlib import Path
 from typing import Optional, TypeVar, Generic, Callable, Iterable
 
@@ -7,7 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from common.data.data_point import AgnosticDatasetPoint, AgnosticDatasetTransformWrapper
+from common.data.data_point import FlexibleDatasetPoint, FlexibleDatasetTransformWrapper
 from common.data.eeg import EEG
 from common.data.loader import DataPointsLoader
 from common.data.sampler import Segmenter
@@ -33,7 +36,8 @@ class Preprocessor(ABC, Generic[T]):
     def export(self, x: list[T], output_path: str) -> None:
         pass
 
-    def run(self, loader: DataPointsLoader) -> bool:
+    @timed()
+    def run(self, loader: DataPointsLoader, workers: int = 8) -> bool:
         try:
             # Read an existing spec if it was computed.
             existing_df: Optional[pd.DataFrame] = None
@@ -42,7 +46,27 @@ class Preprocessor(ABC, Generic[T]):
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
 
-            # todo: If multithreading do it here on samples. Consigliano Queue per generare objects
+            if workers > 1:
+                for block in batched(loader.scan(), workers):
+                    docs = []  # Where the stuff is stored.
+                    with ThreadPoolExecutor(max_workers=workers) as executor:
+                        for i in block:
+                            key = i.get_identifier()
+                            if existing_df is not None and existing_df[key].str.contains(i.eid).any():
+                                continue  # This element was already processed.
+                            docs.append(executor.submit(self.preprocess, i))
+
+                    for doc in docs:
+                        df = pd.DataFrame([d for d in doc.result()])
+                        if existing_df is not None:
+                            df = pd.concat([df, existing_df], ignore_index=True)
+                        df.to_csv(self.output_path + "spec.csv", index=False)
+                        existing_df = df
+
+                print("Procedure finished correctly.")
+                print("Spec file can found at:", self.output_path, "spec.csv")
+                return True
+
             for i in loader.scan():
                 key = i.get_identifier()
                 if existing_df is not None and existing_df[key].str.contains(i.eid).any():
@@ -66,19 +90,19 @@ class Preprocessor(ABC, Generic[T]):
             return False
 
 
-class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
+class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
-                 ch_names: list[str], ch_types: list[str], pipeline: AgnosticDatasetTransformWrapper):
+                 ch_names: list[str], ch_types: list[str], pipeline: FlexibleDatasetTransformWrapper):
         super().__init__(output_path)
         self.segmenter: Segmenter = segmenter
-        self.pipeline: AgnosticDatasetTransformWrapper = pipeline
+        self.pipeline: FlexibleDatasetTransformWrapper = pipeline
         # EEG mapping for mne
         self.ch_names: list[str] = ch_names
         self.ch_types: list[str] = ch_types
 
     @timed()
-    def preprocess(self, x: AgnosticDatasetPoint) -> dict | list[dict]:
+    def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
         if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
 
@@ -96,8 +120,8 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         return return_segments
 
     @timed()
-    def preprocess_segment(self, x: AgnosticDatasetPoint,
-                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray]) -> AgnosticDatasetPoint:
+    def preprocess_segment(self, x: FlexibleDatasetPoint,
+                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray]) -> FlexibleDatasetPoint:
         if isinstance(segment[0], np.ndarray):
             segment = (segment[0].item(), segment[1].item())
 
@@ -111,6 +135,6 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[AgnosticDatasetPoint]):
         y = self.pipeline.call(y)
         return y
 
-    def export(self, segments: list[AgnosticDatasetPoint], output_path: str):
+    def export(self, segments: list[FlexibleDatasetPoint], output_path: str):
         objects = [s.to_dict() if hasattr(s, "to_dict") else s for s in segments]
         torch.save(build_tensor_dict(objects), output_path + ".pt")

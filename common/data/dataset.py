@@ -5,19 +5,19 @@ import pandas as pd
 import torch
 from torch import device
 
-from common.data.data_point import AgnosticDatasetTransformWrapper, AgnosticDatasetPoint
+from common.data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
 
 
 class AgnosticProcessingPdMediaDataset(torch.utils.data.Dataset, ABC):
-    def __init__(self, dataset_spec_file: str, pipeline: AgnosticDatasetTransformWrapper):
+    def __init__(self, dataset_spec_file: str, pipeline: FlexibleDatasetTransformWrapper):
         super().__init__()
-        self.pipeline: AgnosticDatasetTransformWrapper = pipeline
+        self.pipeline: FlexibleDatasetTransformWrapper = pipeline
         self.df = pd.read_csv(dataset_spec_file, index_col=False)
         self.df.to_dict(orient="records")
 
     def __getitem__(self, idx: int):
         data_point = self.df.iloc[idx].to_dict()
-        data_point = AgnosticDatasetPoint.from_dict(data_point)
+        data_point = FlexibleDatasetPoint.from_dict(data_point)
         data_point = self.pipeline.call(data_point)
         return data_point
 
@@ -25,8 +25,7 @@ class AgnosticProcessingPdMediaDataset(torch.utils.data.Dataset, ABC):
         return len(self.df)
 
 
-# TODO cambia nome. è un rimasuglio da cose vecchie
-class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
+class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, selected_device: device = None, cache_in_ram: bool = False):
         self.device = selected_device
         if selected_device is None:
@@ -75,7 +74,7 @@ class AgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
         return len(self.df)
 
 
-class AgnosticMaskedEmbeddingsReadyPdSpecMediaDataset(AgnosticEmbeddingsReadyPdSpecMediaDataset):
+class AgnosticMaskedEmbeddingsReadyPdSpecMediaDataset(FlexibleEmbeddingsSpecMediaDataset):
     # TODO vedi se serve.
     def __init__(self, modalities: set[str],
                  dataset_spec_file: str, selected_device: device = None, cache_in_ram: bool = False):

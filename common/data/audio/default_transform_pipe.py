@@ -18,7 +18,6 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(
         target_config: AudTargetConfig, target_txt_config: TxtTargetConfig, fs: int, max_length: int) \
         -> tuple[str, nn.Module]:
     return Audio.modality_code(), nn.Sequential(
-        # TODO ma vero: Prima estrai testo poi fai audio sequence partitioning (deve essere scorporato da txt)
         SubclipAudio(),
         AudioToTensor(),
         ToMono(),

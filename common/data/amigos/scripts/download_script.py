@@ -12,17 +12,7 @@ from requests.auth import HTTPDigestAuth
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 
-# todo: Doc once done
 def download(authentication: HTTPDigestAuth, base_path: str, output_path: str, filename: str, destination_folder: str):
-    """
-
-    :param destination_folder:
-    :param authentication:
-    :param base_path:
-    :param output_path:
-    :param filename:
-    :return:
-    """
     logging.info("Working on " + filename)
     response = requests.get(f"{base_path}{filename}", auth=authentication)
 
@@ -77,19 +67,6 @@ def download_amigos_listing(authentication: HTTPDigestAuth, base_path: str,
                             output_path: str, file_template_name: str, destination_folder: str,
                             seen_file_names: list[str], seen_file_names_path: str, failed_files: list[dict],
                             failed_files_path: str, k: int = 40, two_vars: bool = False):
-    """
-
-    :param seen_file_names_path:
-    :param seen_file_names:
-    :param destination_folder:
-    :param authentication:
-    :param base_path:
-    :param output_path:
-    :param file_template_name:
-    :param k:
-    :param two_vars:
-    :return:
-    """
     # Download all files.
     for i in range(k):
         if two_vars:
