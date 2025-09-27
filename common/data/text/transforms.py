@@ -50,15 +50,15 @@ class Wav2VecExtractFromAudio(nn.Module):
             raise ValueError("Be sure tor resample the input to the correct sample rate")
 
     @timed()
-    def forward(self, x: torch.Tensor) -> str | list[str]:
+    def forward(self, x: torch.Tensor) -> list[str]:
         batched_input: bool = len(x.shape) > 1
+        if not batched_input:
+            x = x.unsqueeze(0)
+
         with torch.inference_mode():
             y, _ = self.model(x.to(self.device))
 
-        transcript = re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(y)) if not batched_input else [
-            re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(b)) for b in y.unbind(0)
-        ]
-
+        transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(b)) for b in y.unbind(0)]
         return transcript
 
 
