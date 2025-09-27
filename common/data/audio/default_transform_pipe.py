@@ -10,7 +10,8 @@ from common.data.audio.transforms import SubclipAudio, AudioToTensor, ToMono, Au
 from common.data.signal.transforms import SignalZeroMasking
 from common.data.text import Text
 from common.data.text.config import TxtTargetConfig
-from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform, TextRegistry
+from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform, TextRegistry, \
+    WhisperTextExtractFromAudio
 from common.data.transform import Parallel, MultimediaPadding
 
 
@@ -25,7 +26,8 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(
         Parallel(
             nn.Sequential(
                 # TODO Custom audio cleaning is to do to see improvements. -> Possible Improvement
-                Wav2VecExtractFromAudio(fs=target_config.fs),  # Works a bit better.
+                WhisperTextExtractFromAudio(fs=target_config.fs),
+                # Wav2VecExtractFromAudio(fs=target_config.fs),  # Works a bit better.
                 TextRegistry(store_path=target_txt_config.registry_store_path),
                 MiniLMEmbedderTransform(),
                 MultimediaPadding(max_length=math.ceil(max_length / target_txt_config.i_max_length))

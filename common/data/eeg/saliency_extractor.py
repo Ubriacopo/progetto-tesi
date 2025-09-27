@@ -105,14 +105,14 @@ class EEGFeatureExtractor:
     def artifact_weights_from_mne(self, duration_s, hop_s):
         annotations = []
         try:
-            ann, _ = mne.preprocessing.annotate_amplitude(self.raw, flat=1e-6, peak=150e-6)
+            ann, _ = mne.preprocessing.annotate_amplitude(self.raw, flat=1e-6, peak=150e-6, verbose=False)
             annotations.append(ann)
         except Exception:
             pass
 
         try:
             a_muscle, _ = mne.preprocessing.annotate_muscle_zscore(
-                self.raw, ch_type='eeg', threshold=4.0, filter_freq=(30., 45.), min_length_good=0.2
+                self.raw, ch_type='eeg', threshold=4.0, filter_freq=(30., 45.), min_length_good=0.2, verbose=False
             )
             annotations.append(a_muscle)
         except Exception:

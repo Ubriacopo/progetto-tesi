@@ -80,6 +80,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                  coverage_cap_k: int = 5,
                  return_seconds: bool = True,
                  extraction_jitter: float = .1,
+                 verbose: bool = False
                  ):
         """
 
@@ -118,6 +119,8 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         self.max_attempts = 10  # After 4 you fail for a duration.
         self.return_seconds: bool = return_seconds  # If False return sampled points.
         self.extraction_jitter: float = extraction_jitter
+
+        self.verbose: bool = verbose
 
     def sample_duration_log_uniform(self):
         uniform = np.random.uniform(0., 1.)
@@ -286,7 +289,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         ok_iou = self.ok_iou(start, stop, base_feature, segments)
         if not ok_iou or not self.check_coverage(eeg, start, stop, coverage):
-            print(
+            self.verbose and print(
                 f"Check failed for ({start}-{stop}) ({base_feature.key}).\n"
                 f"Problem was: {'IoU' if not ok_iou else 'coverage'}.\n"
                 f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.\n\n")
@@ -297,8 +300,8 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
-            print(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
-                  f"candidate_anchors: {candidate_anchors}.\n\n")
+            self.verbose and print(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
+                                   f"candidate_anchors: {candidate_anchors}.\n\n")
             candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
         if reference_anchor is not None:
             # This anchor was used so we "register" its usage

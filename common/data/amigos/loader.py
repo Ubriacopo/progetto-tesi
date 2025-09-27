@@ -63,14 +63,14 @@ class AmigosPointsLoader(DataPointsLoader):
 
             eeg = EEG(
                 eid=experiment_id,
-                data=raw.copy().pick_types(eeg=True),
+                data=raw.copy().pick(["eeg"]),
                 fs=AmigosConfig.EEG.fs,
             )
 
             ecg = ECG(
                 # Signal Data
                 eid=experiment_id,
-                data=raw.copy().pick_types(ecg=True),
+                data=raw.copy().pick(["ecg"]),
                 fs=AmigosConfig.EEG.fs,
                 # ECG Specific
                 leads=AmigosConfig.LEAD_NAMES,

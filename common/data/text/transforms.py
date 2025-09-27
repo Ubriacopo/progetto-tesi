@@ -3,7 +3,8 @@ import re
 import torch
 import torchaudio
 from torch import nn
-from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoModel
+from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoModel, \
+    AutoModelForSpeechSeq2Seq, AutoProcessor
 from sentence_transformers import SentenceTransformer
 
 from common.data.utils import timed
@@ -58,9 +59,40 @@ class Wav2VecExtractFromAudio(nn.Module):
         with torch.inference_mode():
             y, _ = self.model(x.to(self.device))
 
-        transcript = [b.replace("|", " ") for b in y.unbind(0)]
-        transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(b)) for b in transcript]
+        transcript = [self.decoder(b).replace("|", " ") for b in y.unbind(0)]
+        transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', b) for b in transcript]
         return transcript
+
+
+# We can try openai/whisper-large-v3
+class WhisperTextExtractFromAudio(nn.Module):
+    def __init__(self, fs: int, device=None, model_id="openai/whisper-large-v3"):
+        super(WhisperTextExtractFromAudio, self).__init__()
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+        self.model.to(self.device)
+
+        self.fs = fs
+        self.processor = AutoProcessor.from_pretrained(model_id)
+
+    def forward(self, x: torch.Tensor) -> list[str]:
+        y = self.processor(x, sampling_rate=self.fs, return_tensors="pt", padding="longest", return_attention_mask=True)
+        y = y.to(self.device)
+        # Default generator Kwargs
+        gen_kwargs = {
+            "max_new_tokens": 448,
+            "num_beams": 1,
+            "condition_on_prev_tokens": False,
+            "compression_ratio_threshold": 1.35,  # zlib compression ratio threshold (in token space)
+            "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+            "logprob_threshold": -1.0,
+            "no_speech_threshold": 0.6,
+            "return_timestamps": True,
+        }
+
+        pred_ids = self.model.generate(**y, **gen_kwargs)
+        pred_text = self.processor.batch_decode(pred_ids, skip_special_tokens=True, decode_with_timestamps=False)
+        return pred_text
 
 
 class Speech2TextExtract(nn.Module):
