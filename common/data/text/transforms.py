@@ -34,7 +34,7 @@ class GreedyCTCDecoder(torch.nn.Module):
         indices = torch.argmax(emission, dim=-1)  # [num_seq,]
         indices = torch.unique_consecutive(indices, dim=-1)
         indices = [i for i in indices if i != self.blank]
-        return " ".join([self.labels[i] for i in indices])
+        return "".join([self.labels[i] for i in indices])
 
 
 class Wav2VecExtractFromAudio(nn.Module):
@@ -58,7 +58,8 @@ class Wav2VecExtractFromAudio(nn.Module):
         with torch.inference_mode():
             y, _ = self.model(x.to(self.device))
 
-        transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(b)) for b in y.unbind(0)]
+        transcript = [b.replace("|", " ") for b in y.unbind(0)]
+        transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', self.decoder(b)) for b in transcript]
         return transcript
 
 

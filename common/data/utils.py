@@ -163,7 +163,9 @@ def timed(label: str = None, longer_than: float = 0.5, suppress_timed: bool = Ba
             tag = label or f"{cls_name}.{fn.__name__}"
             # Maybe really short times are ignorable
             if longer_than < end - start:
-                print(f"{datetime.today().strftime('%Y-%m-%d')}:{tag} took {end - start:.3f} seconds ({start} - {end})")
+                print(
+                    f"{datetime.today().strftime('%H:%M:%S')}:{tag} took {end - start:.3f} seconds ({start:.2f} - {end:.2f})"
+                )
             return result
 
         return wrapper
