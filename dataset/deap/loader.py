@@ -4,10 +4,10 @@ from typing import Iterator
 import numpy as np
 from moviepy import VideoFileClip
 
-from common.data.data_point import FlexibleDatasetPoint
-from common.data.eeg import EEG
-from common.data.loader import DataPointsLoader
-from common.data.video import Video
+from core_data.data_point import FlexibleDatasetPoint
+from core_data.media.eeg import EEG
+from core_data.loader import DataPointsLoader
+from core_data.media.video import Video
 
 
 class DeapPointsLoader(DataPointsLoader):

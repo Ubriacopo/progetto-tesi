@@ -1,12 +1,12 @@
-from common.data.data_point import FlexibleDatasetTransformWrapper
+from core_data.data_point import FlexibleDatasetTransformWrapper
 from dataset.deap.config import DeapConfig
-from common.data.eeg.config import EegTargetConfig
-from common.data.eeg.default_transform_pipe import eeg_transform_pipe
-from common.data.preprocessing import TorchExportsSegmenterPreprocessor
-from common.data.sampler import EegFeaturesAndRandLogUIntervalsSegmenter, Segmenter
+from core_data.media.eeg.config import EegTargetConfig
+from core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
+from core_data.processing.preprocessing import TorchExportsSegmenterPreprocessor
+from core_data.sampler import EegFeaturesAndRandLogUIntervalsSegmenter, Segmenter
 
-from common.data.video.config import VidTargetConfig
-from common.data.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
+from core_data.media.video import VidTargetConfig
+from core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
     vid_vivit_default_transform_pipe
 
 

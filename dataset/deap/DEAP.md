@@ -1,6 +1,6 @@
 # The DEAP dataset
 
-> Frontal clips are audio less
+> Frontal clips are audioless
 
 
 > It was performed on music videos extracts of 1 minute
