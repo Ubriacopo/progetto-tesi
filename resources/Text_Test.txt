@@ -1,2 +1,0 @@
-value
-This is a test text. I don't know what to expect.

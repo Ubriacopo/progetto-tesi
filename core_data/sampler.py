@@ -6,7 +6,7 @@ from typing import Optional
 import numpy as np
 
 from core_data.media.eeg import EEG
-from core_data.media.eeg import EEGFeatureExtractor
+from core_data.media.eeg.saliency_extractor import EEGFeatureExtractor
 
 
 class Segmenter(ABC):

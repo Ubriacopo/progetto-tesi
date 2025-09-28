@@ -12,13 +12,18 @@ from core_data.media.text import TxtTargetConfig
 from core_data.media.video import VidTargetConfig
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", type=str, help="Path to JSON config", default="./interleaved_prepare_default.json")
+parser.add_argument(
+    "--config", type=str, help="Path to JSON config", default="./scripts/interleaved_prepare_default.json"
+)
 args = parser.parse_args()
 
 with open(args.config) as f:
     cfg: dict = json.load(f)
 
 kwargs = {}
+
+base_path = cfg["base_path"]
+print(f"Working for dir: {base_path}")
 
 if "vid_config" in cfg:
     vid_config = VidTargetConfig()
@@ -27,9 +32,10 @@ if "vid_config" in cfg:
     kwargs["vid_config"] = vid_config
 
 if "eeg_config" in cfg:
-    eeg_config = EegTargetConfig(cfg["eeg_config"]["cbramod_weights_path"])
+    eeg_config = EegTargetConfig(base_path + cfg["eeg_config"]["cbramod_weights_path"])
     for k, v in cfg["eeg_config"].items():
-        setattr(eeg_config, k, v)
+        if k != "cbramod_weights_path":
+            setattr(eeg_config, k, v)
     kwargs["eeg_config"] = eeg_config
 
 if "aud_config" in cfg:
@@ -45,9 +51,10 @@ if "ecg_config" in cfg:
     kwargs["ecg_config"] = ecg_config
 
 if "txt_config" in cfg:
-    txt_config = TxtTargetConfig(cfg["txt_config"]["registry_store_path"])
+    txt_config = TxtTargetConfig(base_path + cfg["txt_config"]["registry_store_path"])
     for k, v in cfg["txt_config"].items():
-        setattr(txt_config, k, v)
+        if k != "registry_store_path":
+            setattr(txt_config, k, v)
     kwargs["txt_config"] = txt_config
 
 if "segmenter" in cfg:
@@ -58,8 +65,7 @@ if "segmenter" in cfg:
 
 print("AMIGOS process starting")
 processor = amigos_interleaved_preprocessor(
-    cfg["output_max_length"], cfg["output_path"],
-    **kwargs
+    cfg["output_max_length"], base_path + cfg["output_path"], **kwargs
 )
 
-processor.run(AmigosPointsLoader(cfg["data_path"]), workers=1)
+processor.run(AmigosPointsLoader(base_path + cfg["data_path"]), workers=1)

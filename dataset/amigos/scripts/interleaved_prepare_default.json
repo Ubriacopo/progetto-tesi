@@ -1,7 +1,8 @@
 {
+  "base_path": "/home/jacopo/PycharmProjects/progetto-tesi/",
   "output_max_length": 32,
-  "data_path": "../../../../resources/AMIGOS/",
-  "output_path": "../../../../resources/AMIGOS/p-interleaved-d/",
+  "data_path": "resources/AMIGOS/",
+  "output_path": "data/AMIGOS/p-interleaved-d/",
   "segmenter": {
     "type": "EegFeaturesAndRandLogUIntervalsSegmenter",
     "kwargs": {
@@ -17,7 +18,7 @@
     "max_fps": 32
   },
   "eeg_config": {
-    "cbramod_weights_path": "../../../../dependencies/cbramod/pretrained_weights.pth",
+    "cbramod_weights_path": "dependencies/cbramod/pretrained_weights.pth",
     "max_segments": 10
   },
   "ecg_config": {
@@ -28,6 +29,6 @@
   },
   "txt_config": {
     "i_max_length": 4,
-    "registry_store_path": "../../../../resources/AMIGOS/p-interleaved-d/extracted-text.txt"
+    "registry_store_path": "resources/AMIGOS/p-interleaved-d/extracted-text.txt"
   }
 }
