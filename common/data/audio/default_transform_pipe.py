@@ -8,11 +8,8 @@ from common.data.audio.config import AudTargetConfig
 from common.data.audio.transforms import SubclipAudio, AudioToTensor, ToMono, AudioSequencePartitioning, \
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform
 from common.data.signal.transforms import SignalZeroMasking
-from common.data.text import Text
 from common.data.text.config import TxtTargetConfig
-from common.data.text.transforms import Wav2VecExtractFromAudio, MiniLMEmbedderTransform, TextRegistry, \
-    WhisperTextExtractFromAudio
-from common.data.transform import Parallel, MultimediaPadding
+from common.data.transform import MultimediaPadding
 
 
 def aud_wav2vec_interleaved_txt_extract_transform_pipe(

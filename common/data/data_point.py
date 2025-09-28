@@ -112,19 +112,23 @@ class FlexibleDatasetPoint(DatasetDataPoint):
 class FlexibleDatasetTransformWrapper:
     def __init__(self, name: str, *transforms: tuple[str, nn.Module],
                  # If nested are to expand and what keys we want to expand
-                 expand_nested: bool = False, nested_keys: list[str] = None):
+                 expand_nested: bool = False, nested_keys: list[str] = None,
+                 shared_pipeline: nn.Module = None):
         """
         A custom definable transform wrapper that works on existing modalities contained in any AgnosticDatasetPoint
-        TODO: We have no cross modality yet.
-
         :param name: Name of the transform to identify the process.
         :param transforms: Torch transforms to ensure max compatibility. (For torch-script)
         :param expand_nested: If nested dictionaries have to be flattened. Works with nested keys.
         :param nested_keys: What subkeys are to expand to upper level.
+        :param shared_pipeline: Shared pipeline to all modalities in the FlexibleDatasetPoint.
+                                It gives more freedom but I'd avoid it. Ignored at the moment. TODO: Implement
         """
         self.name: str = name
         self.expand_nested: bool = expand_nested
         self.nested_keys: Optional[list[str]] = nested_keys
+
+        # This allows
+        self.shared_pipeline: nn.Module = shared_pipeline
 
         for (k, o) in transforms:
             self.__setattr__(k, o)
@@ -135,8 +139,8 @@ class FlexibleDatasetTransformWrapper:
     def is_defined(self, item: str):
         return item in self.__dict__
 
-    def call(self, x: FlexibleDatasetPoint):
-        y = {}
+    def call(self, x: FlexibleDatasetPoint, keep_type: bool = False):
+        y = {} if not keep_type else x
         for key, value in x.__dict__.items():
             if self.is_defined(key):
                 # Call each transform that maps to x definition

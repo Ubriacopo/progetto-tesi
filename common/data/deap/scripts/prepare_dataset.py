@@ -2,8 +2,8 @@ import argparse
 import json
 
 from common.data import sampler
-from common.data.deap.loader import DeapPointsLoader
-from common.data.deap.preprocessing import deap_interleaved_preprocessor
+from dataset.deap.loader import DeapPointsLoader
+from dataset.deap.preprocessing import deap_interleaved_preprocessor
 from common.data.eeg.config import EegTargetConfig
 from common.data.video.config import VidTargetConfig
 

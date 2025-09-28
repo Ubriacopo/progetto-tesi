@@ -148,41 +148,71 @@ class WhisperClipTextExtract(nn.Module):
         super(WhisperClipTextExtract, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.torch_dtype = torch.float16 if device != "cpu" else torch.float32
+        # Parameter that comes from whisper requirements
+        self.model_fs: int = 16000
+
         self.pipe = pipeline(  # 1 minuto
             "automatic-speech-recognition", model=model_id, return_timestamps="word",
             device=self.device, torch_dtype=self.torch_dtype
         )
 
     @timed()
-    def forward(self, x: Text) -> Text:
-        aud = x.base_audio.to_soundarray()
-        aud = ToMono()(torch.tensor(aud))
-        aud = aud.float()
-        aud = Resample(orig_freq=x.base_audio.fps, new_freq=16000)(aud)
+    def forward(self, txt: Text) -> Text:
+        # Apply only once.
+        if txt.text_context is not None:
+            return txt
+
+        aud = torch.tensor(txt.base_audio.to_soundarray()).float()
+        aud = ToMono()(aud)
+        aud = Resample(orig_freq=txt.base_audio.fps, new_freq=self.model_fs)(aud)
 
         with torch.inference_mode():
-            out = self.pipe(
+            txt.text_context = self.pipe(
                 aud.numpy(),  # 16 kHz mono, float32 in [-1,1]
                 chunk_length_s=20,  # ~Whisper context
                 stride_length_s=(2, 1),  # left/right buffer
                 generate_kwargs=dict(num_beams=1, language="english", condition_on_prev_tokens=True),
             )
 
-        x.text_context = out
-        return x
+        return txt
 
 
 class SubclipTextExtract(nn.Module):
+
+    def __init__(self, interleaved: bool = False, i_max_length: int = None):
+        super(SubclipTextExtract, self).__init__()
+        if interleaved and i_max_length is None:
+            raise ValueError("If using interleaved i_max_length has to be specified")
+        self.interleaved: bool = interleaved
+        self.i_max_length: int = i_max_length
+
+    @staticmethod
+    def chunk_extract(chunk, start, stop):
+        ch_start, ch_stop = chunk["timestamp"]
+        start_valid = ch_start >= start if ch_start is not None else start >= ch_stop >= stop
+        stop_valid = ch_stop <= stop if ch_stop is not None else start <= ch_start <= stop
+        return chunk["text"] if start_valid and stop_valid else ""
+
     # noinspection PyMethodMayBeStatic
-    def forward(self, x: Text) -> str:
+    def forward(self, x: Text) -> list[str]:
         start, stop = x.interval
-        text = ""
-        # todo subchunking cosi non va nested  (i_max_inerval)
+
+        if self.interleaved:
+            i_segments = []
+            length = stop - start
+            segments = int(length / self.i_max_length) + (length % self.i_max_length != 0)
+
+            for i in range(segments):
+                txt = ""
+                i_start, i_stop = i * self.i_max_length + start, (i + 1) * self.i_max_length + start
+                if i_stop > stop: i_stop = stop
+                for chunk in x.text_context["chunks"]:
+                    txt += self.chunk_extract(chunk, i_start, i_stop)
+                i_segments.append(txt)
+
+            return i_segments
+
+        txt = ""
         for chunk in x.text_context["chunks"]:
-            ch_start, ch_stop = chunk["timestamp"]
-            # todo none non va bene eprhce il controllo non va a prossmita dovrei avere + duraiton
-            start_valid = ch_start >= start if ch_start is not None else stop >= ch_stop >= start
-            stop_valid = ch_stop <= stop if ch_stop is not None else start <= ch_start <= stop
-            if stop_valid and start_valid:
-                text += chunk["text"]
-        return text
+            txt += self.chunk_extract(chunk, start, stop)
+        return [txt]

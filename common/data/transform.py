@@ -6,6 +6,7 @@ import torch
 from torch import nn
 from torchvision.transforms import Lambda
 
+from common.data.data_point import FlexibleDatasetPoint
 from common.data.media import Media
 
 IDENTITY = Lambda(lambda x: x)
@@ -40,13 +41,13 @@ class SequenceResampler(nn.Module, ABC):
         return y
 
 
-class Parallel(nn.Module):
-    def __init__(self, *modules: nn.Module, as_dict: bool = False, keys=None):
+class Branch(nn.Module):
+    def __init__(self, *modules: tuple[str, nn.Module], as_dict: bool = True):
         super().__init__()
-        self.branches = nn.ModuleList(modules)
+        self.branches = nn.ModuleList(modules[:][1])
+        self.keys = modules[:][0]
         # Output a dictionary or a tuple.
         self.as_dict = as_dict
-        self.keys = keys
 
     def forward(self, x):
         outs = [m(x) for m in self.branches]
@@ -91,3 +92,21 @@ class ReplaceMedia(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Media):
         return dataclasses.replace(x)
+
+
+class SegmentsCalculationTransform(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        pass
+
+
+class ProcessSegments(nn.Module):
+    def __init__(self, *processing: nn.Module):
+        super().__init__()
+        self.net = nn.Sequential(*processing)
+
+    def forward(self, x: FlexibleDatasetPoint, segments: list[tuple[int, int]]):
+        res = []
+        for interval in segments:
+            x.interval = interval
+            res.append(self.net(x))
+        return self.net(x)

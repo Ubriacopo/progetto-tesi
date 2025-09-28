@@ -93,10 +93,23 @@ class Preprocessor(ABC, Generic[T]):
 class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
-                 ch_names: list[str], ch_types: list[str], pipeline: FlexibleDatasetTransformWrapper):
+                 ch_names: list[str], ch_types: list[str],
+                 segment_pipeline: FlexibleDatasetTransformWrapper,
+
+                 sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None):
+        """
+        TODO: We have no cross modality yet. -> shared_pipeline
+        :param output_path:
+        :param segmenter:
+        :param ch_names:
+        :param ch_types:
+        :param sample_pipeline: Refers to steps done before splitting in intervals
+        :param segment_pipeline: Refers to steps done after splitting in intervals (so single subsample).
+        """
         super().__init__(output_path)
         self.segmenter: Segmenter = segmenter
-        self.pipeline: FlexibleDatasetTransformWrapper = pipeline
+        self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
+        self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
         # EEG mapping for mne
         self.ch_names: list[str] = ch_names
         self.ch_types: list[str] = ch_types
@@ -105,6 +118,9 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
         if not hasattr(x, EEG.modality_code()):
             raise ValueError("EEG data is required by design in any dataset")
+
+        if self.shared_pipeline is not None:
+            x = self.shared_pipeline.call(x, keep_type=True)
 
         segments: list[tuple[int, int]] = self.segmenter.compute_segments(x[EEG.modality_code()])
         x_segments = [self.preprocess_segment(x, segment) for idx, segment in enumerate(segments)]

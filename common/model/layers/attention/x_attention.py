@@ -55,8 +55,6 @@ class MaskedCrossAttention(nn.Module):
         self.q = nn.Linear(dim, dim_head * heads, bias=False)
         self.kv = nn.Linear(dim_latent, dim_head * heads * 2, bias=False)
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
-
-        # TODO Capire
         # Whether for text to only attend to immediate preceding image, or all previous images
         self.only_attend_immediate_media = only_attend_immediate_media
 

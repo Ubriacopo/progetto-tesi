@@ -15,7 +15,9 @@ from common.data.preprocessing import TorchExportsSegmenterPreprocessor
 from common.data.sampler import EegFeaturesAndRandLogUIntervalsSegmenter, Segmenter
 from common.data.text import Text
 from common.data.text.config import TxtTargetConfig
-from common.data.text.default_transform_pipe import txt_from_aud_interleaved_txt_extract_transform_pipe
+from common.data.text.default_transform_pipe import txt_from_aud_interleaved_txt_extract_transform_pipe, \
+    shared_txt_transform_pipe
+from common.data.text.transforms import WhisperClipTextExtract
 from common.data.video.config import VidTargetConfig
 from common.data.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
     vid_vivit_default_transform_pipe
@@ -37,7 +39,7 @@ def amigos_interleaved_preprocessor(
         ch_names=AmigosConfig.CH_NAMES,
         ch_types=AmigosConfig.CH_TYPES,
         segmenter=segmenter,
-        pipeline=FlexibleDatasetTransformWrapper(
+        segment_pipeline=FlexibleDatasetTransformWrapper(
             "interleaved_preprocessor",
             aud_wav2vec_interleaved_txt_extract_transform_pipe(
                 aud_config, txt_config, AmigosConfig.Audio.fs, output_max_length
@@ -46,6 +48,10 @@ def amigos_interleaved_preprocessor(
             eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
             txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
+        ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_preprocessor",
+            (Text.modality_code(), WhisperClipTextExtract(device="cpu"))
         )
     )
 
@@ -65,7 +71,7 @@ def amigos_default_preprocessor(
         ch_names=AmigosConfig.CH_NAMES,
         ch_types=AmigosConfig.CH_TYPES,
         segmenter=segmenter,
-        pipeline=FlexibleDatasetTransformWrapper(
+        segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
             vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
             eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
@@ -74,6 +80,10 @@ def amigos_default_preprocessor(
             expand_nested=True,
             nested_keys=[Text.modality_code(), Audio.modality_code()],
         ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_preprocessor",
+            (Text.modality_code(), WhisperClipTextExtract(device="cpu"))
+        )
     )
 
 
