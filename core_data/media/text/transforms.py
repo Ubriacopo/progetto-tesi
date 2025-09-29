@@ -1,5 +1,6 @@
 import re
 
+import numpy as np
 import torch
 import torchaudio
 from torch import nn
@@ -141,6 +142,43 @@ class TextRegistry(nn.Module):
                 f.write(transcript + "\n")
 
         return transcript
+
+
+class WhisperExtractor(nn.Module):
+    def __init__(self, model_id: str = "openai/whisper-large-v3", device=None):
+        super(WhisperExtractor, self).__init__()
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.torch_dtype = torch.float16 if device != "cpu" else torch.float16  # torch.float32
+        # Parameter that comes from whisper requirements
+
+        self.model_fs: int = 16000
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            model_id, torch_dtype=self.torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+        )
+        model.to(self.device)
+
+        processor = AutoProcessor.from_pretrained(model_id)
+        self.pipe = pipeline(  # 1 minuto
+            "automatic-speech-recognition",
+            model=model,
+            tokenizer=processor.tokenizer,
+            feature_extractor=processor.feature_extractor,
+            return_timestamps="word",
+            device=self.device,
+            torch_dtype=self.torch_dtype
+        )
+
+    def forward(self, x: torch.Tensor, fs: int) -> dict:
+        aud = ToMono()(x)
+        aud = Resample(orig_freq=fs, new_freq=self.model_fs)(aud)
+        aud = aud.numpy()
+
+        try:
+            with torch.inference_mode():
+                return self.pipe(aud)
+
+        except Exception as e:
+            raise e
 
 
 class WhisperClipTextExtract(nn.Module):
