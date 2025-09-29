@@ -20,7 +20,7 @@ output_path = cfg["base_path"] + cfg["output_path"]
 
 SegmentBasedExtractionProcessor(
     ExtractTextFromAudio(WhisperExtractor(model_id="openai/whisper-medium", device="cuda:0")),
-    # ExtractTextFromAudio(WhisperExtractor()), Much slower. GPU wins and we trade off in results. TODO: Faster-whisper?
+    # ExtractTextFromAudio(WhisperExtractor()), Much slower. GPU wins and we trade off in results
     base_path=output_path,
     segmenter=segmenter,
     loader=AmigosPointsLoader(base_path + cfg["data_path"]),
