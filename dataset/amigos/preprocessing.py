@@ -15,7 +15,7 @@ from core_data.media.text.default_transform_pipe import txt_from_aud_interleaved
 from core_data.media.text.transforms import WhisperClipTextExtract, RestoreTextExtract
 from core_data.media.video import VidTargetConfig
 from core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
-from core_data.processing.preprocessing import TorchExportsSegmenterPreprocessor
+from core_data.processing.preprocessing import TorchExportsSegmenterPreprocessor, TorchExportsSegmentsReadyPreprocessor
 from core_data.sampler import EegFeaturesAndRandLogUIntervalsSegmenter, Segmenter
 from dataset.amigos.config import AmigosConfig
 from dataset.amigos.loader import AmigosPointsLoader
@@ -23,20 +23,15 @@ from dataset.amigos.loader import AmigosPointsLoader
 
 def amigos_interleaved_preprocessor(
         output_max_length: int, output_path: str,
-        segmenter: Segmenter = EegFeaturesAndRandLogUIntervalsSegmenter(
-            min_length=2, max_length=32, num_segments=20, anchor_identification_hop=0.125, extraction_jitter=0.1
-        ),
+        extraction_data_folder: str,
         aud_config: AudTargetConfig = AudTargetConfig(),
         vid_config: VidTargetConfig = VidTargetConfig(),
         txt_config: TxtTargetConfig = TxtTargetConfig("./gen-text-out.txt"),
         eeg_config: EegTargetConfig = EegTargetConfig("../../dependencies/cbramod/pretrained_weights.pth"),
         ecg_config: EcgTargetConfig = EcgTargetConfig(AmigosConfig.prepare_ecg),
 ):
-    return TorchExportsSegmenterPreprocessor(
+    return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
-        ch_names=AmigosConfig.CH_NAMES,
-        ch_types=AmigosConfig.CH_TYPES,
-        segmenter=segmenter,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "interleaved_preprocessor",
             aud_wav2vec_interleaved_txt_extract_transform_pipe(
@@ -49,8 +44,9 @@ def amigos_interleaved_preprocessor(
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
-            (Text.modality_code(), RestoreTextExtract(base_path=txt_config.extracted_base_path))
-        )
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder))
+        ),
+        extraction_data_folder=extraction_data_folder
     )
 
 
@@ -66,8 +62,6 @@ def amigos_default_preprocessor(
 ):
     return TorchExportsSegmenterPreprocessor(
         output_path=output_path,
-        ch_names=AmigosConfig.CH_NAMES,
-        ch_types=AmigosConfig.CH_TYPES,
         segmenter=segmenter,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
@@ -93,8 +87,6 @@ def amigos_vate_preprocessor(
 ):
     return TorchExportsSegmenterPreprocessor(
         output_path=output_path,
-        ch_names=AmigosConfig.CH_NAMES,
-        ch_types=AmigosConfig.CH_TYPES,
         segmenter=segmenter,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",

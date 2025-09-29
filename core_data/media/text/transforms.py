@@ -239,11 +239,14 @@ class RestoreTextExtract(nn.Module):
 
     def forward(self, txt: Text) -> Text:
         try:
-            with open(self.base_path + txt.eid + " -txt-extract.json") as f:
+            with open(self.base_path + txt.eid + "-txt-extract.json") as f:
                 txt.text_context = json.load(f)
         except Exception as e:
-            print(e)
-            print(f"Tried to read text context for {txt.eid} but we had an error.\n Empty chunks will be set instead")
+            logging.error(e)
+            logging.warning(
+                f"Tried to read text context for {txt.eid} but we had an error.\n "
+                f"Empty chunks will be set instead"
+            )
             txt.text_context = {"chunks": []}
         return txt
 

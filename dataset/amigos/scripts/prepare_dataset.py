@@ -13,7 +13,7 @@ from core_data.media.video import VidTargetConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--config", type=str, help="Path to JSON config", default="./scripts/interleaved_prepare_default.json"
+    "--config", type=str, help="Path to JSON config", default="./interleaved_prepare_default.json"
 )
 args = parser.parse_args()
 
@@ -57,15 +57,12 @@ if "txt_config" in cfg:
             setattr(txt_config, k, v)
     kwargs["txt_config"] = txt_config
 
-if "segmenter" in cfg:
-    segmenter_type = cfg["segmenter"]["type"]
-    segmenter_type = getattr(sampler, segmenter_type)
-    segmenter = segmenter_type(**cfg["segmenter"]["kwargs"])
-    kwargs["segmenter"] = segmenter
-
 print("AMIGOS process starting")
 processor = amigos_interleaved_preprocessor(
-    cfg["output_max_length"], base_path + cfg["output_path"], **kwargs
+    cfg["output_max_length"],
+    base_path + cfg["output_path"],
+    base_path + cfg["extraction_data_folder"],
+    **kwargs
 )
 
 processor.run(AmigosPointsLoader(base_path + cfg["data_path"]), workers=1)

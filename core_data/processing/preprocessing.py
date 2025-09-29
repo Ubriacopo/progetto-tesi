@@ -92,16 +92,11 @@ class Preprocessor(ABC, Generic[T]):
 class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def __init__(self, output_path: str, segmenter: Segmenter,
                  # In order to work with EEG data
-                 ch_names: list[str], ch_types: list[str],
                  segment_pipeline: FlexibleDatasetTransformWrapper,
-
                  sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None):
         """
-        TODO: We have no cross modality yet. -> shared_pipeline
         :param output_path:
         :param segmenter:
-        :param ch_names:
-        :param ch_types:
         :param sample_pipeline: Refers to steps done before splitting in intervals
         :param segment_pipeline: Refers to steps done after splitting in intervals (so single subsample).
         """
@@ -109,9 +104,6 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         self.segmenter: Segmenter = segmenter
         self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
         self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
-        # EEG mapping for mne
-        self.ch_names: list[str] = ch_names
-        self.ch_types: list[str] = ch_types
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
@@ -159,7 +151,6 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def __init__(self, output_path: str,
                  # Specs folder to give
                  extraction_data_folder: str,
-
                  # In order to work with EEG data
                  segment_pipeline: FlexibleDatasetTransformWrapper,
                  sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None):
@@ -173,8 +164,6 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         segments = pd.read_csv(self.extraction_data_folder + x.eid + "-segments.csv").to_dict(orient="records")
         if self.shared_pipeline is not None:
             x = self.shared_pipeline.call(x, keep_type=True)
-        # What about aux data?
-        self.extract_aux_data_for_x(x)  # TODO meglio semplicemente usareshared pipeline?
 
         x_segments = [
             self.preprocess_segment(x, (segment["start"], segment["stop"]))
@@ -210,6 +199,3 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def export(self, x: list[FlexibleDatasetPoint], output_path: str) -> None:
         objects = [s.to_dict() if hasattr(s, "to_dict") else s for s in x]
         torch.save(build_tensor_dict(objects), output_path + ".pt")
-
-    def extract_aux_data_for_x(self, x: FlexibleDatasetPoint):
-        pass

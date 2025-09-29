@@ -20,8 +20,6 @@ def deap_interleaved_preprocessor(
 ) -> TorchExportsSegmenterPreprocessor:
     return TorchExportsSegmenterPreprocessor(
         output_path=output_path,
-        ch_names=DeapConfig.CH_NAMES,
-        ch_types=DeapConfig.CH_TYPES,
         segmenter=segmenter,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "interleaved_preprocessor",
@@ -42,8 +40,6 @@ def deap_default_preprocessor(
 ):
     return TorchExportsSegmenterPreprocessor(
         output_path=output_path,
-        ch_names=DeapConfig.CH_NAMES,
-        ch_types=DeapConfig.CH_TYPES,
         segmenter=segmenter,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
