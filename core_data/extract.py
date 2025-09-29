@@ -9,7 +9,7 @@ from core_data.sampler import Segmenter
 
 class Extractor(ABC):
     @abstractmethod
-    def extract(self, x: FlexibleDatasetPoint) -> str:
+    def extract(self, x: FlexibleDatasetPoint, output_path: str) -> str:
         pass
 
 
@@ -31,7 +31,7 @@ class SegmentBasedExtractionProcessor:
                 continue
 
             segments: list[tuple[float, float]] = self.segmenter.compute_segments(x)
-            local_outs = [o.extract(x) for o in self.other_extractors]
+            local_outs = [o.extract(x, self.base_path) for o in self.other_extractors]
 
             df = pd.DataFrame(segments, columns=["start", "stop"])
             df.to_csv(f"{self.base_path}{x.eid}-segments.csv", index=False)
