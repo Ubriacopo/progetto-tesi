@@ -14,7 +14,7 @@ class Extractor(ABC):
 
 
 class SegmentBasedExtractionProcessor:
-    def __init__(self, base_path: str, segmenter: Segmenter, loader: DataPointsLoader, *other_extractors: Extractor):
+    def __init__(self, *other_extractors: Extractor, base_path: str, segmenter: Segmenter, loader: DataPointsLoader):
         self.segmenter: Segmenter = segmenter
         self.points_loader: DataPointsLoader = loader
         # Custom functions to be applied
