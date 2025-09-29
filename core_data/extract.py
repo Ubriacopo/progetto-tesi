@@ -4,6 +4,7 @@ import pandas as pd
 
 from core_data.data_point import FlexibleDatasetPoint
 from core_data.loader import DataPointsLoader
+from core_data.media.eeg import EEG
 from core_data.sampler import Segmenter
 
 
@@ -30,7 +31,7 @@ class SegmentBasedExtractionProcessor:
             if key in self.seen:
                 continue
 
-            segments: list[tuple[float, float]] = self.segmenter.compute_segments(x)
+            segments: list[tuple[float, float]] = self.segmenter.compute_segments(x[EEG.modality_code()])
             local_outs = [o.extract(x, self.base_path) for o in self.other_extractors]
 
             df = pd.DataFrame(segments, columns=["start", "stop"])

@@ -2,7 +2,7 @@
   "base_path": "/home/jacopo/PycharmProjects/progetto-tesi/",
   "output_max_length": 32,
   "data_path": "resources/AMIGOS/",
-  "output_path": "data/AMIGOS/p-interleaved-d/",
+  "output_path": "data/AMIGOS/base_data/",
   "segmenter": {
     "type": "EegFeaturesAndRandLogUIntervalsSegmenter",
     "kwargs": {

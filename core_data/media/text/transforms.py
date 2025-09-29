@@ -1,8 +1,11 @@
 import re
+from typing import Iterable
 
 import numpy as np
 import torch
 import torchaudio
+from faster_whisper import WhisperModel
+from faster_whisper.transcribe import Segment
 from torch import nn
 from torchaudio.transforms import Resample
 from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoProcessor, pipeline, \
@@ -144,6 +147,23 @@ class TextRegistry(nn.Module):
         return transcript
 
 
+class FasterWhisperExtractor(nn.Module):
+    def __init__(self):
+        super(FasterWhisperExtractor, self).__init__()
+        self.model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+        self.model_fs = 16000
+
+    @timed()
+    def forward(self, x: torch.Tensor, fs: int) -> Iterable[Segment]:
+        aud = ToMono()(x)
+        aud = aud.float()
+        aud = Resample(orig_freq=fs, new_freq=self.model_fs)(aud)
+        aud = aud.numpy()
+
+        segments, _ = self.model.transcribe(aud, word_timestamps=True)
+        return segments
+
+
 class WhisperExtractor(nn.Module):
     def __init__(self, model_id: str = "openai/whisper-large-v3", device=None):
         super(WhisperExtractor, self).__init__()
@@ -168,8 +188,10 @@ class WhisperExtractor(nn.Module):
             torch_dtype=self.torch_dtype
         )
 
+    @timed()
     def forward(self, x: torch.Tensor, fs: int) -> dict:
         aud = ToMono()(x)
+        aud = aud.float()
         aud = Resample(orig_freq=fs, new_freq=self.model_fs)(aud)
         aud = aud.numpy()
 
