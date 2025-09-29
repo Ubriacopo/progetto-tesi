@@ -29,6 +29,7 @@
   },
   "txt_config": {
     "i_max_length": 4,
-    "registry_store_path": "resources/AMIGOS/p-interleaved-d/extracted-text.txt"
+    "registry_store_path": "resources/AMIGOS/p-interleaved-d/extracted-text.txt",
+    "extracted_base_path": "data/AMIGOS/extraction_data/"
   }
 }

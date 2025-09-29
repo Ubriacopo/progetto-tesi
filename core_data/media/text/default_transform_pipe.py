@@ -4,13 +4,14 @@ from torch import nn
 
 from core_data.media.text import Text
 from core_data.media.text import TxtTargetConfig
-from core_data.media.text.transforms import WhisperClipTextExtract, SubclipTextExtract, MiniLMEmbedderTransform
+from core_data.media.text.transforms import SubclipTextExtract, MiniLMEmbedderTransform, \
+    RestoreTextExtract
 from core_data.processing.transform import MultimediaPadding
 
 
-def shared_txt_transform_pipe(text_config: TxtTargetConfig, ):
+def shared_txt_transform_pipe(text_config: TxtTargetConfig, txt_extract_base_path: str):
     return Text.modality_code(), nn.Sequential(
-        WhisperClipTextExtract(device="cpu"),  # Extracts all texts
+        RestoreTextExtract(base_path=txt_extract_base_path),  # Extracts all texts
     )
 
 
