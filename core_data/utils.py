@@ -141,9 +141,20 @@ def decompress_pt(path_to_pt: str, map_location: str = "cpu"):
         return torch.load(f_in, map_location=map_location)
 
 
+def debug_exceptional_catch(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"{func.__name__}: raised exception: \n")
+            print(e)
+            raise e
+    return wrapper
+
+
 def timed(label: str = None, longer_than: float = 0.5, suppress_timed: bool = BaseConfig.SUPPRESS_TIMED):
     def decorator(fn):
-
         @wraps(fn)
         def wrapper(*args, **kwargs):
             # Disable the function entirely

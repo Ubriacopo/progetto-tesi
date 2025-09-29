@@ -18,8 +18,7 @@ from core_data.media.text import TxtTargetConfig
 from core_data.media.text.default_transform_pipe import txt_from_aud_interleaved_txt_extract_transform_pipe
 from core_data.media.text.transforms import WhisperClipTextExtract
 from core_data.media.video import VidTargetConfig
-from core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
-    vid_vivit_default_transform_pipe
+from core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
 
 
 def amigos_interleaved_preprocessor(
@@ -72,10 +71,35 @@ def amigos_default_preprocessor(
         segmenter=segmenter,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
-            vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
+            # vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
             eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
             ecg_default_transform_pipe(ecg_config),
             aud_wav2vec_default_txt_extract_transform_pipe(aud_config, AmigosConfig.Audio.fs, output_max_length),
+            expand_nested=True,
+            nested_keys=[Text.modality_code(), Audio.modality_code()],
+        ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_preprocessor",
+            (Text.modality_code(), WhisperClipTextExtract(device="cpu"))
+        )
+    )
+
+
+def amigos_vate_preprocessor(
+        output_max_length: int, output_path: str,
+        segmenter: Segmenter = EegFeaturesAndRandLogUIntervalsSegmenter(
+            min_length=2, max_length=32, num_segments=20, anchor_identification_hop=0.125, extraction_jitter=0.1
+        ),
+):
+    return TorchExportsSegmenterPreprocessor(
+        output_path=output_path,
+        ch_names=AmigosConfig.CH_NAMES,
+        ch_types=AmigosConfig.CH_TYPES,
+        segmenter=segmenter,
+        segment_pipeline=FlexibleDatasetTransformWrapper(
+            "default_preprocessor",
+            # vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
+            #aud_wav2vec_default_txt_extract_transform_pipe(aud_config, AmigosConfig.Audio.fs, output_max_length),
             expand_nested=True,
             nested_keys=[Text.modality_code(), Audio.modality_code()],
         ),

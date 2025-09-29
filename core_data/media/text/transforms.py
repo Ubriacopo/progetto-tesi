@@ -4,12 +4,13 @@ import torch
 import torchaudio
 from torch import nn
 from torchaudio.transforms import Resample
-from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoProcessor, pipeline
+from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoProcessor, pipeline, \
+    AutoModelForSpeechSeq2Seq
 from sentence_transformers import SentenceTransformer
 
 from core_data.media.audio.transforms import ToMono
 from core_data.media.text import Text
-from core_data.utils import timed
+from core_data.utils import timed, debug_exceptional_catch
 
 
 class GreedyCTCDecoder(torch.nn.Module):
@@ -71,7 +72,7 @@ class WhisperTextExtractFromAudio(nn.Module):
     def __init__(self, fs: int, device=None, model_id="openai/whisper-large-v3"):
         super(WhisperTextExtractFromAudio, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
-        self.torch_dtype = torch.float16 if not device is "cpu" else torch.float32
+        self.torch_dtype = torch.float16 if device != "cpu" else torch.float32
 
         self.fs = fs
         self.processor = AutoProcessor.from_pretrained(model_id)
@@ -146,13 +147,24 @@ class WhisperClipTextExtract(nn.Module):
     def __init__(self, model_id: str = "openai/whisper-large-v3", device=None):
         super(WhisperClipTextExtract, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
-        self.torch_dtype = torch.float16 if device != "cpu" else torch.float32
+        self.torch_dtype = torch.float16 if device != "cpu" else torch.float16  # torch.float32
         # Parameter that comes from whisper requirements
-        self.model_fs: int = 16000
 
+        self.model_fs: int = 16000
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            model_id, torch_dtype=self.torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+        )
+        model.to(self.device)
+
+        processor = AutoProcessor.from_pretrained(model_id)
         self.pipe = pipeline(  # 1 minuto
-            "automatic-speech-recognition", model=model_id, return_timestamps="word",
-            device=self.device, torch_dtype=self.torch_dtype
+            "automatic-speech-recognition",
+            model=model,
+            tokenizer=processor.tokenizer,
+            feature_extractor=processor.feature_extractor,
+            return_timestamps="word",
+            device=self.device,
+            torch_dtype=self.torch_dtype
         )
 
     @timed()
@@ -164,15 +176,12 @@ class WhisperClipTextExtract(nn.Module):
         aud = torch.tensor(txt.base_audio.to_soundarray()).float()
         aud = ToMono()(aud)
         aud = Resample(orig_freq=txt.base_audio.fps, new_freq=self.model_fs)(aud)
-
-        with torch.inference_mode():
-            txt.text_context = self.pipe(
-                aud.numpy(),  # 16 kHz mono, float32 in [-1,1]
-                chunk_length_s=20,  # ~Whisper context
-                stride_length_s=(2, 1),  # left/right buffer
-                generate_kwargs=dict(num_beams=1, language="english", condition_on_prev_tokens=True),
-            )
-
+        try:
+            with torch.inference_mode():
+                txt.text_context = self.pipe(aud.numpy())
+        except Exception as e:
+            print(e)
+            raise e
         return txt
 
 

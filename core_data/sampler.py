@@ -5,6 +5,7 @@ from typing import Optional
 
 import numpy as np
 
+from core_data.data_point import FlexibleDatasetPoint
 from core_data.media.eeg import EEG
 from core_data.media.eeg.saliency_extractor import EEGFeatureExtractor
 
@@ -327,3 +328,8 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
             stop = start + dur
             segments.append((start, stop))
         return segments
+
+
+class SpecSegmenter(Segmenter):
+    def compute_segments(self, sample: FlexibleDatasetPoint) -> list[tuple[int, int]]:
+        pass 
