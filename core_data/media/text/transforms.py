@@ -1,20 +1,20 @@
+import json
+import logging
 import re
 from typing import Iterable
 
-import numpy as np
 import torch
 import torchaudio
-from faster_whisper import WhisperModel
-from faster_whisper.transcribe import Segment
+
+from sentence_transformers import SentenceTransformer
 from torch import nn
 from torchaudio.transforms import Resample
 from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoProcessor, pipeline, \
     AutoModelForSpeechSeq2Seq
-from sentence_transformers import SentenceTransformer
 
 from core_data.media.audio.transforms import ToMono
 from core_data.media.text import Text
-from core_data.utils import timed, debug_exceptional_catch
+from core_data.utils import timed
 
 
 class GreedyCTCDecoder(torch.nn.Module):
@@ -132,6 +132,9 @@ class TextRegistry(nn.Module):
     def __init__(self, store_path: str):
         """
         Might not be the smartest or best approach, but it just will serve our purpose.
+        Not used as we moved store outputs directly as a step coming before main pre-processing.
+        Reason for it is that the dataset is used by multiple models so the times and other stuff have to be pre-computed
+        in order to make the model samples and teacher (VATE in our case) aligned.
         :param store_path: Where to store the extracted text
         """
         super(TextRegistry, self).__init__()
@@ -147,25 +150,8 @@ class TextRegistry(nn.Module):
         return transcript
 
 
-class FasterWhisperExtractor(nn.Module):
-    def __init__(self):
-        super(FasterWhisperExtractor, self).__init__()
-        self.model = WhisperModel("large-v3", device="cuda", compute_type="float16")
-        self.model_fs = 16000
-
-    @timed()
-    def forward(self, x: torch.Tensor, fs: int) -> Iterable[Segment]:
-        aud = ToMono()(x)
-        aud = aud.float()
-        aud = Resample(orig_freq=fs, new_freq=self.model_fs)(aud)
-        aud = aud.numpy()
-
-        segments, _ = self.model.transcribe(aud, word_timestamps=True)
-        return segments
-
-
 class WhisperExtractor(nn.Module):
-    def __init__(self, model_id: str = "openai/whisper-large-v3", device=None):
+    def __init__(self, model_id: str = "openai/whisper-medium", device=None):
         super(WhisperExtractor, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.torch_dtype = torch.float16 if device != "cpu" else torch.float16  # torch.float32
@@ -240,8 +226,25 @@ class WhisperClipTextExtract(nn.Module):
             with torch.inference_mode():
                 txt.text_context = self.pipe(aud.numpy())
         except Exception as e:
-            print(e)
+            logging.exception(e)
             raise e
+
+        return txt
+
+
+class RestoreTextExtract(nn.Module):
+    def __init__(self, base_path: str):
+        super(RestoreTextExtract, self).__init__()
+        self.base_path: str = base_path
+
+    def forward(self, txt: Text) -> Text:
+        try:
+            with open(self.base_path + txt.eid + " -txt-extract.json") as f:
+                txt.text_context = json.load(f)
+        except Exception as e:
+            print(e)
+            print(f"Tried to read text context for {txt.eid} but we had an error.\n Empty chunks will be set instead")
+            txt.text_context = {"chunks": []}
         return txt
 
 

@@ -153,3 +153,63 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def export(self, segments: list[FlexibleDatasetPoint], output_path: str):
         objects = [s.to_dict() if hasattr(s, "to_dict") else s for s in segments]
         torch.save(build_tensor_dict(objects), output_path + ".pt")
+
+
+class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
+    def __init__(self, output_path: str,
+                 # Specs folder to give
+                 extraction_data_folder: str,
+
+                 # In order to work with EEG data
+                 segment_pipeline: FlexibleDatasetTransformWrapper,
+                 sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None):
+        super().__init__(output_path)
+        self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
+        self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
+        self.extraction_data_folder: str = extraction_data_folder
+
+    @timed()
+    def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
+        segments = pd.read_csv(self.extraction_data_folder + x.eid + "-segments.csv").to_dict(orient="records")
+        if self.shared_pipeline is not None:
+            x = self.shared_pipeline.call(x, keep_type=True)
+        # What about aux data?
+        self.extract_aux_data_for_x(x)  # TODO meglio semplicemente usareshared pipeline?
+
+        x_segments = [
+            self.preprocess_segment(x, (segment["start"], segment["stop"]))
+            for idx, segment in enumerate(segments)
+        ]
+
+        output_path: str = self.output_path + f'{x.eid}'
+        self.export(x_segments, output_path)
+        # Return file specification
+        return_segments = [
+            {"index": idx, x.get_identifier(): x.eid, "segment": segment}
+            for idx, (seg, segment) in enumerate(zip(x_segments, segments))
+        ]
+        return_segments = sanitize_for_ast(return_segments)
+        return return_segments
+
+    @timed()
+    def preprocess_segment(self, x: FlexibleDatasetPoint,
+                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray]) -> FlexibleDatasetPoint:
+        if isinstance(segment[0], np.ndarray):
+            segment = (segment[0].item(), segment[1].item())
+
+        y = x.clone(x.eid)  # entry_id is useless for this approach
+        for arg, value in y.__dict__.items():
+            if hasattr(value, "interval"):
+                value.__setattr__("interval", segment)
+
+        if self.pipeline is None:
+            raise ValueError("pipeline is required for preprocessing")
+        y = self.pipeline.call(y)
+        return y
+
+    def export(self, x: list[FlexibleDatasetPoint], output_path: str) -> None:
+        objects = [s.to_dict() if hasattr(s, "to_dict") else s for s in x]
+        torch.save(build_tensor_dict(objects), output_path + ".pt")
+
+    def extract_aux_data_for_x(self, x: FlexibleDatasetPoint):
+        pass

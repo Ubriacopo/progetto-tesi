@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import pandas as pd
 
@@ -23,12 +24,16 @@ class SegmentBasedExtractionProcessor:
         self.base_path: str = base_path
 
         self.seen = []
+        Path(self.base_path).mkdir(parents=True, exist_ok=True)
+        for file in Path(self.base_path).glob("*-segments.csv"):
+            self.seen.append(str(file.name).replace("-segments.csv", ""))
 
     def extract_segments(self) -> list[list[str]]:
         outs = []
         for x in self.points_loader.scan():
             key = x.get_identifier()
-            if key in self.seen:
+            if x[key] in self.seen:
+                print(f"Skipping {x[key]} as it was already extracted")
                 continue
 
             segments: list[tuple[float, float]] = self.segmenter.compute_segments(x[EEG.modality_code()])
