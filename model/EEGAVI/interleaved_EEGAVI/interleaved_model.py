@@ -9,6 +9,8 @@ from common.model.embedding.foundation_embedder import FoundationEmbedder
 from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedderForTimeSequences
 from common.model.embedding.predefined.vivit import ViViTFoundationEmbedderForTimeSequences
 from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedderForTimeSequences
+
+from model.EEGAVI.EEGAVI import EEGAVI
 from model.layer.attention.x_attention import GatedCrossAttentionBlock
 from common.model.layers import PerceiverResampler
 
@@ -24,6 +26,12 @@ from common.model.layers import PerceiverResampler
 
     Chiaramente qui si ha un senso per il perceiver resampler.
 """
+
+
+def get_interleaved_EEG_AVI():
+    return EEGAVI(
+
+    )
 
 
 # todo generalize e cleanup. base abract eegavi FlamEEGo altro nome buffo che potrebbe starci
