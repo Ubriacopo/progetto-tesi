@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 
@@ -11,3 +12,14 @@ class GateUnit(nn.Module):
 class DeepGateUnit(nn.Module):
     def __init__(self, supporting_size_embedding, modality_mappings):
         super(DeepGateUnit, self).__init__()
+
+
+class DictExtract(nn.Module):
+    def __init__(self, *keys: str):
+        super(DictExtract, self).__init__()
+        self.keys = keys
+
+    def forward(self, x: dict) -> tuple | torch.Tensor:
+        if len(self.keys) == 1:
+            return x[self.keys[0]]
+        return tuple([x[key] for key in self.keys])

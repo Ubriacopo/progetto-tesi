@@ -14,7 +14,7 @@ def get_default_simple_EEGAVI():
     vate_out_shape = (1, 100)
 
     return EEGAVI(
-        target_size=target_size,
+        pivot_latent_size=target_size,
         pivot_modality=ModalityStream(
             code="eeg",
             adapter=nn.Sequential(
@@ -27,7 +27,7 @@ def get_default_simple_EEGAVI():
             ),
             adapter_output_size=target_size,
         ),
-        supporting_size_embedding=supporting_size_embedding,
+        supporting_latent_size=supporting_size_embedding,
         supporting_modalities=[
             ModalityStream(
                 code="ecg",

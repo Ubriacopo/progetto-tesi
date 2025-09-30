@@ -14,11 +14,11 @@ import lightning as L
 
 class EEGAVI(L.LightningModule):
     def __init__(self,
-                 target_size: int,
                  # EEG
+                 pivot_latent_size: int,
                  pivot_modality: ModalityStream,
 
-                 supporting_size_embedding: int,
+                 supporting_latent_size: int,
                  supporting_modalities: list[ModalityStream],
                  use_modality_encoder: bool,
 
@@ -29,16 +29,16 @@ class EEGAVI(L.LightningModule):
         super(EEGAVI, self).__init__()
 
         self.pivot_modality = pivot_modality
-        self.supporting_modalities = supporting_modalities
+        self.supporting_modalities = nn.ModuleList(supporting_modalities)
 
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(supporting_modalities)}
-            self.modality_encoder = ModalContextEncoder(supporting_size_embedding, modality_mappings)
+            self.modality_encoder = ModalContextEncoder(supporting_latent_size, modality_mappings)
         # TODO: random disabler for each supporting modality for training robustness
         # What about modality gating? Cross Attention handles it!
         self.gatedXAttn_layers = nn.ModuleList([
-            GatedCrossAttentionBlock(dim=target_size, dim_latent=supporting_size_embedding)
+            GatedCrossAttentionBlock(dim=pivot_latent_size, dim_latent=supporting_latent_size)
             for _ in range(cross_attention_blocks)
         ])
         self.projector = final_projector

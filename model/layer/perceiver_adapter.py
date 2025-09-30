@@ -5,9 +5,7 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from common.model.embedding.foundation_embedder import FoundationEmbedder
 from model.layer.base import SimpleFeedForward
-from model.layer.kd import KDHead
 
 """"
     TODO
@@ -78,13 +76,14 @@ class PerceiverAttention(nn.Module):
         self.kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
-    def forward(self, x, latents):
+    def forward(self, x, latents, mask=None):
         """
         Args:
             x (torch.Tensor): image features
                 shape (b, T, n1, D)
             latents (torch.Tensor): latent features
                 shape (b, T, n2, D)
+            :param mask:
         """
         x, latents = self.norm_media(x), self.norm_latents(latents)
 
@@ -95,13 +94,31 @@ class PerceiverAttention(nn.Module):
         q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b h t n d", h=self.heads)
         q *= self.scale
 
+        if mask is None:
+            mask = torch.ones((x.shape[0], x.shape[1]), dtype=torch.bool, device=x.device)
+        mask = mask.to(dtype=torch.bool)
+        q *= mask[:, None, :, None, None]
+
+        keep_x = mask[:, :, None].expand(x.shape[0], x.shape[1], x.shape[2])
+        keep_z = torch.zeros((x.shape[0], x.shape[1], latents.shape[2]), dtype=torch.bool, device=x.device)
+        key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
+        key_keep = key_keep[:, None, :, None, :]  # (b,1,T,1,nk)
+
         # Attention
         sim = einsum("... i d, ... j d  -> ... i j", q, k)
+        sim = sim.masked_fill(~key_keep, float("-inf"))
+
+        row_has_key = key_keep.any(dim=-1, keepdim=True)
+        sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
+
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
+        attn = attn * row_has_key
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h t n d -> b t n (h d)", h=self.heads)
+
+        out *= mask[:, :, None, None]
         return self.out(out)
 
 
@@ -145,9 +162,10 @@ class PerceiverResampler(nn.Module):
 
         self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor, mask=None):
         """
 
+        :param mask:
         :param x: Features of the modality in input. It is supposed to be a 5D tensor [b, T, F, v, D] with:
                     - b: is batch size of the input. (Fixed during training).
                     - T: is number of time steps.
@@ -172,63 +190,19 @@ class PerceiverResampler(nn.Module):
         latents = repeat(self.latents, "n d -> b T n d", b=b, T=T)
         # Transformer Block
         for att, feed_forward in self.layers:
-            latents = att(x, latents) + latents  # Residual network style.
+            latents = att(x, latents, mask=mask) + latents  # Residual network style.
             latents = feed_forward(latents) + latents  # Residual network style.
 
         return self.norm(latents)
 
 
-class PerceiverAdapter(nn.Module):
-    def __init__(self, embedder: FoundationEmbedder, resampler_depth: int,
-                 target_shape: int, kd: bool = False, kd_size: int = None):
-        """
-        Adapts a modality to be ready for the GatedXAttention with other modalities.
-
-        :param embedder: FoundationEmbedder object. This one generates the embeddings of the actual modality.
-        :param resampler_depth: How many layers of perceiver attention + sequential are desired for the PerceiverResampler.
-        :param target_shape: The target shape to map the embedding space of the modality.
-        :param kd: If the current modality uses knowledge distillation
-        :param kd_size: To what size to remap the output of the Resampler to match the teacher
-        """
+class DictPerceiverResampler(nn.Module):
+    def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
+                 max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
         super().__init__()
-        self.resampler = PerceiverResampler(embedder.output_size, resampler_depth)
-        self.kd_head: Optional[KDHead] = None
+        self.module = PerceiverResampler(dim=dim, depth=depth, dim_head=dim_head, heads=heads, num_latens=num_latents,
+                                         max_num_media=max_num_media, max_num_frames=max_num_frames, ff_mult=ff_mult)
 
-        if kd:
-            # Build KD map
-            assert kd_size is not None, "If using KD you should provide kd_size to map to teacher"
-            self.kd_head = KDHead(input_dimension=embedder.output_size, output_dimension=kd_size)
-
-        self.reshaper: Optional[nn.Linear] = None
-        if target_shape != embedder.output_size:
-            self.reshaper = nn.Linear(embedder.output_size, target_shape)
-
-        self.embedder = embedder
-
-    def forward(self, x, use_kd: bool = True) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
-        """
-        The processed modality in the adapted space.
-
-        :param x: Complex object fit for the self FoundationEmbedder object.
-        :param use_kd: If true the KD module is used (if the head was provided in initialization)
-        :return:
-        """
-        if x is None:
-            return None  # We can't work when modality is disabled
-
-        e: torch.Tensor = self.embedder(**x)
-        e = self.resampler(e)
-
-        kd_e: Optional[torch.Tensor] = None
-        if self.kd_head is not None:
-            kd_e = rearrange(e, "b T n d -> b (T n) d")
-            # Simple Global Average Pooling.
-            # If we want we could introduce an attention pooling block (We have SelfAttentionPooling)
-            # TODO: Try different configurations for this.
-            kd_e = kd_e.mean(dim=1)
-            kd_e = self.kd_head(kd_e)
-
-        if self.reshaper is not None:
-            e = self.reshaper(e)
-
-        return e if not use_kd else (e, kd_e)
+    def forward(self, x: dict):
+        mask = None if not "mask" in x else x["mask"]
+        return self.module(x=x["data"], mask=mask)

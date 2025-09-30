@@ -1,18 +1,17 @@
-import torch
-from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch import nn
+from torch.utils.data import DataLoader
 
-from core_data.data_point import EEGDatasetDataPoint
-from common.model.embedding.embedder_adapter import EmbedderAdapter
-from common.model.embedding.foundation_embedder import FoundationEmbedder
-from common.model.embedding.predefined.cbramod import CBraModFoundationEmbedderForTimeSequences
-from common.model.embedding.predefined.vivit import ViViTFoundationEmbedderForTimeSequences
-from common.model.embedding.predefined.w2vbert import W2VBertFoundationEmbedderForTimeSequences
-
+from core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
+from core_data.media.audio import Audio
+from core_data.media.ecg import ECG
+from core_data.media.eeg import EEG
+from core_data.media.text import Text
+from core_data.media.video import Video
 from model.EEGAVI.EEGAVI import EEGAVI
-from model.layer.attention.x_attention import GatedCrossAttentionBlock
-from common.model.layers import PerceiverResampler
+from model.layer.modality_stream import ModalityStream
+from model.layer.perceiver_adapter import PerceiverResampler, DictPerceiverResampler
+from model.layer.utils import DictExtract
 
 # TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
 # TODO: Sequence length: Your EEG has 85 tokens - is this sufficient temporal resolution? (ViViT has 3306)
@@ -28,117 +27,97 @@ from common.model.layers import PerceiverResampler
 """
 
 
-def get_interleaved_EEG_AVI():
-    return EEGAVI(
+class MayArgsOrKwargs(nn.Module):
+    def __init__(self, module: nn.Module):
+        super().__init__()
+        self.module = module  # fn is a Module or callable
 
+    def forward(self, x):
+        if isinstance(x, tuple):
+            return self.module(*x)  # Unpack tuple
+        if isinstance(x, dict):
+            return self.module(**x)  # Unpack dictionary
+        return self.module(x)
+
+
+class VideoAdapter(nn.Module):
+    def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
+                 max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
+        super().__init__()
+        self.patch_size = 16
+        self.module = PerceiverResampler(dim=dim, depth=depth, dim_head=dim_head, heads=heads, num_latens=num_latents,
+                                         max_num_media=max_num_media, max_num_frames=max_num_frames, ff_mult=ff_mult)
+
+
+
+    def forward(self, x: dict):
+        x, mask = x["data"], None if not "mask" in x else x["mask"]
+        x = Rearrange("b T (F p) D -> b T F p D", F=self.patch_size)(x)
+
+        y = self.module(x=x, mask=mask)
+        return y
+
+
+def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
+    vate_out_shape = (1, 100)
+
+    return EEGAVI(
+        pivot_latent_size=target_size,
+        pivot_modality=ModalityStream(
+            code=EEG.modality_code(),
+            adapter_output_size=target_size,
+            adapter=nn.Sequential(
+                DictExtract("data"),
+                Rearrange("b c P D -> b D c P"),
+                nn.AdaptiveMaxPool2d((1, 1)),  # TODO: masked version of AdaptiveAveragePool2d
+                nn.Flatten(start_dim=1),
+                Rearrange("(b T) D -> b T D", T=1),
+                nn.Linear(200, target_size),
+            )
+        ),
+        supporting_latent_size=supporting_latent_size,
+        supporting_modalities=[
+            ModalityStream(
+                code=Video.modality_code(),
+                adapter_output_size=supporting_latent_size,
+                kd_shape=vate_out_shape,
+                adapter=VideoAdapter(dim=768, depth=4)
+            ),
+            ModalityStream(
+                code=Audio.modality_code(),
+                adapter_output_size=supporting_latent_size,
+                kd_shape=vate_out_shape,
+                adapter=DictPerceiverResampler(dim=768, depth=4)
+            ),
+            ModalityStream(
+                code=Text.modality_code(),
+                adapter_output_size=supporting_latent_size,
+                kd_shape=vate_out_shape,
+                adapter=nn.Sequential(
+                    PerceiverResampler(dim=768, depth=4)
+                )
+            ),
+            ModalityStream(
+                code=ECG.modality_code(),
+                adapter_output_size=supporting_latent_size,
+                adapter=DictPerceiverResampler(dim=768, depth=4)
+            )
+        ],
+
+        use_modality_encoder=True,
+        cross_attention_blocks=4,
+        final_projector=nn.Sequential(
+
+        )
     )
 
 
-# todo generalize e cleanup. base abract eegavi FlamEEGo altro nome buffo che potrebbe starci
-class MultimediaEEGAVI(nn.Module):
-    """
-    Since it does not use PerceiverResampler it is more lightweight but also strictly related to input size (not variable)
-    """
+if __name__ == '__main__':
+    model = get_interleaved_EEG_AVI(384, 384)
+    model.to("cuda:0")
+    dataset = FlexibleEmbeddingsSpecMediaDataset("../../../data/AMIGOS/p-interleaved-d/spec.csv", cache_in_ram=True)
+    dataloader = DataLoader(dataset, batch_size=2, shuffle=True)
 
-    def __init__(self,
-                 target_shape: int = 384,
-                 cross_attention_blocks: int = 2,
-                 base_video: FoundationEmbedder = ViViTFoundationEmbedderForTimeSequences(),
-                 video_kd_size: int | None = None,
+    # res = model(dataset[0])
 
-                 base_audio: FoundationEmbedder = W2VBertFoundationEmbedderForTimeSequences(),
-                 audio_kd_size: int | None = None,
-
-                 base_eeg: FoundationEmbedder = CBraModFoundationEmbedderForTimeSequences(),
-                 use_kd: bool = True):
-        super().__init__()
-        self.use_kd: bool = use_kd
-
-        self.video_adapter = EmbedderAdapter(
-            embedder=base_video, target_size=target_shape, kd_size=video_kd_size,
-            adapter=PerceiverResampler(base_video.output_size, 2)
-        )
-
-        self.audio_adapter = EmbedderAdapter(
-            embedder=base_audio, target_size=target_shape, kd_size=audio_kd_size,
-            adapter=PerceiverResampler(base_audio.output_size, 2),
-        )
-
-        self.eeg_adapter = EmbedderAdapter(
-            embedder=base_eeg, target_size=None,
-            # Nothing happens for EEG data
-            adapter=nn.Sequential(
-                Rearrange("b T c P D -> b T D c P"),
-                # Practical recipe:
-                #   Start with Avg-only → Linear(200→384) as your baseline.
-                #   Try Avg+Max concat → Linear(400→384); add small dropout (0.1) before the Linear.
-                #   If artifacts bite, switch to LSE pooling (learnable β) → Linear(200→384).
-                #   Itd be:
-                #       q = torch.cat([q_avg, q_max], dim=-1)  # (B, T, 2D)
-                #       q = nn.Linear(2*D, target_shape)(q)    # (B, T, target_shape)
-                nn.AdaptiveAvgPool2d((1, 1)),
-                nn.Flatten(start_dim=2),
-                nn.Linear(200, target_shape)
-            ),
-        )
-
-        self.gatedXAttn_layers = nn.ModuleList([
-            GatedCrossAttentionBlock(dim=target_shape, dim_latent=target_shape)
-            for _ in range(cross_attention_blocks)
-        ])
-
-        # TODO Revise this and choose a good architecture
-        self.projector = nn.Sequential(
-            nn.LayerNorm(target_shape),
-            nn.Linear(target_shape, target_shape * 2),
-            nn.GELU(),
-            nn.Linear(target_shape * 2, target_shape)
-        )
-
-    def forward(self, x: dict | EEGDatasetDataPoint):
-        # Order is unique
-        order = list(zip(*x["order"]))[0]
-        # By default, don't use KD
-        use_kd = x["kd"] if "kd" in x else False
-        mask = x["mask"] if "mask" in x else None
-        # Access the stored data:
-        eeg = x["eeg"]
-
-        z_mod = []
-        vid = x["vid"] if "vid" in x else None
-        vid_mask = mask[:, order.index("vid")] if mask is not None else None
-
-        aud = x["aud"] if "aud" in x else None
-        aud_mask = mask[:, order.index("aud")] if mask is not None else None
-
-        z_kd_vid = None
-        z_vid = self.video_adapter(vid, vid_mask)
-        if isinstance(z_vid, tuple):
-            z_vid, z_kd_vid = z_vid
-        z_mod.append(z_vid)
-
-        z_kd_aud = None
-        z_aud = self.audio_adapter(aud, aud_mask)
-        if isinstance(z_aud, tuple):
-            z_aud, z_kd_aud = z_aud
-        z_mod.append(z_aud)
-
-        z_eeg = self.eeg_adapter(eeg, use_kd)
-
-        # TODO: Dovrei ricevere una maschera per i media EEG (Essendo ci max size di questo sample)
-        #       Quindi teoricamente avrò una matrice in mask? O un nuovo field? Dataset apposta da fare
-        media_locations = mask[:, order.index("eeg")].unsqueeze(1)
-
-        # TODO new mask?
-        embeddings = torch.cat(z_mod, dim=1)
-        if len(embeddings.shape) == 3:
-            # (b, T*F, D) (Case of no time series used).
-            embeddings = rearrange(embeddings, "b T d -> b T F d", T=1)
-
-        for gated_x_attn in self.gatedXAttn_layers:
-            z_eeg = gated_x_attn(z_eeg, embeddings, media_locations=media_locations)
-
-        # TODO: Self attention?
-
-        logits = self.projector(z_eeg)
-        return (logits, {"kd_ve": z_kd_vid, "kd_ae": z_kd_aud}) if use_kd else logits
+    res_b = model(next(iter(dataloader)))
