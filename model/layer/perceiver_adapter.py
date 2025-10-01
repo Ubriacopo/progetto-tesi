@@ -88,8 +88,8 @@ class PerceiverAttention(nn.Module):
 
         b, T, Nx, D = x.shape
         _, _, Nz, _ = latents.shape
-        assert (T == latents.shape[1] and D == latents.shape[-1],
-                f"Mismatch: x(T={T},D={D}) vs latents(T={latents.shape[1]},D={latents.shape[-1]})")
+        assert T == latents.shape[1] and D == latents.shape[-1], \
+            f"Mismatch: x(T={T},D={D}) vs latents(T={latents.shape[1]},D={latents.shape[-1]})"
 
         x, latents = self.norm_media(x), self.norm_latents(latents)
 

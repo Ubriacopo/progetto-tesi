@@ -83,3 +83,4 @@ if __name__ == '__main__':
     # res = model(dataset[0])
 
     res_b = model(next(iter(dataloader)))
+    print(res_b)

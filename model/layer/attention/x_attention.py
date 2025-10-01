@@ -83,24 +83,25 @@ class MaskedCrossAttention(nn.Module):
         # Check similarity between key and query
         sim = einsum("... i d, ... j d -> ... i j", q, k)
 
+        NEG_INF = torch.finfo(qo.dtype).min
         # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
         if kv_mask is not None:
-            kv_keep = rearrange(kv_mask, "b t p -> b (t p)")  # True=valid
-            sim = sim.masked_fill(~kv_keep[:, None, None, :], float("-inf"))
+            kv_keep = rearrange(kv_mask, "b t p -> b (t p)")  # (B, Tkv*n)
+            sim = sim.masked_fill(~kv_keep[:, None, None, :], NEG_INF)
 
         if attn_mask is not None:
             if attn_mask.dtype == torch.bool:
-                sim = sim.masked_fill(~attn_mask[:, None, :, :], float("-inf"))  # broadcast over heads
+                sim = sim.masked_fill(~attn_mask[:, None, :, :], NEG_INF)
             else:
-                sim = sim + attn_mask[:, None, :, :]  # additive mask with -inf where disallowed
+                sim = sim + attn_mask[:, None, :, :]
 
         # Guard rows that are fully -inf (all keys masked)
-        row_has_inf = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
-        sim = torch.where(row_has_inf, sim, torch.zeros_like(sim))
+        row_has_key = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
+        sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
 
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
-        attn = attn * row_has_inf
+        attn = attn * row_has_key
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h n d -> b n (h d)")

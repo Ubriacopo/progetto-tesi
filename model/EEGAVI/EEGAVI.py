@@ -153,16 +153,13 @@ class EEGAVI(L.LightningModule):
 
         # Prepare attention masks / masks in general
         b, T, F, D = z_supp.shape
-        z_mask = ~z_mask  # Pytorch convention
         key_time_idx = torch.arange(T, device=z_base.device).repeat_interleave(F)
         # allow[q_t, k] = (time(k) <= q_t)
         allow = key_time_idx.view(1, 1, -1) <= torch.arange(T, device=z_base.device).view(1, T, 1)
-        # allow: (1, T, T*F) bool  → will broadcast over B
-        attn_mask = (~allow).to(z_base.dtype) * float("-inf")
 
         z = None
         for gated_x_attn in self.gatedXAttn_layers:
-            z = gated_x_attn(z_base, z_supp, attn_mask=attn_mask, q_mask=base_mask, kv_mask=z_mask)
+            z = gated_x_attn(z_base, z_supp, attn_mask=allow, q_mask=base_mask, kv_mask=z_mask)
 
         logits = self.projector(z)
         return (logits, kd_outputs) if use_kd else logits
