@@ -23,11 +23,13 @@ class CrossTransformerBlock(nn.Module):
 
         self.out_norm = nn.LayerNorm(dim)
 
-    def forward(self, x: torch.Tensor, kv: torch.Tensor, *, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, kv: torch.Tensor, *,
+                key_padding_mask: Optional[torch.Tensor] = None,
+                attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         q, kv = self.q_norm(x), self.kv_norm(kv)
         # The reason we had to re-implement the block is q != kv
         # [NORM -> MHA] -> ADD -> [NORM -> FF] -> ADD
-        attn, _ = self.mha(q, kv, kv, attn_mask=attn_mask)
+        attn, _ = self.mha(q, kv, kv, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
         y = attn + x
         # FeedForward -> ADD & NORM
         y = y + self.ffn(self.out_norm(y))
@@ -41,10 +43,11 @@ class PMA(nn.Module):
         nn.init.xavier_uniform_(self.S)
         self.transformer_block = CrossTransformerBlock(dim, num_heads, ffn_dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask=None) -> torch.Tensor:
         B = x.shape[0]
         seeds = self.S.repeat(B, 1, 1)
-        return self.transformer_block(seeds, x)
+        key_padding_mask = ~mask if mask is not None else None
+        return self.transformer_block(seeds, x, key_padding_mask=key_padding_mask)
 
 
 class ISAB(nn.Module):

@@ -25,7 +25,6 @@ def get_default_simple_EEGAVI():
                 Rearrange("(b T) D -> b T D", T=1),
                 nn.Linear(200, target_size),
             ),
-            adapter_output_size=target_size,
         ),
         supporting_latent_size=supporting_size_embedding,
         supporting_modalities=[
@@ -34,7 +33,6 @@ def get_default_simple_EEGAVI():
                 adapter=nn.Sequential(
 
                 ),
-                adapter_output_size=768,
             ),
 
             ModalityStream(
@@ -43,7 +41,6 @@ def get_default_simple_EEGAVI():
                     ISAB(768, 8, 10),
                     PMA(768, 8, 10),
                 ),
-                adapter_output_size=768,
                 kd_shape=vate_out_shape
             ),
             ModalityStream(
@@ -52,14 +49,12 @@ def get_default_simple_EEGAVI():
                     PMA(768, 8, 10),
                     nn.Linear(768, supporting_size_embedding),
                 ),
-                adapter_output_size=supporting_size_embedding,
                 kd_shape=vate_out_shape,
             ),
             ModalityStream(
                 code="txt",
                 adapter=nn.Sequential(),
                 kd_shape=vate_out_shape,
-                adapter_output_size=supporting_size_embedding,
             )
         ],
         use_modality_encoder=True,

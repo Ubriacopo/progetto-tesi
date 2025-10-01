@@ -85,6 +85,12 @@ class PerceiverAttention(nn.Module):
                 shape (b, T, n2, D)
             :param mask:
         """
+
+        b, T, Nx, D = x.shape
+        _, _, Nz, _ = latents.shape
+        assert (T == latents.shape[1] and D == latents.shape[-1],
+                f"Mismatch: x(T={T},D={D}) vs latents(T={latents.shape[1]},D={latents.shape[-1]})")
+
         x, latents = self.norm_media(x), self.norm_latents(latents)
 
         q = self.q(latents)
@@ -95,12 +101,12 @@ class PerceiverAttention(nn.Module):
         q *= self.scale
 
         if mask is None:
-            mask = torch.ones((x.shape[0], x.shape[1]), dtype=torch.bool, device=x.device)
+            mask = torch.ones((b, T), dtype=torch.bool, device=x.device)
         mask = mask.to(dtype=torch.bool)
         q *= mask[:, None, :, None, None]
 
-        keep_x = mask[:, :, None].expand(x.shape[0], x.shape[1], x.shape[2])
-        keep_z = torch.zeros((x.shape[0], x.shape[1], latents.shape[2]), dtype=torch.bool, device=x.device)
+        keep_x = mask[:, :, None].expand(b, T, Nx)
+        keep_z = mask[:, :, None].expand(b, T, Nz)
         key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
         key_keep = key_keep[:, None, :, None, :]  # (b,1,T,1,nk)
 
@@ -123,7 +129,7 @@ class PerceiverAttention(nn.Module):
 
 
 class PerceiverResampler(nn.Module):
-    def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latens: int = 64,
+    def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
                  max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
         """
         The PerceiverResampler comes from the Flamingo definition and enrichest the Perceiver architecture.
@@ -135,14 +141,14 @@ class PerceiverResampler(nn.Module):
         :param depth: Number of iterations of Perceiver Attention (nested PerceiverAttention + Projection Head).
         :param dim_head: Size of the heads of Perceiver Attention.
         :param heads: Number of attention heads.
-        :param num_latens: Number of latent dimensions for the generation of latens that are passed to the attention.
+        :param num_latents: Number of latent dimensions for the generation of latens that are passed to the attention.
         :param max_num_media: To create Embeddings for the frames by tagging sequence positioning of media.
         :param max_num_frames: To create Embeddings for the frames by tagging sequence positioning of frames.
         :param ff_mult: Multiplier for the feed forward network to remap the input dim.
         """
         super().__init__()
         # We learn the latents
-        self.latents = nn.Parameter(torch.randn(num_latens, dim))
+        self.latents = nn.Parameter(torch.randn(num_latents, dim))
 
         self.frame_embeddings: Optional[nn.Parameter] = None
         if max_num_frames is not None:
@@ -194,15 +200,3 @@ class PerceiverResampler(nn.Module):
             latents = feed_forward(latents) + latents  # Residual network style.
 
         return self.norm(latents)
-
-
-class DictPerceiverResampler(nn.Module):
-    def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
-                 max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
-        super().__init__()
-        self.module = PerceiverResampler(dim=dim, depth=depth, dim_head=dim_head, heads=heads, num_latens=num_latents,
-                                         max_num_media=max_num_media, max_num_frames=max_num_frames, ff_mult=ff_mult)
-
-    def forward(self, x: dict):
-        mask = None if not "mask" in x else x["mask"]
-        return self.module(x=x["data"], mask=mask)

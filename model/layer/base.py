@@ -48,7 +48,7 @@ class ModalContextEncoder(nn.Module):
         # todo should I norm?
         self.norm = nn.LayerNorm(dim)
 
-        max_embedding_rows = max(modality_mappings.values()) + 1 # Indexing start at 0
+        max_embedding_rows = max(modality_mappings.values()) + 1  # Indexing start at 0
         self.modal_embeddings = nn.Embedding(max_embedding_rows, dim)
         # Suppose the weights are already trained. We keep it and load it. This is the reason to get a dictionary
         # instead of a str set as the order and indexes may vary with time.
@@ -61,3 +61,17 @@ class ModalContextEncoder(nn.Module):
         if x is None: return None
         idx = torch.tensor(self.modality_mappings[modality], dtype=torch.long, device=x.device)
         return self.norm(x) + self.modal_embeddings(idx).view(1, 1, -1)
+
+
+class TemporalEncoder(nn.Module):
+    def __init__(self, dim=384, layers=1, heads=8, dropout=0.0):
+        super().__init__()
+        enc = nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dropout=dropout, batch_first=True)
+        self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+        self.pos = nn.Parameter(torch.randn(1, 512, dim))  # or sinusoidal
+
+    def forward(self, x, mask=None):  # x: (B,T,D), mask: (B,T) bool True=valid
+        T = x.size(1)
+        x = x + self.pos[:, :T]
+        kpm = ~mask if mask is not None else None
+        return self.enc(x, src_key_padding_mask=kpm)  # -> (B,T,D)
