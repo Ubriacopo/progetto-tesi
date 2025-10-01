@@ -11,7 +11,7 @@ from model.layer.kd import KDHead
 
 
 class ModalityStream(nn.Module):
-    def __init__(self, code: str, adapter: nn.Module,  kd_head: KDHead = None, post_kd_adapter: nn.Module = None):
+    def __init__(self, code: str, adapter: nn.Module, kd_head: KDHead = None, post_kd_adapter: nn.Module = None):
         super().__init__()
         self.code: str = code
         self.adapter: nn.Module = adapter
@@ -23,9 +23,9 @@ class ModalityStream(nn.Module):
         self.use_kd = kd_head is not None
         self.kd_head: Optional[KDHead] = kd_head
 
-    def forward(self, x: dict | torch.Tensor, mask=None, use_kd=True) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask=None, use_kd=True) -> torch.Tensor:
         # Pretty straightforward todo ragiona masking ora sta in dict quindi ci va anche bene.
-        y = self.adapter(x)
+        y = self.adapter(x, mask=mask)
         use_kd = use_kd and self.use_kd
 
         kd_y: Optional[torch.Tensor] = None

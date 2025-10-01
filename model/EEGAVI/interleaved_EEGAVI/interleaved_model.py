@@ -12,7 +12,8 @@ from core_data.media.eeg import EEG
 from core_data.media.text import Text
 from core_data.media.video import Video
 from model.EEGAVI.EEGAVI import EEGAVI
-from model.EEGAVI.interleaved_EEGAVI.adapters import VideoAdapter, PerceiverResamplerConfig, AudioAdapter, TextAdapter
+from model.EEGAVI.interleaved_EEGAVI.adapters import VideoAdapter, PerceiverResamplerConfig, AudioAdapter, TextAdapter, \
+    EegAdapter
 from model.layer.kd import KDHead
 from model.layer.modality_stream import ModalityStream
 from model.layer.perceiver_adapter import PerceiverResampler
@@ -40,13 +41,7 @@ def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
         pivot_latent_size=target_size,
         pivot_modality=ModalityStream(
             code=EEG.modality_code(),
-            adapter=nn.Sequential(
-                DictExtract("data"),
-                Rearrange("b T c L -> b T (c L)"),
-                nn.LayerNorm(14 * 200),
-                nn.Linear(14 * 200, 384),
-                nn.GELU(),
-            )
+            adapter=EegAdapter(14, 200, 384)
         ),
         supporting_latent_size=supporting_latent_size,
         supporting_modalities=[
@@ -63,7 +58,7 @@ def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
             ModalityStream(
                 code=Text.modality_code(),
                 kd_head=KDHead(input_size=supporting_latent_size, target_shape=vate_out_shape),
-                adapter=TextAdapter(PerceiverResamplerConfig(dim=384, depth=4), project_out_size=384)
+                adapter=TextAdapter(64, PerceiverResamplerConfig(dim=384, depth=4), project_out_size=384)
             ),
             ModalityStream(
                 code=ECG.modality_code(),

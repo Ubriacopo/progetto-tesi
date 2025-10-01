@@ -28,11 +28,9 @@ class GatedCrossAttentionBlock(nn.Module):
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
         self.ff_gate = nn.Parameter(torch.tensor([.1]))
 
-    def forward(self, q, kv, media_locations=None, use_cached_media=False, ):
-        use_cached_media = True  # To see if it works at 0. Poi sara da fare
-        q = self.attn(q, kv, media_locations, use_cached_media, ) * self.attn_gate.tanh() + q
+    def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
+        q = self.attn(q, kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh() + q
         q = self.ff(q) * self.ff_gate.tanh() + q
-
         return q
 
 
@@ -58,26 +56,19 @@ class MaskedCrossAttention(nn.Module):
         # Whether for text to only attend to immediate preceding image, or all previous images
         self.only_attend_immediate_media = only_attend_immediate_media
 
-    def forward(self, qo, kvo, media_locations=None, use_cached_media=False):
+    def forward(self, qo, kvo, attn_mask=None, q_mask=None, kv_mask=None):
         """
         Args:
             qo (torch.Tensor): Main modality wanted features
                 shape (B, T1, D1)
-            kvo (torch.Tensor): image features
+            kvo (torch.Tensor): Fused features
                 shape (B, T_img, n, D_img) where n is the dim of the latents
-            media_locations: boolean mask identifying the media tokens in x
+            attn_mask: boolean mask identifying the media tokens in x
                 shape (B, T_txt)
-            use_cached_media: bool
-                If true, treat all of x as if they occur after the last media
-                registered in media_locations. T_txt does not need to exactly
-                equal media_locations.shape[1] in this case
+            kv_mask:
+
+            q_mask:
         """
-
-        if not use_cached_media:
-            assert (media_locations.shape[1] == qo.shape[1]), \
-                f"media_location.shape is {media_locations.shape} but x.shape is {qo.shape}"
-
-        Tq = qo.shape[1]  # Time steps of query
         _, Tkv, n = kvo.shape[:3]  # Time steps of kv
         # Build the query object.
         q = self.q(self.norm(qo))
@@ -92,28 +83,30 @@ class MaskedCrossAttention(nn.Module):
         # Check similarity between key and query
         sim = einsum("... i d, ... j d -> ... i j", q, k)
 
-        q_time: Optional[Tensor] = None
-        if media_locations is not None:
-            kv_time = torch.arange(Tkv, device=qo.device) + 1
-            if use_cached_media:
-                q_time = repeat(torch.count_nonzero(media_locations, dim=1), "b -> b i", i=Tq)
+        # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
+        if kv_mask is not None:
+            kv_keep = rearrange(kv_mask, "b t p -> b (t p)")  # True=valid
+            sim = sim.masked_fill(~kv_keep[:, None, None, :], float("-inf"))
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                sim = sim.masked_fill(~attn_mask[:, None, :, :], float("-inf"))  # broadcast over heads
             else:
-                q_time = media_locations.cumsum(dim=-1)
+                sim = sim + attn_mask[:, None, :, :]  # additive mask with -inf where disallowed
 
-            mask_op = torch.eq if self.only_attend_immediate_media else torch.ge
-            q_to_kv_mask = mask_op(rearrange(q_time, "b i -> b 1 i 1"), repeat(kv_time, "j -> 1 1 1 (j n)", n=n))
-
-            sim = sim.masked_fill(~q_to_kv_mask, -torch.finfo(sim.dtype).max)
+        # Guard rows that are fully -inf (all keys masked)
+        row_has_inf = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
+        sim = torch.where(row_has_inf, sim, torch.zeros_like(sim))
 
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
-
-        if media_locations is not None and self.only_attend_immediate_media:
-            # any text without a preceding media needs to have attention zeroed out
-            q_without_kv_mask = q_time == 0
-            q_without_kv_mask = rearrange(q_without_kv_mask, "b i -> b 1 i 1")
-            attn = attn.masked_fill(q_without_kv_mask, 0.0)
+        attn = attn * row_has_inf
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h n d -> b n (h d)")
+
+        # Zero invalid query steps defensively
+        if q_mask is not None:
+            out = out * q_mask[:, :, None]
+
         return self.out(out)
