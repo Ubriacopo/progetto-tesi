@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Optional, Any
 
 import torch
 from einops import rearrange
+from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from torch import nn
 
 from model.layer.attention.x_attention import GatedXAttentionBlock
@@ -124,6 +125,28 @@ class EEGAVI(L.LightningModule):
         allow = key_time_idx.view(1, 1, -1) <= torch.arange(T, device=device).view(1, T, 1)
         return allow
 
+    def select_keeps(self, b: int):
+        """
+        Choose what modalities to keep and what to drop (dropout). At least one is always used.
+        Selection is single sample based. This means that for each sample in batch every modality can be either on or off.
+
+
+        :param b: Batch size of the current input sample.
+        :return: bool tensor that specifies what modalities are kept and what are dropped.
+        """
+        n_modalities = len(self.supporting_modalities)
+        if (not self.training) or self.drop_p <= 0:
+            # In this case everything is kept
+            return torch.ones(b, n_modalities, dtype=torch.bool, device=self.device)
+
+        keep = torch.bernoulli(torch.full((b, n_modalities), 1 - self.drop_p, device=self.device)).bool()
+        dead = ~keep.any(1)
+        if dead.any():
+            # We force at least one modality to always be on.
+            keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=self.device)] = True
+
+        return keep
+
     def forward(self, x: dict, use_kd: bool = False):
         use_kd = use_kd or ("kd" in x and x["kd"])
 
@@ -141,22 +164,12 @@ class EEGAVI(L.LightningModule):
         adapted_supports: list[torch.Tensor] = []
         adapted_supports_masks: list[torch.Tensor] = []
 
-        n_modalities = len(self.supporting_modalities)
         b = next(iter(x.values()))["data"].shape[0]
-        if (not self.training) or self.drop_p <= 0:
-            keep = torch.ones(b, n_modalities, dtype=torch.bool, device=self.device)
-        else:
-            keep = torch.bernoulli(torch.full((b, n_modalities), 1 - self.drop_p, device=self.device)).bool()
-            dead = ~keep.any(1)
-            if dead.any():
-                keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=self.device)] = True
-
+        keep = self.select_keeps(b)
         for m, adapter in enumerate(self.supporting_modalities):
             key: str = adapter.get_code()
-            # Kept samples
             idx = keep[:, m].nonzero(as_tuple=True)[0]
-            if idx.numel() == 0:
-                continue  # If None taken we skip entirely
+            if idx.numel() == 0: continue  # If None taken we skip entirely
 
             supp, mask = x[key]["data"], x[key].get("mask", None)
             adapted_supp = adapter(supp[idx], mask=mask[idx] if mask is not None else None, use_kd=use_kd)
@@ -196,3 +209,12 @@ class EEGAVI(L.LightningModule):
 
         logits = self.projector(z)
         return (logits, kd_outs) if use_kd else logits
+
+    def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
+        pass
+
+    def configure_optimizers(self) -> OptimizerLRScheduler:
+        pass
+
+    def loss(self):
+        pass

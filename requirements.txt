@@ -1,3 +1,4 @@
+pytorch-lightning
 sentence-transformers
 torchcodec~=0.5
 zipfile-inflate64

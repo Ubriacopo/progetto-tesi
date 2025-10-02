@@ -1,7 +1,3 @@
-from typing import Optional
-
-from einops.array_api import rearrange
-from einops.layers.torch import Rearrange
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -16,21 +12,6 @@ from model.EEGAVI.interleaved_EEGAVI.adapters import VideoAdapter, PerceiverResa
     EegAdapter
 from model.layer.kd import KDHead
 from model.layer.modality_stream import ModalityStream
-from model.layer.perceiver_adapter import PerceiverResampler
-from model.layer.utils import DictExtract
-
-# TODO: The dimensionality jump from your frozen encoders (likely 768/1024) to 384 in the adapters might be lossy
-# TODO: Sequence length: Your EEG has 85 tokens - is this sufficient temporal resolution? (ViViT has 3306)
-# TODO: Perceiver resampler might be overkill. I can just do Linear Projection + LN -> Provare modelli diversi?
-#       Questo discorso vale nel momento in cui non ho mai fusioni. Se invece ho ad esmpio clip di 3 secondi con più di 32 frame:
-"""
-    # Your pipeline becomes:
-    video_chunks = chunk_video(variable_video, chunk_size=32)
-    video_features = torch.cat([vivit_encoder(chunk) for chunk in video_chunks], dim=1)
-    video_adapted = perceiver_adapter(video_features)  # (1, 64, 384) - fixed!
-
-    Chiaramente qui si ha un senso per il perceiver resampler.
-"""
 
 
 def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
@@ -78,7 +59,8 @@ if __name__ == '__main__':
     model = get_interleaved_EEG_AVI(384, 384)
     model.to("cuda:0")
     dataset = FlexibleEmbeddingsSpecMediaDataset("../../../data/AMIGOS/p-interleaved-d/spec.csv", cache_in_ram=True)
-    dataloader = DataLoader(dataset, batch_size=2, shuffle=True)
+    # Problema non riesco a salire sopra batch_size =4
+    dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
     # res = model(dataset[0])
     o = next(iter(dataloader))
