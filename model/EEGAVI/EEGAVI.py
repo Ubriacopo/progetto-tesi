@@ -80,9 +80,10 @@ def remap_with_overlap(x: torch.Tensor, mask: torch.Tensor, t: int):
 class EEGAVI(L.LightningModule):
     def __init__(self,
                  pivot_latent_size: int, pivot_modality: ModalityStream,
-                 supporting_latent_size: int, supporting_modalities: list[ModalityStream], use_modality_encoder: bool,
-                 xattn_blocks: int, final_projector: nn.Module,
-                 remap_timesteps: int, drop_p: float = 0.1):
+                 supporting_latent_size: int, supporting_modalities: list[ModalityStream],
+                 xattn_blocks: int, final_projector: nn.Module, remap_timesteps: int,
+                 use_modality_encoder: bool = True,
+                 drop_p: float = 0.1):
         super(EEGAVI, self).__init__()
 
         self.pivot_modality = pivot_modality
