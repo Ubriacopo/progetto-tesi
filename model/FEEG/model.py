@@ -12,7 +12,7 @@ from common.model.embedding.predefined.vivit import ViViTFoundationEmbedder
 from common.model.embedding.foundation_embedder import FoundationEmbedder
 from model.layer.base import ModalContextEncoder
 from common.model.embedding.embedder_adapter import EmbedderAdapter
-from model.layer.attention.x_attention import GatedCrossAttentionBlock
+from model.layer.attention.x_attention import GatedXAttentionBlock
 from model.layer.ISAB import ISAB, PMA
 from common.model.layers import PerceiverAdapter
 from model.EEGAVI.transforms import media_locs_single_item
@@ -82,7 +82,7 @@ class SimpleEEGAVI(nn.Module):
         )
 
         self.gatedXAttn_layers = nn.ModuleList([
-            GatedCrossAttentionBlock(dim=target_shape, dim_latent=target_shape)
+            GatedXAttentionBlock(dim=target_shape, dim_latent=target_shape)
             for _ in range(cross_attention_blocks)
         ])
 
@@ -178,7 +178,7 @@ class ComplexEEGAVI(nn.Module):
         # self.eeg_aux_encoder = AuxiliaryEEGEncoder(target_shape, 5, 17)
 
         self.gatedXAttn_layers = nn.ModuleList([
-            GatedCrossAttentionBlock(dim=target_shape, dim_latent=target_shape)
+            GatedXAttentionBlock(dim=target_shape, dim_latent=target_shape)
             for _ in range(cross_attention_blocks)
         ])
 

@@ -36,7 +36,6 @@ class SelfAttentionPooling(nn.Module):
         return torch.sum(x * attn, dim=1)
 
 
-# todo more info for multidimensionality
 class ModalContextEncoder(nn.Module):
     def __init__(self, dim: int, modality_mappings: dict[str, int], weights=None):
         """
@@ -45,22 +44,19 @@ class ModalContextEncoder(nn.Module):
         :param modality_mappings: Map string -> index . It maps the modality with the embedding row in the matrix.
         """
         super().__init__()
-        # todo should I norm?
         self.norm = nn.LayerNorm(dim)
-
         max_embedding_rows = max(modality_mappings.values()) + 1  # Indexing start at 0
         self.modal_embeddings = nn.Embedding(max_embedding_rows, dim)
         # Suppose the weights are already trained. We keep it and load it. This is the reason to get a dictionary
         # instead of a str set as the order and indexes may vary with time.
         if weights is not None:
             self.modal_embeddings.load_state_dict(weights)
-
         self.modality_mappings = modality_mappings
 
-    def forward(self, x, modality: str):
+    def forward(self, x: torch.Tensor, modality: str):
         if x is None: return None
         idx = torch.tensor(self.modality_mappings[modality], dtype=torch.long, device=x.device)
-        return self.norm(x) + self.modal_embeddings(idx).view(1, 1, -1)
+        return self.norm(x) + self.modal_embeddings(idx).view(1, 1, 1, -1)
 
 
 class TemporalEncoder(nn.Module):

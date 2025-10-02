@@ -8,7 +8,7 @@ from torch import nn, einsum, Tensor
 from model.layer.base import SimpleFeedForward
 
 
-class GatedCrossAttentionBlock(nn.Module):
+class GatedXAttentionBlock(nn.Module):
     def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6,
                  ff_mult: int = 4, only_attend_immediate_media: bool = True):
         """

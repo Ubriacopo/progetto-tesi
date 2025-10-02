@@ -67,10 +67,11 @@ def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
         ],
 
         use_modality_encoder=True,
-        cross_attention_blocks=4,
+        xattn_blocks=4,
         final_projector=nn.Sequential(
 
-        )
+        ),
+        remap_timesteps=32
     )
 
 
