@@ -7,52 +7,6 @@ from torch import nn, einsum
 
 from model.layer.base import SimpleFeedForward
 
-""""
-    TODO
-    
-    Except the foundation model I use to encode the videos only accepts 32 frames (VIVIT)
-    Should I concat concat the generated embeddings?
-    
-    Ah, now I see the real challenge! You have videos of variable length but ViViT only accepts exactly 32 frames. Here are your options:
-
-    Perceiver Adpater has the following benefits:
-    1. Handle Variable Image Resolutions
-    2. Temporal Fusion for Video
-    3. Dimensional Bridging
-    4. Computational Efficiency
-    
-    # Your pipeline becomes:
-    video_chunks = chunk_video(variable_video, chunk_size=32)
-    video_features = torch.cat([vivit_encoder(chunk) for chunk in video_chunks], dim=1)
-    video_adapted = perceiver_adapter(video_features)  # (1, 64, 384) - fixed!
-"""
-# TODO: Perceiver resampler might be overkill. I can just do Linear Projection + LN -> Provare modelli diversi?
-#       Questo discorso vale nel momento in cui non ho mai fusioni. Se invece ho ad esmpio clip di 3 secondi con più di 32 frame:
-"""
-    # Your pipeline becomes:
-    video_chunks = chunk_video(variable_video, chunk_size=32)
-    video_features = torch.cat([vivit_encoder(chunk) for chunk in video_chunks], dim=1)
-    video_adapted = perceiver_adapter(video_features)  # (1, 64, 384) - fixed!
-
-    Chiaramente qui si ha un senso per il perceiver resampler.
-"""
-
-# TODO: Vedi -> Set Attention https://github.com/lucidrains/isab-pytorch?tab=readme-ov-file
-"""
-class SetAttentionPool(nn.Module):
-    def __init__(self, input_dim=768, output_dim=384, num_seeds=64):
-        self.seeds = nn.Parameter(torch.randn(num_seeds, output_dim))
-        self.attention = nn.MultiheadAttention(output_dim, num_heads=8)
-        self.input_proj = nn.Linear(input_dim, output_dim)
-    
-    def forward(self, x):
-        # x: (1, 1336, 768)
-        x = self.input_proj(x)  # (1, 1336, 384)
-        seeds = self.seeds.unsqueeze(0).repeat(x.size(0), 1, 1)  # (1, 64, 384)
-        out, _ = self.attention(seeds, x, x)  # (1, 64, 384)
-        return out
-"""
-
 
 class PerceiverAttention(nn.Module):
 

@@ -147,7 +147,8 @@ class EEGAVI(L.LightningModule):
         else:
             keep = torch.bernoulli(torch.full((b, n_modalities), 1 - self.drop_p, device=self.device)).bool()
             dead = ~keep.any(1)
-            if dead.any(): keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=base.device)] = True
+            if dead.any():
+                keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=self.device)] = True
 
         for m, adapter in enumerate(self.supporting_modalities):
             key: str = adapter.get_code()

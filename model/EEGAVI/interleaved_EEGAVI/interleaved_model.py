@@ -36,12 +36,11 @@ from model.layer.utils import DictExtract
 def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
     vate_out_shape = (1, 100)
     c = 14
-    k = 6
     return EEGAVI(
         pivot_latent_size=target_size,
         pivot_modality=ModalityStream(
             code=EEG.modality_code(),
-            adapter=EegAdapter(14, 200, 384)
+            adapter=EegAdapter(c, 200, 384)
         ),
         supporting_latent_size=supporting_latent_size,
         supporting_modalities=[
@@ -82,6 +81,6 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=2, shuffle=True)
 
     # res = model(dataset[0])
-
-    res_b = model(next(iter(dataloader)))
+    o = next(iter(dataloader))
+    res_b = model(o, use_kd=True)
     print(res_b)

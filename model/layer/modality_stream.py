@@ -30,7 +30,7 @@ class ModalityStream(nn.Module):
 
         kd_y: Optional[torch.Tensor] = None
         if use_kd:
-            kd_y = self.kh_head(y)
+            kd_y = self.kd_head(y)
 
         if self.post_kd_adapter is not None:
             y = self.post_kd_adapter(y)
