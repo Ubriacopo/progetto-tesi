@@ -1,6 +1,7 @@
 {
   "base_path": "/home/jacopo/PycharmProjects/progetto-tesi/",
   "data_path": "resources/AMIGOS/",
+  "processor": "amigos_interleaved_preprocessor",
   "extraction_data_folder": "data/AMIGOS/extraction_data/",
   "output_path": "data/AMIGOS/p-interleaved-d/",
   "output_max_length": 32,
@@ -16,7 +17,7 @@
   },
   "vid_config": {
     "i_max_length": 3,
-    "max_fps": 32
+    "max_frames": 32
   },
   "eeg_config": {
     "cbramod_weights_path": "dependencies/cbramod/pretrained_weights.pth",
@@ -30,7 +31,6 @@
   },
   "txt_config": {
     "i_max_length": 4,
-    "registry_store_path": "resources/AMIGOS/p-interleaved-d/extracted-text.txt",
     "extracted_base_path": "data/AMIGOS/extraction_data/"
   }
 }

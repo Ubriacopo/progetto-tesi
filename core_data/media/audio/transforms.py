@@ -156,6 +156,25 @@ class HubertBaseComputeFeature(nn.Module):
         return torchaudio.functional.resample(x, self.original_fs, torchaudio.pipelines.HUBERT_BASE.sample_rate)
 
 
+class HubertFeatureExtractor(nn.Module):
+    def __init__(self, device=None):
+        super().__init__()
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.model = torchaudio.pipelines.HUBERT_BASE.get_model()
+        self.model.to(self.device)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() != 2:
+            x = x.unsqueeze(0)
+
+        with torch.inference_mode():
+            x = x.to(self.device)
+            item_audio, _ = self.model.extract_features(x)
+            item_audio = item_audio[-1][0].mean(0)
+
+        return item_audio
+
+
 class W2VBertFeatureExtractorTransform(nn.Module):
     def __init__(self, model: str = "facebook/w2v-bert-2.0", force_time_seq: bool = False):
         super(W2VBertFeatureExtractorTransform, self).__init__()

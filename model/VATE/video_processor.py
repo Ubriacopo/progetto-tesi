@@ -1,339 +1,198 @@
-import cv2
 import os
+
+import cv2
+import matplotlib.pyplot as plt
 import mediapipe as mp
 import numpy as np
-import matplotlib.pyplot as plt
+import torch
+from moviepy import VideoFileClip, ImageSequenceClip
 
-# todo tutto da rifare. Concettulamente
 
-class VideoProcessor:
-    def __init__(self, video_file, text_file):
-        self.video_file = video_file
-        self.text_file = text_file
+def enforce_minimum_frames(frames, target=32):
+    if len(frames) >= target:
+        return frames
+    return [frames[i] for i in np.linspace(0, len(frames) - 1, target, dtype=int)]
 
-    def detect_faces(self, frame, face_detection):
-        """
-        Detects faces in a given frame using the MediaPipe face detection model.
 
-        Args:
-            frame (numpy.ndarray): The input frame as a numpy array.
-            face_detection (mediapipe.solutions.face_detection.FaceDetection): The MediaPipe face detection model.
+class VideoResampler:
+    """
+    Detect once (MediaPipe) -> track (OpenCV) -> compute RGB/BB change -> auto-threshold ->
+    keep frames whose change exceeds threshold -> return a new MoviePy clip.
 
-        Returns:
-            tuple: A tuple containing the bounding box coordinates and the RGB histograms of the detected face. If no face is detected, returns `None`.
-        """
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = face_detection.process(rgb_frame)
-        if results.detections and len(results.detections) == 1:
-            bbox = results.detections[0].location_data.relative_bounding_box
+    Adapted from VATE for VATE
+    """
 
-            image_height, image_width, _ = frame.shape
-            ymin, xmin, h, w = bbox.ymin, bbox.xmin, bbox.height, bbox.width
-            # ymin, xmin, ymax, xmax = int(ymin * image_height), int(xmin * image_width), int((ymin + h) * image_height), int((xmin + w) * image_width)
+    def __init__(self, detect_conf: float = 0.5, reduce_bbox: float = 0.10, min_frames: int = 32):
+        self.detect_conf: float = detect_conf
+        self.reduce_bbox: float = reduce_bbox
+        # Face detection
+        self.mp_fd = mp.solutions.face_detection.FaceDetection(self.detect_conf)
+        self.min_frames = min_frames
+        # Tracker (CSRT preferred; fall back to KCF)
+        self.tracker_ctor = None
+        for ctor in (
+                "TrackerCSRT_create", "TrackerKCF_create", "legacy.TrackerCSRT_create", "legacy.TrackerKCF_create"
+        ):
+            self.tracker_ctor = getattr(cv2, ctor, None) if self.tracker_ctor is None else self.tracker_ctor
 
-            # 10% reduction of bounding box
-            reduction_factor = 0.1
-            new_h, new_w = int(h * (1 - reduction_factor)), int(w * (1 - reduction_factor))
-            new_ymin, new_xmin = ymin + (h - new_h) // 2, xmin + (w - new_w) // 2
-            new_ymin, new_xmin, new_ymax, new_xmax = int(new_ymin * image_height), int(new_xmin * image_width), int(
-                (new_ymin + new_h) * image_height), int((new_xmin + new_w) * image_width)
+    @staticmethod
+    def _calc_threshold(vec):
+        v = np.asarray(vec, dtype=np.float32)
+        v = v[np.isfinite(v)]
 
-            # extraction of reducted bbox
-            roi = rgb_frame[new_ymin:new_ymin + new_ymax, new_xmin:new_xmin + new_xmax]
+        if v.size == 0:
+            return np.inf
 
-            hist_r = cv2.calcHist([roi], [0], None, [256], [0, 256])
-            hist_g = cv2.calcHist([roi], [1], None, [256], [0, 256])
-            hist_b = cv2.calcHist([roi], [2], None, [256], [0, 256])
+        v = np.trim_zeros(v, trim='fb')
 
-            # Normalizzare l'istogramma
-            hist_r = cv2.normalize(hist_r, hist_r).flatten()
-            hist_g = cv2.normalize(hist_g, hist_g).flatten()
-            hist_b = cv2.normalize(hist_b, hist_b).flatten()
+        if v.size == 0:
+            return np.inf
 
-            curr_frame_bb, curr_frame_rgb = [new_xmin, new_ymin, new_xmax, new_ymax], [hist_r, hist_g, hist_b]
+        return (np.max(v) + np.mean(v)) / 4.0
 
-            return (curr_frame_bb, curr_frame_rgb)
-        else:
+    @staticmethod
+    def _shrink_box(x, y, w, h, rf, W, H):
+        nw = int(w * (1 - rf))
+        nh = int(h * (1 - rf))
+        nx = x + (w - nw) // 2
+        ny = y + (h - nh) // 2
+        nx, ny = max(0, nx), max(0, ny)
+        return nx, ny, min(W, nx + nw), min(H, ny + nh)
+
+    def _first_face_bbox(self, frame_rgb):
+        res = self.mp_fd.process(frame_rgb)
+        if not res.detections:
             return None
+        rbb = res.detections[0].location_data.relative_bounding_box
+        H, W = frame_rgb.shape[:2]
+        x = int(rbb.xmin * W)
+        y = int(rbb.ymin * H)
+        w = int(rbb.width * W)
+        h = int(rbb.height * H)
+        x1, y1, x2, y2 = self._shrink_box(x, y, w, h, self.reduce_bbox, W, H)
+        return x1, y1, x2 - x1, y2 - y1
 
-    def clean_seconds(self, seconds_combined, fps):
+    def _init_tracker(self, frame_bgr, bbox_xywh):
+        if self.tracker_ctor is None:
+            return None
+        tracker = self.tracker_ctor()
+        ok = tracker.init(frame_bgr, tuple(bbox_xywh))
+        return tracker if ok else None
+
+    @staticmethod
+    def _roi_hist_rgb(roi_bgr):
+        roi = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
+        h0 = cv2.normalize(cv2.calcHist([roi], [0], None, [256], [0, 256]), None).flatten()
+        h1 = cv2.normalize(cv2.calcHist([roi], [1], None, [256], [0, 256]), None).flatten()
+        h2 = cv2.normalize(cv2.calcHist([roi], [2], None, [256], [0, 256]), None).flatten()
+        return h0, h1, h2
+
+    def resample_clip(self, clip: VideoFileClip, keep_when_no_face=True, output_fps=None):
         """
-        Cleans the list of seconds by removing any seconds that are less than 1 second apart, and capping the maximum duration of each segment to 3 seconds.
-
-        Args:
-            seconds_combined (list): A list of seconds representing the start times of detected events.
-            fps (float): The frames per second of the video.
-
-        Returns:
-            list: A list of tuples, where each tuple represents a cleaned segment of the video, containing the start and end times of the segment.
+        Returns an ImageSequenceClip keeping frames where (RGB-change > thrRGB) OR (BB-change > thrBB).
+        - keep_when_no_face: if True, keeps frames when tracking/detection fail (so output isn’t empty).
+        - output_fps: if None, uses input fps.
         """
-        cleaned_seconds = []
-        t_min, t_max = 6, 15
-        for i in range(len(seconds_combined) - 1):
-            if (seconds_combined[i + 1] - seconds_combined[i]) >= t_min:
-                if (seconds_combined[i + 1] - seconds_combined[i]) >= t_max:
-                    cleaned_seconds.append((seconds_combined[i], seconds_combined[i] + t_max))
-                    seconds_combined[i] = seconds_combined[i] + t_max
+        fps = clip.fps if hasattr(clip, "fps") and clip.fps else 25
+        output_fps = output_fps or fps
+
+        # Pull frames as numpy arrays (RGB) using get_frame at original fps
+        n_frames = int(np.floor(clip.duration * fps))
+        frames_rgb = [clip.get_frame(i / fps) for i in range(n_frames)]
+        if not frames_rgb:
+            return ImageSequenceClip([], fps=output_fps)
+
+        # Detect once
+        first_rgb = frames_rgb[0].astype(np.uint8)
+        first_bgr = cv2.cvtColor(first_rgb, cv2.COLOR_RGB2BGR)
+        bbox = self._first_face_bbox(first_rgb)
+
+        tracker = self._init_tracker(first_bgr, bbox) if bbox is not None else None
+        prev_bbox = None
+        prev_hist = None
+
+        vecRGB, vecBB = [], []
+        kept_indices = []
+
+        for idx, fr_rgb in enumerate(frames_rgb):
+            fr_bgr = cv2.cvtColor(fr_rgb, cv2.COLOR_RGB2BGR)
+            H, W = fr_bgr.shape[:2]
+
+            # update bbox
+            if tracker is not None:
+                ok, trk = tracker.update(fr_bgr)
+                if ok:
+                    x, y, w, h = map(int, trk)
+                    x1, y1, x2, y2 = self._shrink_box(x, y, w, h, self.reduce_bbox, W, H)
+                    bbox_xyxy = (x1, y1, x2, y2)
                 else:
-                    cleaned_seconds.append((seconds_combined[i], seconds_combined[i + 1] - 1 / fps))
-
-        print("Secondi puliti:")
-        print(cleaned_seconds)
-        return cleaned_seconds
-
-    def write_couples_txt(self, cleaned_seconds, video_path):
-        """
-        Writes the start and end times of cleaned video segments to a text file.
-
-        Args:
-            cleaned_seconds (list): A list of tuples, where each tuple represents a cleaned segment of the video, containing the start and end times of the segment.
-            video_path (str): The file path of the video.
-
-        Raises:
-            IOError: If there is an error writing to the text file.
-        """
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        file_path = os.path.join(current_dir, self.text_file)
-        try:
-            with open(file_path, "w") as file:
-                for i in range(len(cleaned_seconds)):
-                    file.write(f"{cleaned_seconds[i][0]} {cleaned_seconds[i][1]} {video_path}\n")
-        except IOError:
-            print("Error: impossible to write on the file.")
-
-    @staticmethod
-    def calc_threshold(vector):
-        """
-        Calculates a threshold value for a given vector.
-
-        Args:
-            vector (list): The input vector to calculate the threshold for.
-
-        Returns:
-            float: The calculated threshold value.
-
-        This function first converts the input vector to a NumPy array and replaces any infinite values with 0. It then trims any leading or trailing zeros from the vector. The maximum value and mean value of the vector are calculated, and the threshold is set to be the average of these two values divided by 4.
-        """
-        vector = np.array(vector)
-        vector[vector == np.inf] = 0
-        vector = np.trim_zeros(vector)
-        max_val = np.max(vector)
-        mean_val = np.mean(vector)
-        threshold = (max_val + mean_val) / 4
-        return threshold
-
-    @staticmethod
-    def plotting(vectors, thresholds, names):
-        """
-        Plots the given vectors with their corresponding thresholds.
-
-        Args:
-            vectors (list): A list of vectors to be plotted.
-            thresholds (list): A list of threshold values corresponding to the vectors.
-            names (list): A list of names for the vectors.
-
-        This function creates a set of subplots, one for each vector, and plots the vector along with a horizontal red line indicating the calculated threshold value. The title of each subplot is determined based on whether the vector is related to RGB or bounding box (BB) data.
-        """
-        # Creazione dei subplots
-        fig, axs = plt.subplots(len(vectors), 1, figsize=(10, 8))
-
-        for i, (vector, threshold, name) in enumerate(zip(vectors, thresholds, names)):
-
-            # Creazione del grafico nel subplot corrente
-            axs[i].plot(vector)
-
-            # Aggiunta di una linea orizzontale rossa in corrispondenza del valore calcolato
-            axs[i].axhline(y=threshold, color='red', linestyle='--')
-
-            # Determinazione del titolo in base al nome del vettore
-            if "RGB" in name:
-                title = "RGB graphic"
-            elif "BB" in name:
-                title = "BB graphic"
+                    bbox_xyxy = None
             else:
-                print("Error: no RGB or BB")
-                return
+                # try sparse re-detect every ~15 frames
+                bbox_xyxy = None
+                if idx % 15 == 0:
+                    bb0 = self._first_face_bbox(fr_rgb)
+                    if bb0 is not None:
+                        tracker = self._init_tracker(fr_bgr, bb0)
+                        if tracker is not None:
+                            # will take effect next iteration
+                            pass
 
-            # Aggiunta di titolo e etichette per gli assi
-            axs[i].set_xlabel('Index')
-            axs[i].set_ylabel('Value')
-            axs[i].set_title(title)
-
-        # Ottimizzazione del layout
-        plt.tight_layout()
-        plt.show()
-
-    def normalizing_vector(self):
-        """
-        Normalizes the RGB and bounding box (BB) vectors extracted from a video.
-
-        This method downloads the video from a YouTube URL, extracts the RGB and BB vectors from the video frames, and normalizes them. It returns the normalized RGB and BB vectors, the video's FPS, and the path to the downloaded video file.
-
-        Args:
-            self (VideoProcessor): The instance of the VideoProcessor class.
-
-        Returns:
-            tuple: A tuple containing the normalized RGB vector, normalized BB vector, video FPS, and video file path.
-        """
-        try:
-            # todo rifai
-            cap = cv2.VideoCapture(self.video_file)
-            fps = cap.get(cv2.CAP_PROP_FPS)
-
-            if not cap.isOpened():
-                print("Error: impossible to open the video.")
-                return
-
-            currRGB, currBB = [], []
-            prev_frame_bb, prev_frame_rgb = None, None
-            norm_diff_rgb, norm_diff_bb = 0, 0
-
-            mp_face_detection = mp.solutions.face_detection
-            face_detection = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
-
-            while cap.isOpened():
-                ret, frame = cap.read()
-
-                if not ret:
-                    break
-
-                current_frame = self.detect_faces(frame, face_detection)
-
-                if current_frame is not None:
-                    current_frame_bb, current_frame_rgb = current_frame
-
-                    # frame_index = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-                    # if frame_index > 0:
-                    # frame_index -= 1
-                    # second = frame_index / fps
-
-                    if current_frame_bb and prev_frame_bb and current_frame_rgb and prev_frame_rgb:
-                        # Calcola la differenza nelle coordinate tra le due bbox
-                        norm_diff_r = np.linalg.norm(current_frame_rgb[0] - prev_frame_rgb[0])
-                        norm_diff_g = np.linalg.norm(current_frame_rgb[1] - prev_frame_rgb[1])
-                        norm_diff_b = np.linalg.norm(current_frame_rgb[2] - prev_frame_rgb[2])
-
-                        norm_diff_rgb = (norm_diff_r + norm_diff_g + norm_diff_b) / 3
-                        currRGB.append(norm_diff_rgb)
-
-                        # Calcola la differenza nelle coordinate tra le due bbox
-                        diff_xmin = abs(current_frame_bb[0] - prev_frame_bb[0])
-                        diff_ymin = abs(current_frame_bb[1] - prev_frame_bb[1])
-                        diff_xmax = abs(current_frame_bb[2] - prev_frame_bb[2])
-                        diff_ymax = abs(current_frame_bb[3] - prev_frame_bb[3])
-
-                        # Calcola la norma della differenza
-                        norm_diff_bb = np.linalg.norm([diff_xmin, diff_ymin, diff_xmax, diff_ymax])
-                        currBB.append(norm_diff_bb)
+            # compute signals
+            if bbox_xyxy is not None:
+                x1, y1, x2, y2 = bbox_xyxy
+                roi = fr_bgr[y1:y2, x1:x2]
+                if roi.size == 0:
+                    rgb_change = np.inf
+                    bb_change = np.inf
+                else:
+                    h0, h1, h2 = self._roi_hist_rgb(roi)
+                    if prev_hist is not None:
+                        rgb_change = (
+                                             np.linalg.norm(h0 - prev_hist[0])
+                                             + np.linalg.norm(h1 - prev_hist[1])
+                                             + np.linalg.norm(h2 - prev_hist[2])
+                                     ) / 3.0
                     else:
-                        currBB.append(np.inf)
-                        currRGB.append(np.inf)
-                else:
-                    current_frame_bb = None
-                    current_frame_rgb = None
-                    currBB.append(np.inf)
-                    currRGB.append(np.inf)
+                        rgb_change = np.inf
 
-                prev_frame_bb = current_frame_bb
-                prev_frame_rgb = current_frame_rgb
+                    if prev_bbox is not None:
+                        bb_change = np.linalg.norm(np.array([x1, y1, x2, y2]) - np.array(prev_bbox, dtype=np.int32))
+                    else:
+                        bb_change = np.inf
 
-            cap.release()
-            cv2.destroyAllWindows()
-        except:
-            currBB = []
-            currRGB = []
-            fps = 0
-            video_path = ""
-
-        return currRGB, currBB, fps, video_path
-
-    def process_video(self):
-        """
-        Processes a video by normalizing the RGB and bounding box vectors, calculating thresholds, and writing the extracted subvideos to a file.
-
-        Args:
-            None
-
-        Returns:
-            bool: True if subvideos were extracted, False otherwise.
-        """
-        vecRGB, vecBB, fps, video_path = self.normalizing_vector()
-        if len(vecRGB) > 0 and len(vecBB) > 0:
-            threshold_RGB = VideoProcessor.calc_threshold(vecRGB)
-            threshold_BB = VideoProcessor.calc_threshold(vecBB)
-            print("threshold: ", threshold_BB, threshold_RGB)
-
-            seconds_combined = []
-
-            if len(vecRGB) == len(vecBB):
-                for i in range(len(vecRGB)):
-
-                    if vecRGB[i] > threshold_RGB or vecBB[i] > threshold_BB:
-                        seconds_combined.append(i / fps)
+                    prev_hist = (h0, h1, h2)
+                    prev_bbox = (x1, y1, x2, y2)
             else:
-                print("Error: vectors dimension not consistent")
+                # no bbox this frame
+                rgb_change = np.inf
+                bb_change = np.inf
+                if keep_when_no_face and prev_hist is None:
+                    # keep initial frames to avoid empty output
+                    kept_indices.append(idx)
 
-            seconds_combined.insert(0, 0)
-            seconds_combined = list(set(seconds_combined))
-            seconds_combined.sort()
+            vecRGB.append(rgb_change)
+            vecBB.append(bb_change)
 
-            cleaned_seconds = self.clean_seconds(seconds_combined, fps)
-            self.write_couples_txt(cleaned_seconds, video_path)
-            if len(cleaned_seconds) > 0:
-                return True
-            else:
-                print("No subvideo extracted")
-                os.remove(video_path)
-                print(f'File {video_path} successfully deleted.')
-                return False
-        else:
-            print("Video not extracted")
-            return False
+        # thresholds
+        thrRGB = self._calc_threshold(vecRGB)
+        thrBB = self._calc_threshold(vecBB)
 
-        # VideoProcessor.plotting([vecBB, vecRGB], [threshold_BB, threshold_RGB], ['currBB', 'currRGB'])
+        # select frames
+        for i, (r, b) in enumerate(zip(vecRGB, vecBB)):
+            if np.isfinite(r) and r > thrRGB or np.isfinite(b) and b > thrBB:
+                kept_indices.append(i)
 
-    def count_faces(self, frame, face_detection):
-        """
-        Detects faces in a given frame using the MediaPipe face detection model.
+        # always keep first and last for context
+        if frames_rgb:
+            kept_indices.extend([0, len(frames_rgb) - 1])
 
-        Args:
-            frame (numpy.ndarray): The input frame as a numpy array.
-            face_detection (mediapipe.solutions.face_detection.FaceDetection): The MediaPipe face detection model.
+        kept_indices = sorted(set(kept_indices))
 
-        Returns:
-            tuple: A tuple containing the bounding box coordinates and the RGB histograms of the detected face. If no face is detected, returns `None`.
-        """
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = face_detection.process(rgb_frame)
-        if results.detections and len(results.detections) == 1:
-            bbox = results.detections[0].location_data.relative_bounding_box
-            # Calcola le coordinate del punto in alto a sinistra e in basso a destra
-            image_height, image_width, _ = frame.shape
-            ymin, xmin, h, w = bbox.ymin, bbox.xmin, bbox.height, bbox.width
-            # ymin, xmin, ymax, xmax = int(ymin * image_height), int(xmin * image_width), int((ymin + h) * image_height), int((xmin + w) * image_width)
+        # build output clip
+        kept_frames = [frames_rgb[i] for i in kept_indices]
 
-            # Riduzione della bounding box del 10%
-            reduction_factor = 0.1
-            new_h, new_w = int(h * (1 - reduction_factor)), int(w * (1 - reduction_factor))
-            new_ymin, new_xmin = ymin + (h - new_h) // 2, xmin + (w - new_w) // 2
-            new_ymin, new_xmin, new_ymax, new_xmax = int(new_ymin * image_height), int(new_xmin * image_width), int(
-                (new_ymin + new_h) * image_height), int((new_xmin + new_w) * image_width)
-
-            # Estrarre la regione della bounding box ridotta
-            roi = rgb_frame[new_ymin:new_ymin + new_ymax, new_xmin:new_xmin + new_xmax]
-
-            # Calcolare l'istogramma dell'area delimitata
-            hist_r = cv2.calcHist([roi], [0], None, [256], [0, 256])
-            hist_g = cv2.calcHist([roi], [1], None, [256], [0, 256])
-            hist_b = cv2.calcHist([roi], [2], None, [256], [0, 256])
-
-            # Normalizzare l'istogramma
-            hist_r = cv2.normalize(hist_r, hist_r).flatten()
-            hist_g = cv2.normalize(hist_g, hist_g).flatten()
-            hist_b = cv2.normalize(hist_b, hist_b).flatten()
-
-            curr_frame_bb, curr_frame_rgb = [new_xmin, new_ymin, new_xmax, new_ymax], [hist_r, hist_g, hist_b]
-
-            return (curr_frame_bb, curr_frame_rgb)
-        else:
-            return None
+        # Enforce minimum
+        kept_frames = enforce_minimum_frames(kept_frames, target=self.min_frames)
+        # return ImageSequenceClip(kept_frames, fps=output_fps)
+        return kept_frames

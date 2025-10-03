@@ -5,7 +5,7 @@ from torch import nn
 from core_data.media.text import Text
 from core_data.media.text import TxtTargetConfig
 from core_data.media.text.transforms import SubclipTextExtract, MiniLMEmbedderTransform, \
-    RestoreTextExtract
+    RestoreTextExtract, BertEmbeddings
 from core_data.processing.transform import MultimediaPadding
 
 
@@ -21,4 +21,11 @@ def txt_from_aud_interleaved_txt_extract_transform_pipe(target_txt_config: TxtTa
         SubclipTextExtract(interleaved=True, i_max_length=target_txt_config.i_max_length),
         MiniLMEmbedderTransform(),
         MultimediaPadding(max_length=math.ceil(max_length / target_txt_config.i_max_length))
+    )
+
+
+def txt_vate_basic_transform_pipe() -> tuple[str, nn.Module]:
+    return Text.modality_code(), nn.Sequential(
+        SubclipTextExtract(interleaved=False),
+        BertEmbeddings()
     )

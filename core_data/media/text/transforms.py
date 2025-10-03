@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 from torch import nn
 from torchaudio.transforms import Resample
 from transformers import Speech2TextForConditionalGeneration, Speech2TextProcessor, AutoProcessor, pipeline, \
-    AutoModelForSpeechSeq2Seq
+    AutoModelForSpeechSeq2Seq, BertModel, BertTokenizer
 
 from core_data.media.audio.transforms import ToMono
 from core_data.media.text import Text
@@ -290,3 +290,18 @@ class SubclipTextExtract(nn.Module):
         for chunk in x.text_context["chunks"]:
             txt += self.chunk_extract(chunk, start, stop)
         return [txt]
+
+
+class BertEmbeddings(nn.Module):
+    def __init__(self, device=None):
+        super(BertEmbeddings, self).__init__()
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.model = BertModel.from_pretrained("bert-base-uncased", device_map=self.device)
+
+    def forward(self, x: list[str]):
+        item_txt = torch.tensor([self.tokenizer.encode(x)])
+        item_txt = item_txt.to(self.device)
+        with torch.inference_mode():
+            y = self.model(item_txt).pooler_output.squeeze(0)
+        return y

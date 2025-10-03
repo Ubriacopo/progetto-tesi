@@ -6,6 +6,7 @@ from moviepy import VideoFileClip
 from torch import nn, dtype
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
+from model.VATE.video_processor import VideoResampler
 from .utils import check_video_data
 from .video import Video
 from core_data.utils import timed
@@ -187,3 +188,14 @@ class ViVitForVideoClassificationEmbedderTransform(nn.Module):
             x = self.model(**x).logits.squeeze(0)
 
         return x
+
+
+class VateVideoResamplerTransform(nn.Module):
+    def __init__(self, min_frames: int, detect_conf: float = 0.5, reduce_bbox: float = 0.1):
+        super().__init__()
+        self.video_resampler = VideoResampler(detect_conf=detect_conf, reduce_bbox=reduce_bbox, min_frames=min_frames)
+
+    @timed()
+    def forward(self, x: Video) -> torch.Tensor:
+        x.data = torch.tensor(self.video_resampler.resample_clip(x.data))
+        return x.data

@@ -1,3 +1,4 @@
+mediapipe
 pytorch-lightning
 sentence-transformers
 torchcodec~=0.5

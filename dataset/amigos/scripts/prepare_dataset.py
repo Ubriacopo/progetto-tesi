@@ -10,10 +10,11 @@ from core_data.media.ecg import EcgTargetConfig
 from core_data.media.eeg.config import EegTargetConfig
 from core_data.media.text import TxtTargetConfig
 from core_data.media.video import VidTargetConfig
+from dataset.amigos import preprocessing
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--config", type=str, help="Path to JSON config", default="./interleaved_prepare_default.json"
+    "--config", type=str, help="Path to JSON config", default="./prepare_dataset_interleaved_default.json"
 )
 args = parser.parse_args()
 
@@ -24,7 +25,7 @@ kwargs = {}
 
 base_path = cfg["base_path"]
 print(f"Working for dir: {base_path}")
-
+print(f"Working with file : {args.config}")
 if "vid_config" in cfg:
     vid_config = VidTargetConfig()
     for k, v in cfg["vid_config"].items():
@@ -51,18 +52,21 @@ if "ecg_config" in cfg:
     kwargs["ecg_config"] = ecg_config
 
 if "txt_config" in cfg:
-    txt_config = TxtTargetConfig(base_path + cfg["txt_config"]["registry_store_path"])
+    txt_config = TxtTargetConfig()
     for k, v in cfg["txt_config"].items():
         if k != "registry_store_path":
             setattr(txt_config, k, v)
     kwargs["txt_config"] = txt_config
 
-print("AMIGOS process starting")
-processor = amigos_interleaved_preprocessor(
-    cfg["output_max_length"],
-    base_path + cfg["output_path"],
-    base_path + cfg["extraction_data_folder"],
-    **kwargs
-)
+if "output_max_length" in cfg:
+    kwargs["output_max_length"] = cfg["output_max_length"]
 
+if "output_path" in cfg:
+    kwargs["output_path"] = base_path + cfg["output_path"]
+
+if "extraction_data_folder" in cfg:
+    kwargs["extraction_data_folder"] = base_path + cfg["extraction_data_folder"]
+
+print("AMIGOS process starting")
+processor = getattr(preprocessing, cfg["processor"])(**kwargs)
 processor.run(AmigosPointsLoader(base_path + cfg["data_path"]), workers=1)

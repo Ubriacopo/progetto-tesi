@@ -2,11 +2,12 @@ import math
 
 from torch import nn
 from torchaudio.transforms import Resample
+from torchvision.transforms import v2
 
 from core_data.media.audio import AudTargetConfig
 from core_data.media.audio import Audio
 from core_data.media.audio.transforms import SubclipAudio, AudioToTensor, ToMono, AudioSequencePartitioning, \
-    WavLmEmbedderTransform, WavLmFeatureExtractorTransform
+    WavLmEmbedderTransform, WavLmFeatureExtractorTransform, HubertBaseComputeFeature, HubertFeatureExtractor
 from core_data.media.signal.transforms import SignalZeroMasking
 from core_data.processing.transform import MultimediaPadding
 
@@ -38,4 +39,15 @@ def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfi
         SignalZeroMasking(max_length, target_config.fs, channels_first=False),
         WavLmFeatureExtractorTransform(sampling_rate=target_config.fs),
         WavLmEmbedderTransform()
+    )
+
+
+def aud_vate_basic_transform_pipe(fs: int) -> tuple[str, nn.Module]:
+    return Audio.modality_code(), nn.Sequential(
+        SubclipAudio(),  # In the split interval
+        AudioToTensor(),
+        ToMono(),
+        HubertBaseComputeFeature(original_fs=fs),
+        HubertFeatureExtractor(),
+        v2.Lambda(lambda x: x.to("cpu"))
     )
