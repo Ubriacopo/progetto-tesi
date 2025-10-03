@@ -1,16 +1,11 @@
-from typing import Optional, Any
+from typing import Optional
 
 import torch
-from einops import rearrange
-from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from torch import nn
 
 from model.layer.attention.x_attention import GatedXAttentionBlock
 from model.layer.base import ModalContextEncoder
 from model.layer.modality_stream import ModalityStream
-from model.EEGAVI.transforms import media_locs_single_item
-
-import lightning as L
 
 
 def interval_overlap_weights(t_source: int, t_target: int, device=None):
@@ -78,7 +73,7 @@ def remap_with_overlap(x: torch.Tensor, mask: torch.Tensor, t: int):
     return y, y_mask
 
 
-class EEGAVI(L.LightningModule):
+class EEGAVI(nn.Module):
     def __init__(self,
                  pivot_latent_size: int, pivot_modality: ModalityStream,
                  supporting_latent_size: int, supporting_modalities: list[ModalityStream],
@@ -151,6 +146,8 @@ class EEGAVI(L.LightningModule):
         use_kd = use_kd or ("kd" in x and x["kd"])
 
         kd_outs: dict = {}
+        multimodal_outputs: dict = {}
+
         # First work with the base modality. (EEG in our case)
         key: str = self.pivot_modality.get_code()
         base, base_mask = x[key]["data"], x[key]["mask"] if "mask" in x[key] else None
@@ -160,6 +157,7 @@ class EEGAVI(L.LightningModule):
             kd_outs[key] = base[1]
             # Now we can really get the resampled embeddings
             base = base[0]
+            multimodal_outputs[key] = {"data": base, "mask": base_mask}
 
         adapted_supports: list[torch.Tensor] = []
         adapted_supports_masks: list[torch.Tensor] = []
@@ -187,14 +185,15 @@ class EEGAVI(L.LightningModule):
             Y[idx] = adapted_supp
 
             if mask is None:
-                n_modalities = torch.zeros(b, Y.size(1), dtype=torch.bool, device=Y.device)
-                n_modalities[idx] = True
+                M = torch.zeros(b, Y.size(1), dtype=torch.bool, device=Y.device)
+                M[idx] = True
             else:
-                n_modalities = mask.new_zeros(b, Y.size(1))
-                n_modalities[idx] = mask[idx]
+                M = mask.new_zeros(b, Y.size(1))
+                M[idx] = mask[idx]
 
-            adapted_supports_masks.append(n_modalities)
+            adapted_supports_masks.append(M)
             adapted_supports.append(Y)
+            multimodal_outputs[key] = {"data": Y, "mask": M}
 
         supports, masks = self.reshape_to_fixed_timesteps(adapted_supports, adapted_supports_masks)
         supp = torch.cat(supports, dim=2)
@@ -208,13 +207,4 @@ class EEGAVI(L.LightningModule):
             z = gated_x_attn(z, supp, attn_mask=allow, q_mask=base_mask, kv_mask=supp_mask)
 
         logits = self.projector(z)
-        return (logits, kd_outs) if use_kd else logits
-
-    def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
-        pass
-
-    def configure_optimizers(self) -> OptimizerLRScheduler:
-        pass
-
-    def loss(self):
-        pass
+        return {"logits": logits, "kd_outs": kd_outs, "multimodal_outputs": multimodal_outputs}

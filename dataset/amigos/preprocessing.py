@@ -50,44 +50,13 @@ def amigos_interleaved_preprocessor(
     )
 
 
-def amigos_default_preprocessor(
-        output_max_length: int, output_path: str,
-        segmenter: Segmenter = EegFeaturesAndRandLogUIntervalsSegmenter(
-            min_length=2, max_length=32, num_segments=20, anchor_identification_hop=0.125, extraction_jitter=0.1
-        ),
-        aud_config: AudTargetConfig = AudTargetConfig(),
-        vid_config: VidTargetConfig = VidTargetConfig(),
-        eeg_config: EegTargetConfig = EegTargetConfig("../../dependencies/cbramod/pretrained_weights.pth"),
-        ecg_config: EcgTargetConfig = EcgTargetConfig(AmigosConfig.prepare_ecg),
-):
-    return TorchExportsSegmenterPreprocessor(
-        output_path=output_path,
-        segmenter=segmenter,
-        segment_pipeline=FlexibleDatasetTransformWrapper(
-            "default_preprocessor",
-            # vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
-            eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
-            ecg_default_transform_pipe(ecg_config),
-            aud_wav2vec_default_txt_extract_transform_pipe(aud_config, AmigosConfig.Audio.fs, output_max_length),
-            expand_nested=True,
-            nested_keys=[Text.modality_code(), Audio.modality_code()],
-        ),
-        sample_pipeline=FlexibleDatasetTransformWrapper(
-            "shared_interleaved_preprocessor",
-            (Text.modality_code(), WhisperClipTextExtract(device="cpu"))
-        )
-    )
-
-
 def amigos_vate_preprocessor(
         output_max_length: int, output_path: str,
-        segmenter: Segmenter = EegFeaturesAndRandLogUIntervalsSegmenter(
-            min_length=2, max_length=32, num_segments=20, anchor_identification_hop=0.125, extraction_jitter=0.1
-        ),
+        extraction_data_folder: str,
 ):
-    return TorchExportsSegmenterPreprocessor(
+    return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
-        segmenter=segmenter,
+        extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
             # vid_vivit_default_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
@@ -97,8 +66,8 @@ def amigos_vate_preprocessor(
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
-            (Text.modality_code(), WhisperClipTextExtract(device="cpu"))
-        )
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder))
+        ),
     )
 
 
