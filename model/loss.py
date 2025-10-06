@@ -54,6 +54,8 @@ L = α * L_siglip + β * L_eeg_reconstruction  # β decreases over time
 # Phase 3: Pure multimodal learning
 L = α * L_siglip  # β → 0
 """
+
+
 def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
     """
     We will use this one.
@@ -73,15 +75,15 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
     :return: The calculated Sigmoid loss. (Its name comes from the original model it was used for).
             We adapted (or are working on it to work) for EEG data mixed with video, text and audio.
     """
-    T = torch.exp(logt)
+    T = torch.exp(logt).to(za.device)
     B = za.shape[0]
 
     # L2-Normalization
     za = normalize(za, p=2, dim=-1)
     zb = normalize(zb, p=2, dim=-1)
 
-    logits = (za @ zb.T) * T + bias
-    labels = 2 * torch.eye(B) - torch.ones(B)
+    logits = (za @ zb.T) * T + bias.to(za.device)
+    labels = 2 * torch.eye(B, device=za.device) - torch.ones(B, device=za.device)
     loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
     return loss
 

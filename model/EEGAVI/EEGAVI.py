@@ -1,4 +1,6 @@
-from typing import Optional
+import dataclasses
+from dataclasses import asdict
+from typing import Optional, TypedDict
 
 import torch
 from torch import nn
@@ -6,6 +8,18 @@ from torch import nn
 from model.layer.attention.x_attention import GatedXAttentionBlock
 from model.layer.base import ModalContextEncoder
 from model.layer.modality_stream import ModalityStream
+
+
+class MaskedResult(TypedDict):
+    data: torch.Tensor
+    mask: Optional[torch.Tensor]
+
+
+@dataclasses.dataclass
+class EEGAVIOutputs:
+    embeddings: torch.Tensor
+    kd_outs: dict[str, MaskedResult]
+    multimodal_outs: dict[str, MaskedResult]
 
 
 def interval_overlap_weights(t_source: int, t_target: int, device=None):
@@ -59,17 +73,15 @@ def remap_with_overlap(x: torch.Tensor, mask: torch.Tensor, t: int):
     # Denominator per target bin (how much valid mass contributed)
     denominator = wb.sum(dim=2, keepdim=True).clamp(min=1e-9)  # (B, T_tgt, 1)
 
-    # Weighted sum over source time
-    # Expand Wb to broadcast over P,D
-    wb_exp = wb[:, :, :, None, None]  # (b, T', T, 1, 1)
-    x_expanded = x[:, None, :, :, :]  # (b, 1, T, P, D)
-    denominator = denominator.squeeze(-1)
-    y = (wb_exp * x_expanded).sum(dim=2) / denominator[:, :, None, None]  # (B, T_tgt, P, D)
-    # Target mask: bin valid if it received any valid mass
-    y_mask = (bmask[:, None, :] & (w[None] > 0)).any(dim=2)
-
+    # Flatten (P,D) to PD and use bmm: (B, T_tgt, T_src) @ (B, T_src, PD) -> (B, T_tgt, PD)
+    x_flat = x.reshape(b, T, P * D).to(wb.dtype)  # ensure dtype matches for matmul
+    y_flat = torch.bmm(wb, x_flat) / denominator  # (B, T_tgt, PD)
+    y = y_flat.view(b, t, P, D)  # (B, T_tgt, P, D)
+    # Target mask is simply whether any valid mass arrived
+    y_mask = (denominator.squeeze(-1) > 0)  # (B, T_tgt)
     if not keep_p:
         y = y.squeeze(2)  # (B, T_tgt, D)
+
     return y, y_mask
 
 
@@ -77,7 +89,8 @@ class EEGAVI(nn.Module):
     def __init__(self,
                  pivot_latent_size: int, pivot_modality: ModalityStream,
                  supporting_latent_size: int, supporting_modalities: list[ModalityStream],
-                 xattn_blocks: int, final_projector: nn.Module, remap_timesteps: int,
+                 xattn_blocks: int, remap_timesteps: int,
+
                  use_modality_encoder: bool = True,
                  drop_p: float = 0.1):
         super(EEGAVI, self).__init__()
@@ -94,23 +107,9 @@ class EEGAVI(nn.Module):
             GatedXAttentionBlock(dim=pivot_latent_size, dim_latent=supporting_latent_size) for _ in range(xattn_blocks)
         ])
 
-        self.projector: nn.Module = final_projector
-
+        self.norm = nn.LayerNorm(pivot_latent_size)
         self.remap_timesteps: int = remap_timesteps
         self.drop_p: float = drop_p
-
-    def reshape_to_fixed_timesteps(self, supports: list[torch.Tensor], masks: list[torch.Tensor]):
-        return_supports, return_masks = [], []
-        for support, mask in zip(supports, masks):
-            support, mask = remap_with_overlap(support, mask, self.remap_timesteps)
-            support = support * mask[:, :, None, None]
-
-            p = support.shape[2]
-
-            mask = mask[:, :, None].expand(-1, -1, p)
-            return_supports.append(support), return_masks.append(mask)
-
-        return return_supports, return_masks
 
     @staticmethod
     def remask(supp: torch.Tensor, device):
@@ -142,7 +141,8 @@ class EEGAVI(nn.Module):
 
         return keep
 
-    def forward(self, x: dict, use_kd: bool = False):
+    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False) \
+            -> EEGAVIOutputs | dict[str, MaskedResult]:
         use_kd = use_kd or ("kd" in x and x["kd"])
 
         kd_outs: dict = {}
@@ -157,10 +157,11 @@ class EEGAVI(nn.Module):
             kd_outs[key] = base[1]
             # Now we can really get the resampled embeddings
             base = base[0]
-            multimodal_outputs[key] = {"data": base, "mask": base_mask}
 
-        adapted_supports: list[torch.Tensor] = []
-        adapted_supports_masks: list[torch.Tensor] = []
+        multimodal_outputs[key] = {"data": base, "mask": base_mask}
+
+        supports: list[torch.Tensor] = []
+        masks: list[torch.Tensor] = []
 
         b = next(iter(x.values()))["data"].shape[0]
         keep = self.select_keeps(b, base.device)
@@ -173,7 +174,12 @@ class EEGAVI(nn.Module):
             adapted_supp = adapter(supp[idx], mask=mask[idx] if mask is not None else None, use_kd=use_kd)
             if isinstance(adapted_supp, tuple):
                 # Store the KD output to return later
-                kd_outs[key] = adapted_supp[1]
+                kd = adapted_supp[1]
+                restored_kd = torch.zeros(supp.shape[0], *kd["data"].shape[1:], device=supp.device)
+                restored_kd[idx] = kd["data"]
+                restored_mask = torch.zeros(supp.shape[0], *kd["mask"].shape[1:], device=supp.device).bool()
+                restored_mask[idx] = kd["mask"]
+                kd_outs[key] = {"data": restored_kd, "mask": restored_mask}
                 # Now we can really get the embeddings
                 adapted_supp = adapted_supp[0]
 
@@ -183,7 +189,6 @@ class EEGAVI(nn.Module):
 
             Y = adapted_supp.new_zeros(b, *adapted_supp.shape[1:])
             Y[idx] = adapted_supp
-
             if mask is None:
                 M = torch.zeros(b, Y.size(1), dtype=torch.bool, device=Y.device)
                 M[idx] = True
@@ -191,11 +196,16 @@ class EEGAVI(nn.Module):
                 M = mask.new_zeros(b, Y.size(1))
                 M[idx] = mask[idx]
 
-            adapted_supports_masks.append(M)
-            adapted_supports.append(Y)
+            # Reshape to same size of timesteps
+            Y, M = remap_with_overlap(Y, M, self.remap_timesteps)
+            Y *= M[:, :, None, None]
+            M = M[:, :, None].expand(-1, -1, Y.shape[2])
+
+            masks.append(M)
+            supports.append(Y)
+            # For output (Loss calculation).
             multimodal_outputs[key] = {"data": Y, "mask": M}
 
-        supports, masks = self.reshape_to_fixed_timesteps(adapted_supports, adapted_supports_masks)
         supp = torch.cat(supports, dim=2)
         supp_mask = torch.cat(masks, dim=2)
         # Prepare attention mask (What is seeable)
@@ -206,5 +216,10 @@ class EEGAVI(nn.Module):
         for gated_x_attn in self.gatedXAttn_layers:
             z = gated_x_attn(z, supp, attn_mask=allow, q_mask=base_mask, kv_mask=supp_mask)
 
-        logits = self.projector(z)
-        return {"logits": logits, "kd_outs": kd_outs, "multimodal_outputs": multimodal_outputs}
+        # TODO: for now simple pooling we could use some learned pooling later on
+        w = base_mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        z = (z * base_mask.unsqueeze(-1)).sum(dim=-2) / w  # Normalization factor
+        z = self.norm(z)
+
+        return_object = EEGAVIOutputs(embeddings=z, kd_outs=kd_outs, multimodal_outs=multimodal_outputs)
+        return return_object if not return_dict else asdict(return_object)

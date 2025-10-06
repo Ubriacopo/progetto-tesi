@@ -6,7 +6,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
-from model.EEGAVI.EEGAVI import EEGAVI
+from model.EEGAVI.EEGAVI import EEGAVI, EEGAVIOutputs
 from model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI
 from model.VATE.constrastive_model import ContrastiveModel, contrastive_loss
 import torch.nn.functional as F
@@ -15,8 +15,8 @@ from model.loss import siglip
 
 
 class EegAviKdModule(pl.LightningModule):
-    def __init__(self, student: EEGAVI, teacher: ContrastiveModel, kd_loss_fn, ce_loss_fn=None,
-                 alpha: float = 0.5, lr: float = 1e-4):
+    def __init__(self, student: EEGAVI, teacher: ContrastiveModel,
+                 alpha: float = 1.0, beta: float = 1., gamma: float = 0.5, lr: float = 1e-4):
         super().__init__()
         self.student = student
         self.teacher = teacher
@@ -24,15 +24,17 @@ class EegAviKdModule(pl.LightningModule):
         for p in self.teacher.parameters():
             p.requires_grad = False
 
-        self.kd_loss_fn = kd_loss_fn
-        self.ce_loss_fn = ce_loss_fn
-        self.alpha = alpha
+        # Weight terms for loss parts
+        self.alpha: float = alpha
+        self.beta: float = beta
+        self.gamma: float = gamma
+
         self.lr = lr
         self.tau = 0.2  # Temperature
 
     def measure_modality_kd_loss(self, teacher_x: torch.Tensor, teacher_mask: torch.Tensor,
                                  student_x: torch.Tensor, student_mask: torch.Tensor) -> torch.Tensor:
-        idx = (student_mask.any(dim=1).squeeze() & teacher_mask.bool()).nonzero(as_tuple=True)[0]
+        idx = (student_mask.any(dim=1) & teacher_mask.any(dim=1)).nonzero(as_tuple=True)[0]
         if idx.numel() == 0:
             return torch.tensor(.0)
         # InfoNCE loss.
@@ -44,6 +46,12 @@ class EegAviKdModule(pl.LightningModule):
         return F.cross_entropy(logits, torch.arange(idx.numel(), device=s.device))
 
     def training_step(self, batch: dict[str, dict], batch_idx) -> STEP_OUTPUT:
+        """
+        TODO: improvmeents: Potrei aggiungere altro alla loss ma parto con questa
+        :param batch:
+        :param batch_idx:
+        :return:
+        """
         x_teacher = batch["kd"]
         x_student = batch["sup"]
 
@@ -55,44 +63,71 @@ class EegAviKdModule(pl.LightningModule):
                 x_teacher["txt"] if "txt" in x_teacher else None
             )
 
-        stud_out = self.student(x_student, use_kd=True)
+        stud_out: EEGAVIOutputs = self.student(x_student, use_kd=True)
 
         kd_loss = .0
-        kd_outs = stud_out["kd_outs"]
 
-        if "vid" in kd_outs:
-            vid_mask = kd_outs["vid"]["mask"]
+        if "vid" in stud_out.kd_outs:
+            vid_mask = stud_out.kd_outs["vid"]["mask"]
             kd_loss += self.measure_modality_kd_loss(
                 # Potrei anche non farmi dare la maschera dal teacher. Tanto se non ha un elemento lo student anche
                 # il teacher non lo ha visto che sono allineati i dataset.
                 teacher_x=kd_vid, teacher_mask=vid_mask,
-                student_x=kd_outs["vid"]["data"], student_mask=vid_mask
+                student_x=stud_out.kd_outs["vid"]["data"], student_mask=vid_mask
             )
 
-        if "aud" in kd_outs:
-            aud_mask = kd_outs["aud"]["mask"]
+        if "aud" in stud_out.kd_outs:
+            aud_mask = stud_out.kd_outs["aud"]["mask"]
             kd_loss += self.measure_modality_kd_loss(
                 teacher_x=kd_aud, teacher_mask=aud_mask,
-                student_x=kd_outs["aud"]["data"], student_mask=aud_mask
+                student_x=stud_out.kd_outs["aud"]["data"], student_mask=aud_mask
             )
 
-        if "txt" in kd_outs:
-            txt_mask = kd_outs["txt"]["mask"]
+        if "txt" in stud_out.kd_outs:
+            txt_mask = stud_out.kd_outs["txt"]["mask"]
             kd_loss += self.measure_modality_kd_loss(
                 teacher_x=kd_txt, teacher_mask=txt_mask,
-                student_x=kd_outs["txt"]["data"], student_mask=txt_mask
+                student_x=stud_out.kd_outs["txt"]["data"], student_mask=txt_mask
             )
 
         # Apply SigLipLoss now
         fusion_loss = .0
-        for key, value in stud_out["multimodal_outputs"].items():
-            fusion_loss += siglip(stud_out["gated_x_out"], value)
-        # InfoNCE or this one (g1, g2 = torch.chunk(g2B, 2, dim=0)        # (B,D), (B,D))
-        # TODO prova a trovare una supervised loss? Oppure pseudolabels da kmenas o qualcosa.
-        output_loss = contrastive_loss(stud_out["outputs"])
-        loss = self.alpha * kd_loss + self.beta * fusion_loss + self.gamma * output_loss
+        present_modalities: int = 0
+        for key, value in stud_out.multimodal_outs.items():
+            # embeddings shape: (b, T, D) ->
+            z, mask = value["data"], value["mask"]
+            if mask.dim() == 3:
+                mask = mask[:, :, 0].squeeze()
+            # stud_out_multimodal out (b, T, P, D)
+            # Patch mean: (Has no mask patches are always max rank).
+            if z.dim() > 3:
+                # We have patch tokens so we mean over them. (In case they exist).
+                z = z.mean(dim=-2)
+            # Timed masked mean:
+            w = mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)  # Normalization factor
+            z = (z * mask.float().unsqueeze(-1)).sum(dim=-2) / w
+            z = F.normalize(z, dim=-1)
+            valid = mask.any(dim=1)
+            if valid.any():
+                # stud.out.embeddings: (b, D) already. No need for further transformations.
+                fusion_loss += siglip(stud_out.embeddings[valid], z[valid])
+                present_modalities += 1
 
+        l_cons = .0
+        if "ecg" in stud_out.multimodal_outs:  # We have ECG
+            z_eeg = stud_out.multimodal_outs["eeg"]["data"]
+            z_ecg = stud_out.multimodal_outs["ecg"]["data"]
+            present = stud_out.multimodal_outs["eeg"]["mask"] & stud_out.multimodal_outs["ecg"]["mask"].any(dim=-1)
+            w = present.float()
+
+            # TODO: pool ECG
+
+            # masked mean of (1 - cos)
+            l_cons = ((1 - F.cosine_similarity(z_eeg, z_ecg, dim=-1)) * w).sum() / w.sum().clamp_min(1.0)
+
+        loss = self.alpha * kd_loss + self.beta * (fusion_loss / max(present_modalities, 1)) + l_cons * self.gamma
         self.log("train_loss", loss)
+
         return loss
 
     def configure_optimizers(self):
@@ -105,7 +140,7 @@ if __name__ == '__main__':
     teach.load_state_dict(torch.load("../../dependencies/VATE/best_model_contrastive.pt"))
     teach.eval()
 
-    module = EegAviKdModule(stud, teach, kd_loss_fn=nn.MSELoss(), ce_loss_fn=nn.CrossEntropyLoss())
+    module = EegAviKdModule(stud, teach)
 
     dataset = FlexibleEmbeddingsSpecMediaDataset("../../data/AMIGOS/p-interleaved-d/spec.csv", cache_in_ram=True)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)

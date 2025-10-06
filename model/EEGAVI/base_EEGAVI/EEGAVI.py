@@ -58,11 +58,5 @@ def get_default_simple_EEGAVI():
             )
         ],
         use_modality_encoder=True,
-        xattn_blocks=4,
-        final_projector=nn.Sequential(
-            nn.LayerNorm(target_size),
-            nn.Linear(target_size, target_size * 2),
-            nn.GELU(),
-            nn.Linear(target_size * 2, target_size)
-        )
+        xattn_blocks=4
     )

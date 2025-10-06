@@ -71,3 +71,6 @@ K = 12
 idx = torch.linspace(0, T-1, K, device=compact.device).round().long()
 time_tok = compact[:, 1:][:, idx]             # [B, K, 768]
 compact = torch.cat([cls, time_tok], dim=1)   # [B, 1+K, 768]
+
+
+-Another thing If my modality drop a video the KD for video for that sample has to be discarded?

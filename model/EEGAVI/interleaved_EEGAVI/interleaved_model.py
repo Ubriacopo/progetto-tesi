@@ -49,9 +49,6 @@ def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
         use_modality_encoder=True,
         xattn_blocks=4,
         remap_timesteps=32,
-        final_projector=nn.Sequential(
-
-        ),
     )
 
 

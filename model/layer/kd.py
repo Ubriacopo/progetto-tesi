@@ -52,4 +52,8 @@ class KDHead(nn.Module):
         if self.normalize:
             y = torch.nn.functional.normalize(y, p=2, dim=-1, eps=self.eps)
         # TODO: Verifica out mask
+
+        y = y.squeeze()
+        out_mask = out_mask.squeeze()
+
         return y if not self.return_masks else {"data": y, "mask": out_mask}
