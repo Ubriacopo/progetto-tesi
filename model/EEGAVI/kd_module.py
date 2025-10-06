@@ -119,9 +119,8 @@ class EegAviKdModule(pl.LightningModule):
             z_ecg = stud_out.multimodal_outs["ecg"]["data"]
             present = stud_out.multimodal_outs["eeg"]["mask"] & stud_out.multimodal_outs["ecg"]["mask"].any(dim=-1)
             w = present.float()
-
-            # TODO: pool ECG
-
+            # ECG goes through the Perceiver Resampler so it is 4D
+            z_ecg = z_ecg.mean(dim=-2)
             # masked mean of (1 - cos)
             l_cons = ((1 - F.cosine_similarity(z_eeg, z_ecg, dim=-1)) * w).sum() / w.sum().clamp_min(1.0)
 
