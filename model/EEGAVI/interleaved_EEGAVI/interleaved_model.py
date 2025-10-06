@@ -28,21 +28,34 @@ def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
             ModalityStream(
                 code=Video.modality_code(),
                 kd_head=KDHead(input_size=supporting_latent_size, target_shape=vate_out_shape),
-                adapter=VideoAdapter(PerceiverResamplerConfig(dim=768, depth=2), project_out_size=384)
+                adapter=VideoAdapter(
+                    PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=6, num_latents=16),
+                    project_out_size=384
+                )
             ),
             ModalityStream(
                 code=Audio.modality_code(),
                 kd_head=KDHead(input_size=supporting_latent_size, target_shape=vate_out_shape),
-                adapter=AudioAdapter(PerceiverResamplerConfig(dim=768, depth=2), project_out_size=384)
+                adapter=AudioAdapter(
+                    PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=6, num_latents=16),
+                    project_out_size=384
+                )
             ),
             ModalityStream(
                 code=Text.modality_code(),
                 kd_head=KDHead(input_size=supporting_latent_size, target_shape=vate_out_shape),
-                adapter=TextAdapter(64, PerceiverResamplerConfig(dim=384, depth=4), project_out_size=384)
+                adapter=TextAdapter(
+                    64,
+                    PerceiverResamplerConfig(dim=384, depth=4, dim_head=64, heads=6, num_latents=16),
+                    project_out_size=384
+                )
             ),
             ModalityStream(
                 code=ECG.modality_code(),
-                adapter=VideoAdapter(PerceiverResamplerConfig(dim=256, depth=2), project_out_size=384, patch_size=1)
+                adapter=VideoAdapter(
+                    PerceiverResamplerConfig(dim=256, depth=2, dim_head=64, heads=6, num_latents=16),
+                    project_out_size=384, patch_size=1
+                )
             )
         ],
 
