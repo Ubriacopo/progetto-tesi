@@ -6,7 +6,7 @@ import torch
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from model.loss import sigLIP
+from model.loss import siglip
 from model.EEGAVI.EEGAVI import EEGAVI
 from model.VATE.constrastive_model import ContrastiveModel
 
@@ -19,7 +19,7 @@ class EEGAVIVateTrainer:
             teacher=("VATE", ContrastiveModel(200, 100)),
 
             # TODO Tailor it for the model
-            loss_function=sigLIP,
+            loss_function=siglip,
 
             optimizer_constructor=Adam,
             optimizer_args={'lr': 1e-3},

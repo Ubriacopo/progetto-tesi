@@ -1,6 +1,6 @@
 import torch
 
-from model.loss import sigLIP
+from model.loss import siglip
 
 
 # TODO definire
@@ -9,6 +9,6 @@ def loss(y, y_kd: dict[str, torch.Tensor], y_teacher: dict[str, torch.Tensor]):
     # Mi sa che è sbagliato questo. Devo are plain distance.
     for key, s_value in y_kd.items():
         t_value = y_teacher[key]
-        loss += sigLIP(s_value, t_value)
+        loss += siglip(s_value, t_value)
 
     return loss

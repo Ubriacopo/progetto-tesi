@@ -8,8 +8,10 @@ from torch.utils.data import DataLoader
 from core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
 from model.EEGAVI.EEGAVI import EEGAVI
 from model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI
-from model.VATE.constrastive_model import ContrastiveModel
+from model.VATE.constrastive_model import ContrastiveModel, contrastive_loss
 import torch.nn.functional as F
+
+from model.loss import siglip
 
 
 class EegAviKdModule(pl.LightningModule):
@@ -59,26 +61,36 @@ class EegAviKdModule(pl.LightningModule):
         kd_outs = stud_out["kd_outs"]
 
         if "vid" in kd_outs:
+            vid_mask = kd_outs["vid"]["mask"]
             kd_loss += self.measure_modality_kd_loss(
-                teacher_x=kd_vid, teacher_mask=torch.ones(kd_vid.shape[0], device=kd_vid.device),
-                student_x=kd_outs["vid"]["data"], student_mask=kd_outs["vid"]["mask"]
+                # Potrei anche non farmi dare la maschera dal teacher. Tanto se non ha un elemento lo student anche
+                # il teacher non lo ha visto che sono allineati i dataset.
+                teacher_x=kd_vid, teacher_mask=vid_mask,
+                student_x=kd_outs["vid"]["data"], student_mask=vid_mask
             )
 
         if "aud" in kd_outs:
+            aud_mask = kd_outs["aud"]["mask"]
             kd_loss += self.measure_modality_kd_loss(
-                teacher_x=kd_aud, teacher_mask=torch.ones(kd_aud.shape[0], device=kd_aud.device),
-                student_x=kd_outs["aud"]["data"], student_mask=kd_outs["aud"]["mask"]
+                teacher_x=kd_aud, teacher_mask=aud_mask,
+                student_x=kd_outs["aud"]["data"], student_mask=aud_mask
             )
 
         if "txt" in kd_outs:
+            txt_mask = kd_outs["txt"]["mask"]
             kd_loss += self.measure_modality_kd_loss(
-                teacher_x=kd_txt, teacher_mask=torch.ones(kd_txt.shape[0], device=kd_txt.device),
-                student_x=kd_outs["txt"]["data"], student_mask=kd_outs["txt"]["mask"]
+                teacher_x=kd_txt, teacher_mask=txt_mask,
+                student_x=kd_outs["txt"]["data"], student_mask=txt_mask
             )
 
         # Apply SigLipLoss now
-
-        loss = self.alpha * kd_loss + self.beta * 0  # TODO
+        fusion_loss = .0
+        for key, value in stud_out["multimodal_outputs"].items():
+            fusion_loss += siglip(stud_out["gated_x_out"], value)
+        # InfoNCE or this one (g1, g2 = torch.chunk(g2B, 2, dim=0)        # (B,D), (B,D))
+        # TODO prova a trovare una supervised loss? Oppure pseudolabels da kmenas o qualcosa.
+        output_loss = contrastive_loss(stud_out["outputs"])
+        loss = self.alpha * kd_loss + self.beta * fusion_loss + self.gamma * output_loss
 
         self.log("train_loss", loss)
         return loss

@@ -54,10 +54,10 @@ L = α * L_siglip + β * L_eeg_reconstruction  # β decreases over time
 # Phase 3: Pure multimodal learning
 L = α * L_siglip  # β → 0
 """
-def sigLIP(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
+def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
     """
     We will use this one.
-
+    TODO: Non considera heterogeneous shapes
     Implemented from Algorithm 1 Sigmoid loss pseudo-implementation by
     https://arxiv.org/pdf/2303.15343
 
