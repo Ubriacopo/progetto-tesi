@@ -120,7 +120,7 @@ class EEGAVI(nn.Module):
         allow = key_time_idx.view(1, 1, -1) <= torch.arange(T, device=device).view(1, T, 1)
         return allow
 
-    def select_keeps(self, b: int):
+    def select_keeps(self, b: int, device):
         """
         Choose what modalities to keep and what to drop (dropout). At least one is always used.
         Selection is single sample based. This means that for each sample in batch every modality can be either on or off.
@@ -132,13 +132,13 @@ class EEGAVI(nn.Module):
         n_modalities = len(self.supporting_modalities)
         if (not self.training) or self.drop_p <= 0:
             # In this case everything is kept
-            return torch.ones(b, n_modalities, dtype=torch.bool, device=self.device)
+            return torch.ones(b, n_modalities, dtype=torch.bool, device=device)
 
-        keep = torch.bernoulli(torch.full((b, n_modalities), 1 - self.drop_p, device=self.device)).bool()
+        keep = torch.bernoulli(torch.full((b, n_modalities), 1 - self.drop_p, device=device)).bool()
         dead = ~keep.any(1)
         if dead.any():
             # We force at least one modality to always be on.
-            keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=self.device)] = True
+            keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=device)] = True
 
         return keep
 
@@ -163,7 +163,7 @@ class EEGAVI(nn.Module):
         adapted_supports_masks: list[torch.Tensor] = []
 
         b = next(iter(x.values()))["data"].shape[0]
-        keep = self.select_keeps(b)
+        keep = self.select_keeps(b, base.device)
         for m, adapter in enumerate(self.supporting_modalities):
             key: str = adapter.get_code()
             idx = keep[:, m].nonzero(as_tuple=True)[0]

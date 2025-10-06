@@ -28,11 +28,25 @@ class EegAviKdModule(pl.LightningModule):
         self.lr = lr
         self.tau = 0.2  # Temperature
 
+    def measure_modality_kd_loss(self, teacher_x: torch.Tensor, teacher_mask: torch.Tensor,
+                                 student_x: torch.Tensor, student_mask: torch.Tensor) -> torch.Tensor:
+        idx = (student_mask.any(dim=1).squeeze() & teacher_mask.bool()).nonzero(as_tuple=True)[0]
+        if idx.numel() == 0:
+            return torch.tensor(.0)
+        # InfoNCE loss.
+        # Normalize so that dot product similarity == to cosine similarity.
+        s = F.normalize(student_x[idx], dim=-1)
+        t = F.normalize(teacher_x[idx], dim=-1)
+        # Take what is valid for both. todo questi step di computazione maschera da fare in modello e non qui
+        logits = (s @ t.T) / self.tau
+        return F.cross_entropy(logits, torch.arange(idx.numel(), device=s.device))
+
     def training_step(self, batch: dict[str, dict], batch_idx) -> STEP_OUTPUT:
         x_teacher = batch["kd"]
         x_student = batch["sup"]
 
         with torch.inference_mode():
+            # Get Knowledge Distillation terms
             kd_vid, kd_aud, kd_txt, _ = self.teacher(
                 x_teacher["vid"] if "vid" in x_teacher else None,
                 x_teacher["aud"] if "aud" in x_teacher else None,
@@ -43,40 +57,26 @@ class EegAviKdModule(pl.LightningModule):
 
         kd_loss = .0
         kd_outs = stud_out["kd_outs"]
+
         if "vid" in kd_outs:
-            # TODO Masking
-            # InfoNCE contrastive loss
-            x = F.normalize(kd_outs["vid"]["data"], dim=-1)
-            t = F.normalize(kd_vid, dim=-1)
-
-            # Pass from (B, P) mask to (B) mask. nvm get a mask already from model
-            mask_row = kd_outs["vid"]["mask"]
-            mask_col = has_teacher
-
-            # Dot product similarity (Cosine)
-            logits = (x @ t.T) / self.tau
-            targets = torch.arange(x.size(0), device=x.device)
-            kd_loss += F.cross_entropy(logits, targets)
+            kd_loss += self.measure_modality_kd_loss(
+                teacher_x=kd_vid, teacher_mask=torch.ones(kd_vid.shape[0], device=kd_vid.device),
+                student_x=kd_outs["vid"]["data"], student_mask=kd_outs["vid"]["mask"]
+            )
 
         if "aud" in kd_outs:
-            # InfoNCE contrastive loss
-            x = F.normalize(kd_outs["aud"]["data"], dim=-1)
-            t = F.normalize(kd_aud, dim=-1)
-            # Dot product similarity (Cosine)
-            logits = (x @ t.T) / self.tau
-            targets = torch.arange(x.size(0), device=x.device)
-            kd_loss += F.cross_entropy(logits, targets)
+            kd_loss += self.measure_modality_kd_loss(
+                teacher_x=kd_aud, teacher_mask=torch.ones(kd_aud.shape[0], device=kd_aud.device),
+                student_x=kd_outs["aud"]["data"], student_mask=kd_outs["aud"]["mask"]
+            )
 
         if "txt" in kd_outs:
-            # InfoNCE contrastive loss
-            x = F.normalize(kd_outs["txt"]["data"], dim=-1)
-            t = F.normalize(kd_txt, dim=-1)
-            # Dot product similarity (Cosine)
-            logits = (x @ t.T) / self.tau
-            targets = torch.arange(x.size(0), device=x.device)
-            kd_loss += F.cross_entropy(logits, targets)
+            kd_loss += self.measure_modality_kd_loss(
+                teacher_x=kd_txt, teacher_mask=torch.ones(kd_txt.shape[0], device=kd_txt.device),
+                student_x=kd_outs["txt"]["data"], student_mask=kd_outs["txt"]["mask"]
+            )
 
-        # Apply SigLipLoss
+        # Apply SigLipLoss now
 
         loss = self.alpha * kd_loss + self.beta * 0  # TODO
 
@@ -97,10 +97,13 @@ if __name__ == '__main__':
 
     dataset = FlexibleEmbeddingsSpecMediaDataset("../../data/AMIGOS/p-interleaved-d/spec.csv", cache_in_ram=True)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+    vate_dataset = FlexibleEmbeddingsSpecMediaDataset("../../data/AMIGOS/VATE/spec.csv", cache_in_ram=True)
 
-    # TODO kd dataloader (VATE)
-
-    train_loaders = CombinedLoader({"kd": dataloader, "sup": dataloader}, mode="max_size_cycle")
+    train_loaders = CombinedLoader({
+        # TODO Fare in modo che i due dataloader abbiano stesso seed sempre. Cosi da risultare corrette le draws
+        #           o fare wrapper dataset (funziona anche questo).
+        "sup": dataloader, "kd": DataLoader(vate_dataset, batch_size=4, shuffle=True)
+    }, mode="max_size_cycle")
 
     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=10)
     trainer.fit(module, train_loaders)

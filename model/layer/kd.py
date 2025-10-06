@@ -6,11 +6,12 @@ from torch import nn
 
 class KDHead(nn.Module):
     def __init__(self, input_size: int, target_shape: Tuple[int, ...], transform: nn.Module = None,
-                 normalize: bool = True):
+                 normalize: bool = True, return_masks: bool = True):
         super(KDHead, self).__init__()
         self.transform = nn.Linear(input_size, target_shape[-1]) if transform is None else transform
         self.target_shape = target_shape
         self.normalize: bool = normalize
+        self.return_masks: bool = return_masks
         self.eps = 1e-9
 
     @staticmethod
@@ -21,7 +22,8 @@ class KDHead(nn.Module):
         mask = mask.to(dtype=x.dtype)
         return (x * mask).sum(dim=dim) / mask.sum(dim=dim).clamp_min(eps)
 
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> dict[str, torch.Tensor] | torch.Tensor:
+        out_mask = mask
         if x.dim() == 4 and len(self.target_shape) <= 3:
             mask4d = None
             if mask is not None:
@@ -30,6 +32,7 @@ class KDHead(nn.Module):
                 mask4d = mask4d[:, :, :, None]  # (B, T, P, 1)
 
             x = self.masked_mean(x, mask4d, dim=-2, eps=self.eps)  # → (B,T,D)
+            out_mask = mask4d
 
         if x.dim() == 3 and len(self.target_shape) == 2:
             mask3d = None
@@ -39,10 +42,14 @@ class KDHead(nn.Module):
                 mask3d = mask3d[:, :, None]  # (B, T, 1)
 
             x = self.masked_mean(x, mask3d, dim=-2, eps=self.eps)  # → (B,T,D)
+            out_mask = mask3d
 
         if x.dim() != len(self.target_shape):
             raise ValueError(f"Shape mismatch after pooling: x:{tuple(x.shape)} vs target:{self.target_shape}")
 
         y = self.transform(x)
         # L2-normalization
-        return torch.nn.functional.normalize(y, p=2, dim=-1, eps=self.eps) if self.normalize else y
+        if self.normalize:
+            y = torch.nn.functional.normalize(y, p=2, dim=-1, eps=self.eps)
+        # TODO: Verifica out mask
+        return y if not self.return_masks else {"data": y, "mask": out_mask}
