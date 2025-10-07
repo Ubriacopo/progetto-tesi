@@ -54,3 +54,6 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 > ## https://arxiv.org/pdf/2208.11893
 
 >### https://github.com/soujanyaporia/multimodal-sentiment-analysis?tab=readme-ov-file 
+
+
+> ## https://github.com/revidee/pytorch-pyramid-pooling

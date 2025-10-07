@@ -1,16 +1,14 @@
 import argparse
 import json
 
-from core_data import sampler
-from dataset.amigos.config import AmigosConfig
-from dataset.amigos.loader import AmigosPointsLoader
-from dataset.amigos.preprocessing import amigos_interleaved_preprocessor
 from core_data.media.audio import AudTargetConfig
 from core_data.media.ecg import EcgTargetConfig
 from core_data.media.eeg.config import EegTargetConfig
 from core_data.media.text import TxtTargetConfig
 from core_data.media.video import VidTargetConfig
 from dataset.amigos import preprocessing
+from dataset.amigos.config import AmigosConfig
+from dataset.amigos.loader import AmigosPointsLoader
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

@@ -1,12 +1,15 @@
+import logging
 from dataclasses import replace
-from typing import Literal, Optional
+from typing import Literal, Optional, Iterable
 
 import torch
+from einops import rearrange
 from moviepy import VideoFileClip
 from torch import nn, dtype
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from model.VATE.video_processor import VideoResampler
+from utils.pyramid_pooling import temporal_pyramid_pooling_3d
 from .utils import check_video_data
 from .video import Video
 from core_data.utils import timed
@@ -199,3 +202,24 @@ class VateVideoResamplerTransform(nn.Module):
     def forward(self, x: Video) -> torch.Tensor:
         x.data = torch.tensor(self.video_resampler.resample_clip(x.data))
         return x.data
+
+
+class ViVitPyramidPatchPooling(nn.Module):
+    def __init__(self, levels: Iterable[int] = (1, 2, 4, 8, 16, 33)):
+        super().__init__()
+        self.levels: Iterable[int] = levels
+        self.use_pyramid_pooling: bool = True
+        if sum(self.levels) >= 64:
+            # I will avoid Pyramid pooling
+            logging.warning("Pyramid part of pooling is kinda useless if we keep the same patch size."
+                            "It might be better to just not do it, thus pyramid pooling is disabled for this iteration.")
+            self.use_pyramid_pooling = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = rearrange(x, "t (P F) D -> t P F D", P=64) # (Temporal Patch x Frame) decomposition
+        # Average pooling over the spatial grid
+        x = x.mean(dim=-2)
+        # Do pyramid pooling over the temporal tokens
+        if self.use_pyramid_pooling:
+            x = temporal_pyramid_pooling_3d(x, self.levels)
+        return x

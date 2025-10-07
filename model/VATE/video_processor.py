@@ -148,11 +148,9 @@ class VideoResampler:
                 else:
                     h0, h1, h2 = self._roi_hist_rgb(roi)
                     if prev_hist is not None:
-                        rgb_change = (
-                                             np.linalg.norm(h0 - prev_hist[0])
-                                             + np.linalg.norm(h1 - prev_hist[1])
-                                             + np.linalg.norm(h2 - prev_hist[2])
-                                     ) / 3.0
+                        rgb_change = (np.linalg.norm(h0 - prev_hist[0])
+                                      + np.linalg.norm(h1 - prev_hist[1])
+                                      + np.linalg.norm(h2 - prev_hist[2])) / 3.0
                     else:
                         rgb_change = np.inf
 
