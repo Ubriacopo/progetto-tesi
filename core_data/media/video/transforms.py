@@ -8,11 +8,11 @@ from moviepy import VideoFileClip
 from torch import nn, dtype
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
-from model.VATE.video_processor import VideoResampler
+from core_data.utils import timed
+from core_data.media.video.video_processor import VideoResampler
 from utils.pyramid_pooling import temporal_pyramid_pooling_3d
 from .utils import check_video_data
 from .video import Video
-from core_data.utils import timed
 
 
 class VideoToTensor(nn.Module):

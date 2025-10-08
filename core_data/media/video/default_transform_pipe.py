@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torchvision.transforms import v2
 
-from core_data.processing.transform import MultimediaPadding
+from core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
 from core_data.media.video import Video
 from core_data.media.video import VidTargetConfig
 from core_data.media.video.transforms import SubclipVideo, VideoToTensor, ViVitImageProcessorTransform, \
@@ -40,4 +40,5 @@ def vid_vate_basic_transform_pipe(target_config: VidTargetConfig) -> tuple[str, 
         ViVitImageProcessorTransform(),
         ViVitForVideoClassificationEmbedderTransform(),
         v2.Lambda(lambda x: x.to("cpu")),
+        ToSimpleMaskedObject(stop_at_dim=-1)
     )

@@ -8,10 +8,85 @@ from torch.utils.data import DataLoader
 from core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
 from model.EEGAVI.EEGAVI import EEGAVI, EEGAVIOutputs
 from model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI
-from model.VATE.constrastive_model import ContrastiveModel
+from model.VATE.constrastive_model import ContrastiveModel, MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from model.loss import siglip
+from model.utils import MaskedResult
 
-# todo work on this
+
+class EegAviKdVateMaskedModule(pl.LightningModule):
+    def __init__(self, student: EEGAVI, teacher: MaskedContrastiveModel):
+        super().__init__()
+        self.student: EEGAVI = student
+        self.teacher: MaskedContrastiveModel = teacher
+
+    def measure_modality_kd_loss(self, teacher: MaskedResult, student: MaskedResult) -> torch.Tensor:
+        # todo vedi teacher mask shape
+        idx = (student["mask"].any(dim=1) & teacher["mask"].any(dim=0)).nonzero(as_tuple=True)[0]
+        if idx.numel() == 0:
+            return torch.tensor(.0)
+        # InfoNCE loss.
+        # Normalize so that dot product similarity == to cosine similarity.
+        s = F.normalize(student["data"][idx], dim=-1)
+        t = F.normalize(teacher["data"][idx], dim=-1)
+        # Take what is valid for both
+        logits = (s @ t.T) / self.tau
+        return F.cross_entropy(logits, torch.arange(idx.numel(), device=s.device))
+
+    def training_step(self, batch: dict[str, dict], batch_idx) -> STEP_OUTPUT:
+        x_teacher, x_student = batch["kd"], batch["sup"]
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**x_teacher)
+        stud_out: EEGAVIOutputs = self.student(x_student, use_kd=True)
+
+        # KD Loss
+        kd_loss = .0
+        for key in teacher_out.keys():
+            if key not in stud_out.kd_outs:
+                continue  # Keys do never match so no kd on this.
+            kd_loss += self.measure_modality_kd_loss(teacher_out[key], stud_out.kd_outs[key])
+
+        # Fusion Loss
+        fusion_loss = .0
+        present_modalities: int = 0
+        for key, value in stud_out.multimodal_outs.items():
+            z, mask = value["data"], value["mask"]
+            if mask.dim() == 3:
+                mask = mask[:, :, 0].squeeze()
+            # stud_out_multimodal out (b, T, P, D)
+            # Patch mean: (Has no mask patches are always max rank).
+            if z.dim() > 3:
+                # We have patch tokens so we mean over them. (In case they exist).
+                z = z.mean(dim=-2)
+
+            # Timed masked mean:
+            w = mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)  # Normalization factor
+            z = (z * mask.float().unsqueeze(-1)).sum(dim=-2) / w
+            z = F.normalize(z, dim=-1)
+
+            valid = mask.any(dim=1)
+
+            if valid.any():
+                # stud.out.embeddings: (b, D) already. No need for further transformations.
+                fusion_loss += siglip(stud_out.embeddings[valid], z[valid])
+                present_modalities += 1
+
+        l_cons = .0
+        if "ecg" in stud_out.multimodal_outs:  # We have ECG
+            z_eeg = stud_out.multimodal_outs["eeg"]["data"]
+            z_ecg = stud_out.multimodal_outs["ecg"]["data"]
+            present = stud_out.multimodal_outs["eeg"]["mask"] & stud_out.multimodal_outs["ecg"]["mask"].any(dim=-1)
+            w = present.float()
+            # ECG goes through the Perceiver Resampler so it is 4D
+            z_ecg = z_ecg.mean(dim=-2)
+            # masked mean of (1 - cos)
+            l_cons = ((1 - F.cosine_similarity(z_eeg, z_ecg, dim=-1)) * w).sum() / w.sum().clamp_min(1.0)
+
+        loss = self.alpha * kd_loss + self.beta * (fusion_loss / max(present_modalities, 1)) + l_cons * self.gamma
+        self.log("train_loss", loss)
+
+        return loss
+
+
 class EegAviKdModule(pl.LightningModule):
     def __init__(self, student: EEGAVI, teacher: ContrastiveModel,
                  alpha: float = 1.0, beta: float = 1., gamma: float = 0.5, lr: float = 1e-4):
@@ -133,11 +208,11 @@ class EegAviKdModule(pl.LightningModule):
 
 if __name__ == '__main__':
     stud = get_interleaved_EEG_AVI(target_size=384, supporting_latent_size=384)
-    teach = ContrastiveModel(hidden_channels=200, out_channels=100)
+    teach = MaskedContrastiveModel(hidden_channels=200, out_channels=100)
     teach.load_state_dict(torch.load("../../dependencies/VATE/best_model_contrastive.pt"))
     teach.eval()
 
-    module = EegAviKdModule(stud, teach)
+    module = EegAviKdVateMaskedModule(stud, teach)
 
     dataset = FlexibleEmbeddingsSpecMediaDataset("../../data/AMIGOS/p-interleaved-d/spec.csv", cache_in_ram=True)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)

@@ -101,7 +101,7 @@ class EEGAVI(nn.Module):
         :param pivot_modality:
         :param supporting_latent_size:
         :param supporting_modalities:
-        :param xattn_blocks:
+        :param xattn_blocks: int if you want to use default configuration else GatedXAttentionCustomArgs for customization
         :param remap_timesteps:
         :param use_modality_encoder:
         :param drop_p:

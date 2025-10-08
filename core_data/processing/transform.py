@@ -8,6 +8,7 @@ from torchvision.transforms import Lambda
 
 from core_data.data_point import FlexibleDatasetPoint
 from core_data.media.media import Media
+from model.utils import MaskedResult
 
 IDENTITY = Lambda(lambda x: x)
 
@@ -110,3 +111,14 @@ class ProcessSegments(nn.Module):
             x.interval = interval
             res.append(self.net(x))
         return self.net(x)
+
+
+class ToSimpleMaskedObject(nn.Module):
+    def __init__(self, stop_at_dim: Optional[int] = -1):
+        super().__init__()
+        self.stop_at_dim: Optional[int] = stop_at_dim
+
+    def forward(self, x: torch.Tensor) -> MaskedResult:
+        # Drop masking on last dimension
+        shape = x.shape[:self.stop_at_dim] if self.stop_at_dim is not None else x.shape
+        return {"data": x, "mask": torch.ones(shape)}

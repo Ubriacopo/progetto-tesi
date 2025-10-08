@@ -1,12 +1,13 @@
 import math
 
 from torch import nn
+from torchvision.transforms import v2
 
 from core_data.media.text import Text
 from core_data.media.text import TxtTargetConfig
 from core_data.media.text.transforms import SubclipTextExtract, MiniLMEmbedderTransform, \
     RestoreTextExtract, BertEmbeddings
-from core_data.processing.transform import MultimediaPadding
+from core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
 
 
 def shared_txt_transform_pipe(text_config: TxtTargetConfig, txt_extract_base_path: str):
@@ -27,5 +28,6 @@ def txt_from_aud_interleaved_txt_extract_transform_pipe(target_txt_config: TxtTa
 def txt_vate_basic_transform_pipe() -> tuple[str, nn.Module]:
     return Text.modality_code(), nn.Sequential(
         SubclipTextExtract(interleaved=False),
-        BertEmbeddings()
+        BertEmbeddings(),
+        ToSimpleMaskedObject(stop_at_dim=-1)
     )

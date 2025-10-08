@@ -9,7 +9,7 @@ from core_data.media.audio import Audio
 from core_data.media.audio.transforms import SubclipAudio, AudioToTensor, ToMono, AudioSequencePartitioning, \
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform, HubertBaseComputeFeature, HubertFeatureExtractor
 from core_data.media.signal.transforms import SignalZeroMasking
-from core_data.processing.transform import MultimediaPadding
+from core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
 
 
 def aud_wav2vec_interleaved_txt_extract_transform_pipe(target_config: AudTargetConfig, fs: int, max_length: int) \
@@ -49,5 +49,6 @@ def aud_vate_basic_transform_pipe(fs: int) -> tuple[str, nn.Module]:
         ToMono(),
         HubertBaseComputeFeature(original_fs=fs),
         HubertFeatureExtractor(),
-        v2.Lambda(lambda x: x.to("cpu"))
+        v2.Lambda(lambda x: x.to("cpu")),
+        ToSimpleMaskedObject(stop_at_dim=-1)
     )

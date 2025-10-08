@@ -1,10 +1,6 @@
-import os
-
 import cv2
-import matplotlib.pyplot as plt
 import mediapipe as mp
 import numpy as np
-import torch
 from moviepy import VideoFileClip, ImageSequenceClip
 
 

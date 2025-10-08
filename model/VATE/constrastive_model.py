@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 import lightning as pl
 import torch
 from torch import nn
@@ -100,6 +102,12 @@ class ContrastiveModel(nn.Module):
         return x_video, x_audio, x_text, loss
 
 
+class MaskedContrastiveModelOutputs(TypedDict):
+    vid: MaskedResult
+    aud: MaskedResult
+    txt: MaskedResult
+
+
 class MaskedContrastiveModel(pl.LightningModule):
     def __init__(self, hidden_channels: int, out_channels: int):
         super().__init__()
@@ -111,7 +119,8 @@ class MaskedContrastiveModel(pl.LightningModule):
         logit_scale_init_value = 2.6592
         self.logit_scale = nn.Parameter(torch.tensor(logit_scale_init_value))
 
-    def forward(self, x_vid: MaskedResult, x_audio: MaskedResult, x_text: MaskedResult):
+    def forward(self, x_vid: MaskedResult, x_audio: MaskedResult, x_text: MaskedResult) \
+            -> MaskedContrastiveModelOutputs:
         vid_data, vid_mask = x_vid["data"], x_vid["mask"]
         vid_data = self.embedding_vid(vid_data)
         vid_data = nn.functional.normalize(vid_data)
