@@ -30,7 +30,7 @@ class GatedXAttentionBlock(nn.Module):
         """
         super().__init__()
         # First call
-        self.attn = MaskedCrossAttention(dim, dim_latent, dim_head, heads)
+        self.attn = MaskedCrossAttention(dim=dim, dim_latent=dim_latent, dim_head=dim_head, heads=heads)
         self.attn_gate = nn.Parameter(torch.tensor([.1]))
 
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)

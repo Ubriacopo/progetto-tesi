@@ -10,6 +10,7 @@ from core_data.media.video import Video
 from model.EEGAVI.EEGAVI import EEGAVI
 from model.EEGAVI.interleaved_EEGAVI.adapters import VideoAdapter, PerceiverResamplerConfig, AudioAdapter, TextAdapter, \
     EegAdapter
+from model.layer.attention.x_attention import GatedXAttentionCustomArgs
 from model.layer.kd import KDHead
 from model.layer.modality_stream import ModalityStream
 
@@ -60,7 +61,9 @@ def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
         ],
 
         use_modality_encoder=True,
-        xattn_blocks=4,
+        xattn_blocks=[
+            GatedXAttentionCustomArgs()
+        ],
         remap_timesteps=32,
     )
 

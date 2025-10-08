@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 from torch import nn
 
-from model.layer.attention.x_attention import GatedXAttentionBlock, GatedXAttentionArgs, GatedXAttentionCustomArgs
+from model.layer.attention.x_attention import GatedXAttentionBlock, GatedXAttentionCustomArgs
 from model.layer.base import ModalContextEncoder
 from model.layer.modality_stream import ModalityStream
 from model.utils import MaskedResult
@@ -124,7 +124,12 @@ class EEGAVI(nn.Module):
         self.remap_timesteps: int = remap_timesteps
         self.drop_p: float = drop_p
 
-    def build_xattn_blocks(self, xattn_blocks: int | list[GatedXAttentionCustomArgs]):
+    def build_xattn_blocks(self, xattn_blocks: int | list[GatedXAttentionCustomArgs]) -> list[nn.Module]:
+        """
+        For how GatedXAttention works the dim and dim_latent are fixed (they do not change).
+        :param xattn_blocks:
+        :return:
+        """
         modules: list[nn.Module] = []
         if isinstance(xattn_blocks, list):
             for config in xattn_blocks:
