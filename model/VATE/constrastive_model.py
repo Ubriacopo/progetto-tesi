@@ -1,5 +1,8 @@
+import lightning as pl
 import torch
 from torch import nn
+
+from model.utils import MaskedResult
 
 
 def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
@@ -33,6 +36,16 @@ def clip_loss(similarity: torch.Tensor) -> torch.Tensor:
     caption_loss = contrastive_loss(similarity)
     image_loss = contrastive_loss(similarity.t())
     return (caption_loss + image_loss) / 2.0
+
+
+def build_sequential(input_size, hidden_size, output_size):
+    return nn.Sequential(
+        nn.Linear(input_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, output_size),
+    )
 
 
 class ContrastiveModel(nn.Module):
@@ -85,3 +98,40 @@ class ContrastiveModel(nn.Module):
             loss += clip_loss(logits_audio_text)
 
         return x_video, x_audio, x_text, loss
+
+
+class MaskedContrastiveModel(pl.LightningModule):
+    def __init__(self, hidden_channels: int, out_channels: int):
+        super().__init__()
+        self.hidden_channels: int = hidden_channels
+        self.out_channels: int = out_channels
+        self.embedding_vid = build_sequential(400, self.hidden_channels, self.out_channels)
+        self.embedding_aud = build_sequential(768, self.hidden_channels, self.out_channels)
+        self.embedding_txt = build_sequential(768, self.hidden_channels, self.out_channels)
+        logit_scale_init_value = 2.6592
+        self.logit_scale = nn.Parameter(torch.tensor(logit_scale_init_value))
+
+    def forward(self, x_vid: MaskedResult, x_audio: MaskedResult, x_text: MaskedResult):
+        vid_data, vid_mask = x_vid["data"], x_vid["mask"]
+        vid_data = self.embedding_vid(vid_data)
+        vid_data = nn.functional.normalize(vid_data)
+
+        aud_data, aud_mask = x_audio["data"], x_audio["mask"]
+        if aud_mask.any():
+            aud_data = self.embedding_aud(aud_data)
+            aud_data = nn.functional.normalize(aud_data)
+
+        txt_data, txt_mask = x_text["data"], x_text["mask"]
+        if txt_mask.any():
+            txt_data = self.embedding_txt(txt_data)
+            txt_data = nn.functional.normalize(txt_data)
+
+        return {
+            "vid": MaskedResult(data=vid_data, mask=vid_mask),
+            "aud": MaskedResult(data=aud_data, mask=aud_mask),
+            "txt": MaskedResult(data=txt_data, mask=txt_mask)
+        }
+
+    def compute_loss(self):
+        # We are using the model as a teacher so we don't actually need to compute the loss.
+        pass

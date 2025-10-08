@@ -1,6 +1,6 @@
 import dataclasses
 from dataclasses import asdict
-from typing import Optional, TypedDict
+from typing import Optional
 
 import torch
 from torch import nn
@@ -8,11 +8,7 @@ from torch import nn
 from model.layer.attention.x_attention import GatedXAttentionBlock
 from model.layer.base import ModalContextEncoder
 from model.layer.modality_stream import ModalityStream
-
-
-class MaskedResult(TypedDict):
-    data: torch.Tensor
-    mask: Optional[torch.Tensor]
+from model.utils import MaskedResult
 
 
 @dataclasses.dataclass
