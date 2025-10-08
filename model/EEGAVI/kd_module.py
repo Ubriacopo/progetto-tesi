@@ -1,19 +1,17 @@
 import lightning as pl
 import torch
+import torch.nn.functional as F
 from lightning.pytorch.utilities import CombinedLoader
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-from torch import nn
 from torch.utils.data import DataLoader
 
 from core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
 from model.EEGAVI.EEGAVI import EEGAVI, EEGAVIOutputs
 from model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI
-from model.VATE.constrastive_model import ContrastiveModel, contrastive_loss
-import torch.nn.functional as F
-
+from model.VATE.constrastive_model import ContrastiveModel
 from model.loss import siglip
 
-
+# todo work on this
 class EegAviKdModule(pl.LightningModule):
     def __init__(self, student: EEGAVI, teacher: ContrastiveModel,
                  alpha: float = 1.0, beta: float = 1., gamma: float = 0.5, lr: float = 1e-4):

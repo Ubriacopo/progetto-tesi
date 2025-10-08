@@ -1,4 +1,7 @@
-from typing import Optional
+from __future__ import annotations
+
+import dataclasses
+from typing import Optional, TypedDict
 
 import torch
 from einops import rearrange, repeat
@@ -8,9 +11,15 @@ from torch import nn, einsum, Tensor
 from model.layer.base import SimpleFeedForward
 
 
+@dataclasses.dataclass
+class GatedXAttentionCustomArgs:
+    dim_head: int = 64
+    heads: int = 8
+    ff_mult: int = 4
+
+
 class GatedXAttentionBlock(nn.Module):
-    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6,
-                 ff_mult: int = 4, only_attend_immediate_media: bool = True):
+    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6, ff_mult: int = 4):
         """
 
         :param dim:
@@ -18,11 +27,10 @@ class GatedXAttentionBlock(nn.Module):
         :param dim_head: Number of features for each attention head
         :param heads: Number of heads of masked cross attention
         :param ff_mult: Multiplier for the feed forward structure
-        :param only_attend_immediate_media:
         """
         super().__init__()
         # First call
-        self.attn = MaskedCrossAttention(dim, dim_latent, dim_head, heads, only_attend_immediate_media)
+        self.attn = MaskedCrossAttention(dim, dim_latent, dim_head, heads)
         self.attn_gate = nn.Parameter(torch.tensor([.1]))
 
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
@@ -35,7 +43,7 @@ class GatedXAttentionBlock(nn.Module):
 
 
 class MaskedCrossAttention(nn.Module):
-    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 8, only_attend_immediate_media=True):
+    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 8):
         """
         Masked cross-attention layers.
 
@@ -43,7 +51,6 @@ class MaskedCrossAttention(nn.Module):
         :param dim_latent: Final shape of the kv vector space
         :param dim_head: Features for each attention head
         :param heads: Number of attention heads
-        :param only_attend_immediate_media:
         """
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -53,8 +60,6 @@ class MaskedCrossAttention(nn.Module):
         self.q = nn.Linear(dim, dim_head * heads, bias=False)
         self.kv = nn.Linear(dim_latent, dim_head * heads * 2, bias=False)
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
-        # Whether for text to only attend to immediate preceding image, or all previous images
-        self.only_attend_immediate_media = only_attend_immediate_media
 
     def forward(self, qo, kvo, attn_mask=None, q_mask=None, kv_mask=None):
         """

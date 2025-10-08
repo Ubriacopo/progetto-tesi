@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 from torch import nn
 
-from model.layer.attention.x_attention import GatedXAttentionBlock
+from model.layer.attention.x_attention import GatedXAttentionBlock, GatedXAttentionArgs, GatedXAttentionCustomArgs
 from model.layer.base import ModalContextEncoder
 from model.layer.modality_stream import ModalityStream
 from model.utils import MaskedResult
@@ -85,27 +85,58 @@ class EEGAVI(nn.Module):
     def __init__(self,
                  pivot_latent_size: int, pivot_modality: ModalityStream,
                  supporting_latent_size: int, supporting_modalities: list[ModalityStream],
-                 xattn_blocks: int, remap_timesteps: int,
-
+                 xattn_blocks: int | list[GatedXAttentionCustomArgs],
+                 remap_timesteps: int,
                  use_modality_encoder: bool = True,
-                 drop_p: float = 0.1):
+                 drop_p: float = 0.1
+                 ):
+        """
+        EEGAVI behaves like Flamingo models. It has a main feature space that acts as query in the attn mechanism.
+        We call this one pivot and holds a special spot in the architecture as it is the main modality.
+        Supporting modalities are modalities that enrich the embeddings of the starting space.
+        Before running the attention they are adapted according to their adaption stream and later merged to act as
+        query and values of the attn mechanism.
+
+        :param pivot_latent_size:
+        :param pivot_modality:
+        :param supporting_latent_size:
+        :param supporting_modalities:
+        :param xattn_blocks:
+        :param remap_timesteps:
+        :param use_modality_encoder:
+        :param drop_p:
+        """
         super(EEGAVI, self).__init__()
 
-        self.pivot_modality = pivot_modality
-        self.supporting_modalities = nn.ModuleList(supporting_modalities)
+        self.pivot_latent_size: int = pivot_latent_size
+        self.supporting_latent_size: int = supporting_latent_size
 
+        self.pivot_modality: ModalityStream = pivot_modality
+        self.supporting_modalities = nn.ModuleList(supporting_modalities)
         self.modality_encoder: Optional[ModalContextEncoder] = None
+
         if use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(supporting_modalities)}
             self.modality_encoder = ModalContextEncoder(supporting_latent_size, modality_mappings)
 
-        self.gatedXAttn_layers = nn.ModuleList([
-            GatedXAttentionBlock(dim=pivot_latent_size, dim_latent=supporting_latent_size) for _ in range(xattn_blocks)
-        ])
-
+        self.gatedXAttn_layers = nn.ModuleList(self.build_xattn_blocks(xattn_blocks))
         self.norm = nn.LayerNorm(pivot_latent_size)
         self.remap_timesteps: int = remap_timesteps
         self.drop_p: float = drop_p
+
+    def build_xattn_blocks(self, xattn_blocks: int | list[GatedXAttentionCustomArgs]):
+        modules: list[nn.Module] = []
+        if isinstance(xattn_blocks, list):
+            for config in xattn_blocks:
+                xattn_block = GatedXAttentionBlock(self.pivot_latent_size, self.supporting_latent_size, *asdict(config))
+                modules.append(xattn_block)
+
+        elif isinstance(xattn_blocks, int):
+            for _ in range(xattn_blocks):
+                xattn_block = GatedXAttentionBlock(self.pivot_latent_size, self.supporting_latent_size)
+                modules.append(xattn_block)
+
+        return modules
 
     @staticmethod
     def remask(supp: torch.Tensor, device):
@@ -139,8 +170,6 @@ class EEGAVI(nn.Module):
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False) \
             -> EEGAVIOutputs | dict[str, MaskedResult]:
-        use_kd = use_kd or ("kd" in x and x["kd"])
-
         kd_outs: dict = {}
         multimodal_outputs: dict = {}
 
@@ -171,10 +200,13 @@ class EEGAVI(nn.Module):
             if isinstance(adapted_supp, tuple):
                 # Store the KD output to return later
                 kd = adapted_supp[1]
+
                 restored_kd = torch.zeros(supp.shape[0], *kd["data"].shape[1:], device=supp.device)
                 restored_kd[idx] = kd["data"]
+
                 restored_mask = torch.zeros(supp.shape[0], *kd["mask"].shape[1:], device=supp.device).bool()
                 restored_mask[idx] = kd["mask"]
+
                 kd_outs[key] = {"data": restored_kd, "mask": restored_mask}
                 # Now we can really get the embeddings
                 adapted_supp = adapted_supp[0]
