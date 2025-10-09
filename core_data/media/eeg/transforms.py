@@ -55,17 +55,15 @@ class EEGResample(nn.Module):
     def forward(self, x: EEG | torch.Tensor) -> EEG | torch.Tensor:
         if isinstance(x, EEG):
             raw: mne.io.RawArray = x.data
-            # TODO: Tweak this call to be good.
             raw.resample(self.tfreq, method="polyphase", npad="auto", verbose=self.verbose)
             return x
 
         elif isinstance(x, torch.Tensor):
             raw = mne.io.RawArray(x, info=mne.create_info(sfreq=self.sfreq))
-            # TODO: Tweak this call to be good.
             raw.resample(self.tfreq, method="polyphase", npad="auto", verbose=self.verbose)
             return raw.get_data()
 
-        raise NotImplementedError("To call this pipeline you have to turn to MNE object or Tensor first")
+        raise NotImplementedError("To call this pipeline you have to use either a Signal or a tensor")
 
 
 class EEGToTimePatches(nn.Module):
@@ -111,22 +109,32 @@ class EegTimePadding(nn.Module):
         self.drop_mask: bool = drop_mask
 
     @timed()
-    def forward(self, x: torch.Tensor) -> dict | torch.Tensor:
+    def forward(self, x: MaskedResult | torch.Tensor) -> dict | torch.Tensor:
+        # If masking enabled I expect the mask to be of the shape [c, T].
+        mask = None
+        if isinstance(x, dict):
+            x, mask = x['data'], x['mask']
+        if mask is None:
+            mask = torch.zeros(self.max_length, x.shape[0]).bool()
+
         if self.first_dim_batch:
             x = x.squeeze(0)
+            mask = mask.squeeze(0)
 
         if not len(x.shape) == 3:
             raise ValueError(f"Expected 3D tensor, got {x.shape}. We want (c, T, D)")
 
         T = x.shape[-2]
-        # Channels x T (Easier to use later).
-        mask = torch.zeros(self.max_length).bool()
         if self.max_length > T:
             x = torch.nn.functional.pad(x, (0, 0, 0, self.max_length - T))
             # Set time steps first. We get a simpler MASK like this.
         x = rearrange(x, 'c t d -> t c d')
-        mask[:T] = True  # Zeros
-        return {"data": x, "mask": mask} if not self.drop_mask else x
+
+        mask = mask.T  # Mask is supposed to be 2D so i cant jus transpose
+        missing_elements = torch.zeros((self.max_length - T, *mask.shape[1:]), device=x.device)
+        mask = torch.cat((mask, missing_elements.bool()))
+
+        return x if self.drop_mask else {"data": x, "mask": mask}
 
 
 class CBraModEmbedderTransform(nn.Module):
@@ -139,14 +147,20 @@ class CBraModEmbedderTransform(nn.Module):
             self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
 
     @timed()
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: MaskedResult | torch.Tensor) -> MaskedResult | torch.Tensor:
+        mask = None
+        if isinstance(x, dict):
+            x, mask = x["data"], x["mask"]
+
         if len(x.shape) == 3:
             x = x.unsqueeze(0)  # Add the batch
+            mask = mask.unsqueeze(0)  # Add the batch
 
         with torch.inference_mode():
             # I don't know what is wrong with CBraMod. I made a mistake somewhere.
-            z = self.model(x.float().to("cpu"))
-        return z
+            z = self.model(x=x.float().to("cpu"), mask=mask.bool().to("cpu"))
+
+        return z if mask is None else {"data": z, "mask": mask}
 
 
 class CanonicalOrderTransform(nn.Module):

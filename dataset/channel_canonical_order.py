@@ -3,7 +3,7 @@ import torch
 
 class EegCanonicalOrder:
     order: list[str] = [
-        # First 14 channels are dominated by AMIGOS as it has less
+        # First 14 channels are dominated by AMIGOS and DREAMER as it they have less (Emotiv EPOC)
         "AF3",
         "F7",
         "F3",
@@ -22,42 +22,30 @@ class EegCanonicalOrder:
         "Fp1",
         "FC1",
         "C3",
-        "T7",
         "CP5",
         "CP1",
         "P3",
-        "PO3"
+        "PO3",
         "Oz",
         "Pz",
         "Fp2",
-        "AF4",
         "Fz",
-        "F8",
-        "FC6",
         "FC2",
         "Cz",
         "C4",
-        "T8",
         "CP6",
         "CP2",
         "P4",
-        "P8",
         "PO4",
-        "O2"
     ]
 
     def adapt(self, eeg: torch.Tensor, tensor_order: list[str]):
-        sorted_object = []
-        for idx, entry in enumerate(tensor_order):
-            i = self.order.index(entry)
-            sorted_object[i] = eeg[idx]
-
         return_tensor = torch.zeros(len(self.order), *eeg.shape[1:], device=eeg.device)
-        mask = torch.zeros(len(self.order), device=eeg.device).bool()
+        mask = torch.zeros(*return_tensor.shape[:-1], device=eeg.device)
 
-        sorted_object = torch.tensor(sorted_object, device=eeg.device, dtype=eeg.dtype)
-        # Pad to maximum length if we are below it.
-        return_tensor[:sorted_object.shape[0]] = sorted_object
-        mask[:sorted_object.shape[0]] = True
+        for current_idx, entry in enumerate(tensor_order):
+            new_idx = self.order.index(entry)
+            return_tensor[new_idx] = eeg[current_idx]
+            mask[new_idx] = 1
 
         return return_tensor, mask

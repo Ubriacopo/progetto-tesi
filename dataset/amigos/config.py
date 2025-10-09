@@ -17,15 +17,17 @@ class AmigosConfig:
     class Audio:
         fs = 44100
 
-    CH_NAMES = [
-        # EEG Channels (14)
+    EEG_CHANNELS = [
         "AF3", "F7", "F3", "FC5", "T7", "P7", "O1",
         "O2", "P8", "T8", "FC6", "F4", "F8", "AF4",
-        # Others (ECG + ECG + MISC)
-        "ECG Right", "ECG Left", "GSR"
     ]
 
-    CH_TYPES = ["eeg"] * 14 + ["ecg"] * 2 + ["misc"]
+    ECG_CHANNELS = ["ECG Right", "ECG Left"]
+    OTHER_CHANNELS = ["GSR"]
+
+    CH_NAMES = EEG_CHANNELS + ECG_CHANNELS + OTHER_CHANNELS
+
+    CH_TYPES = ["eeg"] * len(EEG_CHANNELS) + ["ecg"] * len(ECG_CHANNELS) + ["misc"] * len(OTHER_CHANNELS)
     LEAD_NAMES = ["II", "III"]
 
     @staticmethod

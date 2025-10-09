@@ -26,7 +26,7 @@ def amigos_interleaved_preprocessor(
         extraction_data_folder: str,
         aud_config: AudTargetConfig = AudTargetConfig(),
         vid_config: VidTargetConfig = VidTargetConfig(),
-        txt_config: TxtTargetConfig = TxtTargetConfig("./gen-text-out.txt"),
+        txt_config: TxtTargetConfig = TxtTargetConfig(),
         eeg_config: EegTargetConfig = EegTargetConfig("../../dependencies/cbramod/pretrained_weights.pth"),
         ecg_config: EcgTargetConfig = EcgTargetConfig(AmigosConfig.prepare_ecg),
 ):
@@ -38,7 +38,8 @@ def amigos_interleaved_preprocessor(
                 aud_config, AmigosConfig.Audio.fs, output_max_length
             ),
             vid_vivit_interleaved_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
-            eeg_transform_pipe(eeg_config, AmigosConfig.EEG.fs, output_max_length),
+            eeg_transform_pipe(target_config=eeg_config, eeg_order=AmigosConfig.EEG_CHANNELS,
+                               source_fs=AmigosConfig.EEG.fs, max_length=output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
             txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
         ),
