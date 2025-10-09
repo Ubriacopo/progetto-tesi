@@ -9,6 +9,8 @@ from torch import nn
 
 from core_data.media.eeg.eeg import EEG
 from core_data.utils import timed
+from dataset.channel_canonical_order import EegCanonicalOrder
+from model.utils import MaskedResult
 
 
 class EEGToTensor(nn.Module):
@@ -145,3 +147,14 @@ class CBraModEmbedderTransform(nn.Module):
             # I don't know what is wrong with CBraMod. I made a mistake somewhere.
             z = self.model(x.float().to("cpu"))
         return z
+
+
+class CanonicalOrderTransform(nn.Module):
+    def __init__(self, eeg_order: list[str], canonical_order: EegCanonicalOrder = EegCanonicalOrder()):
+        super().__init__()
+        self.canonical_order: EegCanonicalOrder = canonical_order
+        self.eeg_order: list[str] = eeg_order
+
+    def forward(self, x: torch.Tensor) -> MaskedResult:
+        x, mask = self.canonical_order.adapt(x, self.eeg_order)
+        return {"data": x, "mask": mask}
