@@ -15,4 +15,5 @@ def eeg_transform_pipe(target_config: EegTargetConfig, source_fs: int, max_lengt
         EEGToTimePatches(points_per_patch=target_config.target_fs, max_segments=max_length),
         CBraModEmbedderTransform(weights_path=target_config.cbramod_weights_path),
         EegTimePadding(max_length=max_length),
+        # TODO un metodo to default shape?
     )

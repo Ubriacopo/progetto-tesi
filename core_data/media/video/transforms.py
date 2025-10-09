@@ -209,14 +209,14 @@ class ViVitPyramidPatchPooling(nn.Module):
         super().__init__()
         self.levels: Iterable[int] = levels
         self.use_pyramid_pooling: bool = True
-        if sum(self.levels) >= 64:
+        if sum(self.levels) >= 16:
             # I will avoid Pyramid pooling
             logging.warning("Pyramid part of pooling is kinda useless if we keep the same patch size."
                             "It might be better to just not do it, thus pyramid pooling is disabled for this iteration.")
             self.use_pyramid_pooling = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = rearrange(x, "t (P F) D -> t P F D", P=64) # (Temporal Patch x Frame) decomposition
+        x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
         # Average pooling over the spatial grid
         x = x.mean(dim=-2)
         # Do pyramid pooling over the temporal tokens

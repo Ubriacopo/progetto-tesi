@@ -38,7 +38,7 @@ class EegAdapter(nn.Module):
 
 
 class VideoAdapter(nn.Module):
-    def __init__(self, perceiver_config: PerceiverResamplerConfig, project_out_size: int = None, patch_size: int = 16):
+    def __init__(self, perceiver_config: PerceiverResamplerConfig, project_out_size: int = None, patch_size: int = 49):
         super().__init__()
         self.patch_size = patch_size
         self.resampler = PerceiverResampler(**perceiver_config.__dict__)
@@ -47,7 +47,7 @@ class VideoAdapter(nn.Module):
             self.projection = nn.Linear(perceiver_config.dim, project_out_size)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
-        x = rearrange(x, "b T (F p) D -> b T F p D", F=self.patch_size)
+        x = rearrange(x, "b T (F p) D -> b T F p D", p=self.patch_size)
         y = self.resampler(x=x, mask=mask)
         if self.projection is not None:
             y = self.projection(y)
