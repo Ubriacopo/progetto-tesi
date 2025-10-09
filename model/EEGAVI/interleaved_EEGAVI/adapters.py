@@ -4,10 +4,12 @@ from typing import Optional
 import torch
 from einops import rearrange, repeat
 from torch import nn
+from torch.masked import MaskedTensor
 
 from model.layer.ISAB import PMA
 from model.layer.base import TemporalEncoder
 from model.layer.perceiver_adapter import PerceiverResampler
+from utils.data import MaskedValue
 
 
 @dataclass
@@ -29,12 +31,16 @@ class EegAdapter(nn.Module):
         self.linear = nn.Linear(channels * latent_input_size, output_size)
         self.activation = nn.GELU()
 
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> MaskedValue:
+        if mask is not None:
+            x = x * mask[..., None].to(x.dtype)  # zero masked channels first
         x = rearrange(x, "b T c L -> b T (c L)")
         x = self.norm(x)
         x = self.linear(x)
         x = self.activation(x)
-        return x
+        # TODO Give mask
+        time_mask = mask.any(dim=-1)  # (b, T) - which time steps have ANY valid channel
+        return {"data": x, "mask": time_mask}
 
 
 class VideoAdapter(nn.Module):

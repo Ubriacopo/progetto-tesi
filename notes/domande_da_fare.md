@@ -69,3 +69,4 @@ compact = torch.cat([cls, time_tok], dim=1)   # [B, 1+K, 768]
 
 -Another thing If my modality drop a video the KD for video for that sample has to be discarded?
 -Use VateVideoResamplerTransform for EEGAVI also?
+- AL momento io fondo i channels e mi va bene ma sarebbe il caso di non farlo per EEG?

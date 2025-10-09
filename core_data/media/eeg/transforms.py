@@ -10,7 +10,7 @@ from torch import nn
 from core_data.media.eeg.eeg import EEG
 from core_data.utils import timed
 from dataset.channel_canonical_order import EegCanonicalOrder
-from model.utils import MaskedResult
+from utils.data import MaskedValue
 
 
 class EEGToTensor(nn.Module):
@@ -109,7 +109,7 @@ class EegTimePadding(nn.Module):
         self.drop_mask: bool = drop_mask
 
     @timed()
-    def forward(self, x: MaskedResult | torch.Tensor) -> dict | torch.Tensor:
+    def forward(self, x: MaskedValue | torch.Tensor) -> dict | torch.Tensor:
         # If masking enabled I expect the mask to be of the shape [c, T].
         mask = None
         if isinstance(x, dict):
@@ -147,7 +147,7 @@ class CBraModEmbedderTransform(nn.Module):
             self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
 
     @timed()
-    def forward(self, x: MaskedResult | torch.Tensor) -> MaskedResult | torch.Tensor:
+    def forward(self, x: MaskedValue | torch.Tensor) -> MaskedValue | torch.Tensor:
         mask = None
         if isinstance(x, dict):
             x, mask = x["data"], x["mask"]
@@ -169,6 +169,6 @@ class CanonicalOrderTransform(nn.Module):
         self.canonical_order: EegCanonicalOrder = canonical_order
         self.eeg_order: list[str] = eeg_order
 
-    def forward(self, x: torch.Tensor) -> MaskedResult:
+    def forward(self, x: torch.Tensor) -> MaskedValue:
         x, mask = self.canonical_order.adapt(x, self.eeg_order)
         return {"data": x, "mask": mask}

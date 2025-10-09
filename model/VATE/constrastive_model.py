@@ -4,7 +4,7 @@ import lightning as pl
 import torch
 from torch import nn
 
-from model.utils import MaskedResult
+from utils.data import MaskedValue
 
 
 def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
@@ -103,9 +103,9 @@ class ContrastiveModel(nn.Module):
 
 
 class MaskedContrastiveModelOutputs(TypedDict):
-    vid: MaskedResult
-    aud: MaskedResult
-    txt: MaskedResult
+    vid: MaskedValue
+    aud: MaskedValue
+    txt: MaskedValue
 
 
 class MaskedContrastiveModel(pl.LightningModule):
@@ -119,7 +119,7 @@ class MaskedContrastiveModel(pl.LightningModule):
         logit_scale_init_value = 2.6592
         self.logit_scale = nn.Parameter(torch.tensor(logit_scale_init_value))
 
-    def forward(self, x_vid: MaskedResult, x_audio: MaskedResult, x_text: MaskedResult) \
+    def forward(self, x_vid: MaskedValue, x_audio: MaskedValue, x_text: MaskedValue) \
             -> MaskedContrastiveModelOutputs:
         vid_data, vid_mask = x_vid["data"], x_vid["mask"]
         vid_data = self.embedding_vid(vid_data)
@@ -136,9 +136,9 @@ class MaskedContrastiveModel(pl.LightningModule):
             txt_data = nn.functional.normalize(txt_data)
 
         return {
-            "vid": MaskedResult(data=vid_data, mask=vid_mask),
-            "aud": MaskedResult(data=aud_data, mask=aud_mask),
-            "txt": MaskedResult(data=txt_data, mask=txt_mask)
+            "vid": MaskedValue(data=vid_data, mask=vid_mask),
+            "aud": MaskedValue(data=aud_data, mask=aud_mask),
+            "txt": MaskedValue(data=txt_data, mask=txt_mask)
         }
 
     def compute_loss(self):

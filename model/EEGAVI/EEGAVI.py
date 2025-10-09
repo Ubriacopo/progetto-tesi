@@ -8,14 +8,14 @@ from torch import nn
 from model.layer.attention.x_attention import GatedXAttentionBlock, GatedXAttentionCustomArgs
 from model.layer.base import ModalContextEncoder
 from model.layer.modality_stream import ModalityStream
-from model.utils import MaskedResult
+from utils.data import MaskedValue
 
 
 @dataclasses.dataclass
 class EEGAVIOutputs:
     embeddings: torch.Tensor
-    kd_outs: dict[str, MaskedResult]
-    multimodal_outs: dict[str, MaskedResult]
+    kd_outs: dict[str, MaskedValue]
+    multimodal_outs: dict[str, MaskedValue]
 
 
 def interval_overlap_weights(t_source: int, t_target: int, device=None):
@@ -174,7 +174,7 @@ class EEGAVI(nn.Module):
         return keep
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False) \
-            -> EEGAVIOutputs | dict[str, MaskedResult]:
+            -> EEGAVIOutputs | dict[str, MaskedValue]:
         kd_outs: dict = {}
         multimodal_outputs: dict = {}
 

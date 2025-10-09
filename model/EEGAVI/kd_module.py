@@ -10,7 +10,7 @@ from model.EEGAVI.EEGAVI import EEGAVI, EEGAVIOutputs
 from model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI
 from model.VATE.constrastive_model import ContrastiveModel, MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from model.loss import siglip
-from model.utils import MaskedResult
+from utils.data import MaskedValue
 
 
 class EegAviKdVateMaskedModule(pl.LightningModule):
@@ -19,7 +19,7 @@ class EegAviKdVateMaskedModule(pl.LightningModule):
         self.student: EEGAVI = student
         self.teacher: MaskedContrastiveModel = teacher
 
-    def measure_modality_kd_loss(self, teacher: MaskedResult, student: MaskedResult) -> torch.Tensor:
+    def measure_modality_kd_loss(self, teacher: MaskedValue, student: MaskedValue) -> torch.Tensor:
         # todo vedi teacher mask shape
         idx = (student["mask"].any(dim=1) & teacher["mask"].any(dim=0)).nonzero(as_tuple=True)[0]
         if idx.numel() == 0:

@@ -1,4 +1,7 @@
+from typing import TypedDict, Optional
+
 import numpy as np
+import torch
 
 
 def pad_main_axis(arr: np.ndarray, increment: int, value=0) -> np.ndarray:
@@ -6,3 +9,8 @@ def pad_main_axis(arr: np.ndarray, increment: int, value=0) -> np.ndarray:
     # Work on main axis
     paddings[0] = (0, increment)
     return np.pad(arr, paddings, constant_values=value)
+
+
+class MaskedValue(TypedDict):
+    data: torch.Tensor
+    mask: Optional[torch.Tensor]
