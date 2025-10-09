@@ -1,5 +1,6 @@
 import dataclasses
 from dataclasses import asdict
+from traceback import print_stack
 from typing import Optional
 
 import torch
@@ -187,6 +188,8 @@ class EEGAVI(nn.Module):
             kd_outs[key] = base[1]
             # Now we can really get the resampled embeddings
             base = base[0]
+        if isinstance(base, dict):
+            base, base_mask = base["data"], base["mask"]
 
         multimodal_outputs[key] = {"data": base, "mask": base_mask}
 
@@ -205,16 +208,21 @@ class EEGAVI(nn.Module):
             if isinstance(adapted_supp, tuple):
                 # Store the KD output to return later
                 kd = adapted_supp[1]
+                try:
+                    restored_kd = torch.zeros(supp.shape[0], *kd["data"].shape[1:], device=supp.device)
+                    restored_kd[idx] = kd["data"]
+                    restored_mask = torch.zeros(supp.shape[0], *kd["mask"].shape[1:], device=supp.device).bool()
+                    restored_mask[idx] = kd["mask"]
 
-                restored_kd = torch.zeros(supp.shape[0], *kd["data"].shape[1:], device=supp.device)
-                restored_kd[idx] = kd["data"]
+                    kd_outs[key] = {"data": restored_kd, "mask": restored_mask}
+                    # Now we can really get the embeddings
+                    adapted_supp = adapted_supp[0]
+                except Exception as e:
+                    print_stack()
+                    raise e
 
-                restored_mask = torch.zeros(supp.shape[0], *kd["mask"].shape[1:], device=supp.device).bool()
-                restored_mask[idx] = kd["mask"]
-
-                kd_outs[key] = {"data": restored_kd, "mask": restored_mask}
-                # Now we can really get the embeddings
-                adapted_supp = adapted_supp[0]
+            if isinstance(adapted_supp, dict):
+                adapted_supp, _ = adapted_supp["data"], adapted_supp["mask"]
 
             # Modality embedding if wanted
             if self.modality_encoder is not None:

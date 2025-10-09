@@ -34,10 +34,13 @@ class EegAdapter(nn.Module):
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> MaskedValue:
         if mask is not None:
             x = x * mask[..., None].to(x.dtype)  # zero masked channels first
+
         x = rearrange(x, "b T c L -> b T (c L)")
+
         x = self.norm(x)
         x = self.linear(x)
         x = self.activation(x)
+
         # TODO Give mask
         time_mask = mask.any(dim=-1)  # (b, T) - which time steps have ANY valid channel
         return {"data": x, "mask": time_mask}

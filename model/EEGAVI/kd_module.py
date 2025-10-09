@@ -14,10 +14,23 @@ from utils.data import MaskedValue
 
 
 class EegAviKdVateMaskedModule(pl.LightningModule):
-    def __init__(self, student: EEGAVI, teacher: MaskedContrastiveModel):
+    def __init__(self, student: EEGAVI, teacher: MaskedContrastiveModel,
+                 alpha: float = 1.0, beta: float = 1., gamma: float = 0.5, lr: float = 1e-4):
         super().__init__()
         self.student: EEGAVI = student
         self.teacher: MaskedContrastiveModel = teacher
+
+        # Weight terms for loss parts
+        self.alpha: float = alpha
+        self.beta: float = beta
+        self.gamma: float = gamma
+
+        self.lr = lr
+        # Temperature
+        self.tau = 0.2
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.student.parameters(), lr=self.lr)
 
     def measure_modality_kd_loss(self, teacher: MaskedValue, student: MaskedValue) -> torch.Tensor:
         # todo vedi teacher mask shape

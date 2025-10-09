@@ -17,19 +17,12 @@ from model.layer.modality_stream import ModalityStream
 
 def get_interleaved_EEG_AVI(target_size: int, supporting_latent_size: int):
     vate_out_shape = (1, 100)
-    channels = 14
+    channels = 32
     return EEGAVI(
         pivot_latent_size=target_size,
         pivot_modality=ModalityStream(
             code=EEG.modality_code(),
-            adapter=nn.Sequential(
-                # TODO: Questo smette di funzionare nel momento in cui ho un numero diverso di channels.
-                #       Dovrei paddare tutti e avere maschera a channel?
-                Rearrange("b T c L -> b T (c L)"),
-                nn.LayerNorm(channels * 200),
-                nn.Linear(channels * 200, target_size),
-                nn.GELU()
-            )
+            adapter=EegAdapter(channels=channels, latent_input_size=200, output_size=target_size),
         ),
         supporting_latent_size=supporting_latent_size,
         supporting_modalities=[
