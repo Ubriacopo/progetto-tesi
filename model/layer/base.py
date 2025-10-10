@@ -6,7 +6,7 @@ from torch.nn.functional import softmax
 class SimpleFeedForward(nn.Module):
     def __init__(self, dim: int, mult: int) -> None:
         super().__init__()
-        assert mult > 0, "Multiplicator has to be a positive integer"
+        assert mult > 0, "Multiplication has to be a positive integer"
         x, y = dim, dim * mult
         self.net = nn.Sequential(
             nn.LayerNorm(x),  # Normalize

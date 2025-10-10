@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with_logits
+import torch.nn.functional as F
 
 
 def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
@@ -32,3 +33,22 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
     labels = 2 * torch.eye(B, device=za.device) - torch.ones(B, device=za.device)
     loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
     return loss
+
+
+def masked_info_nce(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
+                    mask_idx_match: tuple[int, int], tau: float = .2) -> Tensor:
+    idx = za_mask.any(dim=mask_idx_match[0]) & zb_mask.any(dim=mask_idx_match[1]).nonzero(as_tuple=True)[0]
+    if idx.numel() == 0:
+        return torch.tensor(.0)
+
+    a = F.normalize(za[idx], p=2, dim=-1)
+    b = F.normalize(zb[idx], p=2, dim=-1)
+    logits = (a @ b.T) / tau
+
+    return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device))
+
+
+def masked_cosine_similarity(za: Tensor, zb: Tensor, present: Tensor):
+    w = present.float()
+    # Masked mean of (1 - cos)
+    return ((1 - F.cosine_similarity(za, zb, dim=-1)) * w).sum() / w.sum().clamp_min(1.0)

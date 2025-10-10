@@ -27,23 +27,34 @@ class PerceiverResamplerConfig:
 class EegAdapter(nn.Module):
     def __init__(self, channels: int, latent_input_size: int, output_size: int):
         super().__init__()
+
+        self.ff = nn.Sequential(
+            nn.LayerNorm(channels * latent_input_size),
+            nn.Linear(channels * latent_input_size, output_size),
+            nn.GELU()
+        )
+
         self.norm = nn.LayerNorm(channels * latent_input_size)
         self.linear = nn.Linear(channels * latent_input_size, output_size)
         self.activation = nn.GELU()
-
+    # TODO Verifica
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> MaskedValue:
+        L = x.shape[-1]
         if mask is not None:
-            x = x * mask[..., None].to(x.dtype)  # zero masked channels first
-
+            x *= mask[..., None].to(x.dtype)  # zero masked channels first
         x = rearrange(x, "b T c L -> b T (c L)")
 
         x = self.norm(x)
         x = self.linear(x)
         x = self.activation(x)
 
-        # TODO Give mask
-        time_mask = mask.any(dim=-1)  # (b, T) - which time steps have ANY valid channel
-        return {"data": x, "mask": time_mask}
+        if mask is not None:
+            mask_flat = mask.repeat_interleave(L, dim=-1)
+            x *= mask_flat.to(x.dtype)
+            # (b, T) - which time steps have ANY valid channel
+            mask = mask.any(dim=-1) if mask is not None else None
+
+        return {"data": x, "mask": mask}
 
 
 class VideoAdapter(nn.Module):
@@ -92,10 +103,10 @@ class TextAdapter(nn.Module):
             self.projection = nn.Linear(perceiver_config.dim, project_out_size)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
-        # Audio embeddings have no further decomposition. We simply add a dim to fit requirements
         y = self.resampler(x=x, mask=mask)
         # TODO This after KD
         y = repeat(y, "b T D -> b T p D", p=64)
         if self.projection is not None:
             y = self.projection(y)
+
         return y
