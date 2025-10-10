@@ -1,0 +1,19 @@
+import dataclasses
+from typing import Tuple, Optional
+
+from main.core_data.media.media import Media
+
+
+@dataclasses.dataclass
+class Video(Media):
+    def export(self, base_path: str, output_path_to_relative: str = None):
+        out_path = f"{base_path}{self.eid}.mp4"
+        self.data.write_videofile(out_path, audio=False, codec="libx264", ffmpeg_params=["-pix_fmt", "yuv420p"], )
+
+    @staticmethod
+    def modality_code() -> str:
+        return "vid"
+
+    fps: int
+    resolution: Tuple[int, int]
+    interval: Optional[tuple[int, int]] = None
