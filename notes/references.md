@@ -57,3 +57,5 @@ I am particularly interested in the trade-offs of using fewer electrodes and if 
 
 
 > ## https://github.com/revidee/pytorch-pyramid-pooling
+
+># https://arxiv.org/abs/2104.11560 

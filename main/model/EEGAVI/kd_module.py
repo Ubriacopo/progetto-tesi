@@ -100,9 +100,9 @@ if __name__ == '__main__':
 
     module = EegAviKdVateMaskedModule(stud, teach)
 
-    dataset = FlexibleEmbeddingsSpecMediaDataset("../../data/AMIGOS/p-interleaved-d/spec.csv", cache_in_ram=True)
+    dataset = FlexibleEmbeddingsSpecMediaDataset("../../../data/amigos/p-interleaved-d/spec.csv", cache_in_ram=True)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
-    vate_dataset = FlexibleEmbeddingsSpecMediaDataset("../../data/AMIGOS/VATE/spec.csv", cache_in_ram=True)
+    vate_dataset = FlexibleEmbeddingsSpecMediaDataset("../../../data/amigos/vate/spec.csv", cache_in_ram=True)
 
     train_loaders = CombinedLoader({
         # TODO Fare in modo che i due dataloader abbiano stesso seed sempre. Cosi da risultare corrette le draws

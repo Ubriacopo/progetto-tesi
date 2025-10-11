@@ -25,30 +25,18 @@ class PerceiverResamplerConfig:
 class EegAdapter(nn.Module):
     def __init__(self, channels: int, latent_input_size: int, output_size: int):
         super().__init__()
-
         self.ff = nn.Sequential(
-            nn.LayerNorm(channels * latent_input_size),
             nn.Linear(channels * latent_input_size, output_size),
-            nn.GELU()
+            nn.GELU(),
+            nn.LayerNorm(output_size),
         )
 
-        self.norm = nn.LayerNorm(channels * latent_input_size)
-        self.linear = nn.Linear(channels * latent_input_size, output_size)
-        self.activation = nn.GELU()
-    # TODO Verifica
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> MaskedValue:
-        L = x.shape[-1]
         if mask is not None:
             x *= mask[..., None].to(x.dtype)  # zero masked channels first
         x = rearrange(x, "b T c L -> b T (c L)")
-
-        x = self.norm(x)
-        x = self.linear(x)
-        x = self.activation(x)
-
+        x = self.ff(x)
         if mask is not None:
-            mask_flat = mask.repeat_interleave(L, dim=-1)
-            x *= mask_flat.to(x.dtype)
             # (b, T) - which time steps have ANY valid channel
             mask = mask.any(dim=-1) if mask is not None else None
 
