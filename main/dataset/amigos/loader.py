@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from moviepy import VideoFileClip
 
+from main.core_data.media.assessment.assessment import Assessment
 from main.dataset.amigos.config import AmigosConfig
 from main.dataset.amigos.utils import extract_trial_data, load_participant_data
 from main.core_data.media.audio.audio import Audio
@@ -47,49 +48,25 @@ class AmigosPointsLoader(DataPointsLoader):
 
             video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
             eeg_data = participant_data[person]["joined_data"][video_index]
+            assessments = participant_data[person]["labels_selfassessment"][video_index]
 
             media_path: str = str(v.resolve())
             clip = VideoFileClip(media_path)
-            vid = Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id)
-            aud = Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id)
 
             # Extract ECG and EEG data + metadata that could be useful
-            info = mne.create_info(
-                ch_names=AmigosConfig.CH_NAMES,
-                ch_types=AmigosConfig.CH_TYPES,
-                sfreq=AmigosConfig.EEG.fs
-            )
+            fs = AmigosConfig.EEG.fs
+            info = mne.create_info(ch_names=AmigosConfig.CH_NAMES, ch_types=AmigosConfig.CH_TYPES, sfreq=fs)
             raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
-
-            eeg = EEG(
-                eid=experiment_id,
-                data=raw.copy().pick(["eeg"]),
-                fs=AmigosConfig.EEG.fs,
-            )
-
-            ecg = ECG(
-                # Signal Data
-                eid=experiment_id,
-                data=raw.copy().pick(["ecg"]),
-                fs=AmigosConfig.EEG.fs,
-                # ECG Specific
-                leads=AmigosConfig.LEAD_NAMES,
-                patient_gender=user_metadata["Gender"][0].upper(),
-                patient_age=user_metadata["Age"][0],
-            )
-
-            txt = Text(
-                eid=experiment_id,
-                data=clip.audio.copy(),
-                base_audio=clip.audio.copy()
-            )
 
             # Take from Audio
             yield FlexibleDatasetPoint(
                 experiment_id,
-                eeg.as_mod_tuple(),
-                ecg.as_mod_tuple(),
-                vid.as_mod_tuple(),
-                aud.as_mod_tuple(),
-                txt.as_mod_tuple()
+                EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=AmigosConfig.EEG.fs, ).as_mod_tuple(),
+                ECG(eid=experiment_id, data=raw.copy().pick(["ecg"]), fs=AmigosConfig.EEG.fs,
+                    leads=AmigosConfig.LEAD_NAMES, patient_gender=user_metadata["Gender"][0].upper(),
+                    patient_age=user_metadata["Age"][0], ).as_mod_tuple(),
+                Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
+                Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
+                Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
+                Assessment(data=assessments, eid=experiment_id).as_mod_tuple(),
             )

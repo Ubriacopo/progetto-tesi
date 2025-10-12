@@ -1,5 +1,6 @@
 from dataclasses import asdict
 
+import torch
 from torch import nn
 
 from main.core_data.media.assessment.assessment import Assessment
@@ -26,3 +27,19 @@ class RemapFieldToRange(nn.Module):
         c, d = self.new_range
         x.__setattr__(self.field_name, (getattr(x, self.field_name) - a) * d / b)
         return x
+
+
+class SliceAssessments(nn.Module):
+    def __init__(self, max_idx: int):
+        super().__init__()
+        self.max_idx: int = max_idx
+
+    def forward(self, x: Assessment) -> Assessment:
+        x.data = x.data[:self.max_idx]
+        return x
+
+
+class ToTensor(nn.Module):
+    # noinspection PyMethodMayBeStatic
+    def forward(self, x: Assessment):
+        return torch.tensor(x.data)

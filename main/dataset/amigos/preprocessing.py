@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from einops.layers.torch import Rearrange
+from torch import nn
+from torchvision.transforms import v2
+
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
+from main.core_data.media.assessment.assessment import Assessment
+from main.core_data.media.assessment.transform import RemapFieldToRange, SliceAssessments, ToTensor
 from main.core_data.media.audio import AudTargetConfig
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
@@ -19,6 +25,14 @@ from main.core_data.media.video.default_transform_pipe import vid_vivit_interlea
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.dataset.amigos.config import AmigosConfig
 from main.utils.args import safe_call
+
+
+def assessment_transform_pipe():
+    return Assessment.modality_code(), nn.Sequential(
+        SliceAssessments(max_idx=4),  # Pick first 4 dimensions that we know are correct
+        ToTensor(),  # Go for tensor structure
+        Rearrange(f"a v d l -> {Assessment.default_order()}")  # Sort them to canonical order
+    )
 
 
 @safe_call
@@ -46,7 +60,8 @@ def amigos_interleaved_preprocessor(
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
-            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder))
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
+            assessment_transform_pipe(),
         ),
         extraction_data_folder=extraction_data_folder
     )
