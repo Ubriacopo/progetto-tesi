@@ -19,7 +19,7 @@ vid_config:
   max_frames: 32
 
 eeg_config:
-  cbramod_weights_path: dependencies/cbramod/pretrained_weights.pth
+  cbramod_weights_path: main/dependencies/cbramod/pretrained_weights.pth
   max_segments: 10
 
 ecg_config:

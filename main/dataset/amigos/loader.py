@@ -68,5 +68,5 @@ class AmigosPointsLoader(DataPointsLoader):
                 Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
                 Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
                 Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
-                Assessment(data=assessments, eid=experiment_id).as_mod_tuple(),
+                Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
             )

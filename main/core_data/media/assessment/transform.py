@@ -1,15 +1,7 @@
-from dataclasses import asdict
-
 import torch
 from torch import nn
 
 from main.core_data.media.assessment.assessment import Assessment
-
-
-class ToObjectDict(nn.Module):
-    # noinspection PyMethodMayBeStatic
-    def forward(self, x: Assessment):
-        return asdict(x)
 
 
 class RemapFieldToRange(nn.Module):
@@ -39,7 +31,20 @@ class SliceAssessments(nn.Module):
         return x
 
 
-class ToTensor(nn.Module):
+class ToTensorData(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Assessment):
-        return torch.tensor(x.data)
+        x.data = torch.tensor(x.data)
+        return x
+
+
+class PermuteAssessments(nn.Module):
+    def __init__(self, original_order: str, target_order: str = Assessment.default_order()):
+        super().__init__()
+        self.original_order: str = original_order.replace(" ", "")
+        self.target_order: str = target_order.replace(" ", "")
+
+    def forward(self, x: Assessment):
+        indices = torch.tensor([self.original_order.index(item) for item in self.target_order])
+        x.data = x.data[indices]
+        return x

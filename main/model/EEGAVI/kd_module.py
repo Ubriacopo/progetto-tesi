@@ -36,9 +36,9 @@ class EegAviKdVateMaskedModule(pl.LightningModule):
         return torch.optim.AdamW(self.student.parameters(), lr=self.lr)
 
     def training_step(self, batch: dict[str, dict], batch_idx) -> STEP_OUTPUT:
-        stud_out: EEGAVIOutputs = self.student(batch["sup"], use_kd=True)
+        stud_out: EEGAVIOutputs = self.student(batch["student"], use_kd=True)
         with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["kd"])
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
 
         # KD Loss
         kd_loss = .0
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     train_loaders = CombinedLoader({
         # TODO Fare in modo che i due dataloader abbiano stesso seed sempre. Cosi da risultare corrette le draws
         #           o fare wrapper dataset (funziona anche questo).
-        "sup": dataloader, "kd": DataLoader(vate_dataset, batch_size=4, shuffle=True)
+        "student": dataloader, "teacher": DataLoader(vate_dataset, batch_size=4, shuffle=True)
     }, mode="max_size_cycle")
 
     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=10)

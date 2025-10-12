@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import torch
 from einops.layers.torch import Rearrange
 from torch import nn
 from torchvision.transforms import v2
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.assessment.transform import RemapFieldToRange, SliceAssessments, ToTensor
+from main.core_data.media.assessment.transform import RemapFieldToRange, SliceAssessments, ToTensorData, \
+    PermuteAssessments
 from main.core_data.media.audio import AudTargetConfig
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
@@ -30,8 +32,8 @@ from main.utils.args import safe_call
 def assessment_transform_pipe():
     return Assessment.modality_code(), nn.Sequential(
         SliceAssessments(max_idx=4),  # Pick first 4 dimensions that we know are correct
-        ToTensor(),  # Go for tensor structure
-        Rearrange(f"a v d l -> {Assessment.default_order()}")  # Sort them to canonical order
+        ToTensorData(),  # Go for tensor structure
+        PermuteAssessments(original_order="a v d l")  # Sort them to canonical order. Used notation like einops.
     )
 
 
@@ -57,6 +59,7 @@ def amigos_interleaved_preprocessor(
                                source_fs=AmigosConfig.EEG.fs, max_length=output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
             txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
+            (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data)))
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",

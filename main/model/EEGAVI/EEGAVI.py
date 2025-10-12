@@ -264,3 +264,26 @@ class EEGAVI(nn.Module):
 
         return_object = EEGAVIOutputs(embeddings=z, kd_outs=kd_outs, multimodal_outs=multimodal_outputs)
         return return_object if not return_dict else asdict(return_object)
+
+
+@dataclasses.dataclass
+class WeaklySupervisedEEGAVIOutputs(EEGAVIOutputs):
+    pred: torch.Tensor
+
+
+class WeaklySupervisedEEGAVI(nn.Module):
+    def __init__(self, eeg_avi: EEGAVI, hidden_size: int, supervised_target_size: int = 4):
+        super().__init__()
+        self.eeg_avi: EEGAVI = eeg_avi
+        self.prediction_head = nn.Sequential(
+            nn.Linear(eeg_avi.pivot_latent_size, hidden_size),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, supervised_target_size)
+        )
+
+    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
+        outs: EEGAVIOutputs = self.eeg_avi(x, use_kd=use_kd, return_dict=False)
+        pred = self.prediction_head(outs.embeddings)
+        o = WeaklySupervisedEEGAVIOutputs(pred=pred, **asdict(outs))
+        return o if not return_dict else asdict(o)
