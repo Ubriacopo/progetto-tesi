@@ -5,6 +5,7 @@ import numpy as np
 from moviepy import VideoFileClip
 
 from main.core_data.data_point import FlexibleDatasetPoint
+from main.core_data.media.assessment.assessment import Assessment
 from main.core_data.media.eeg import EEG
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.video import Video
@@ -38,5 +39,6 @@ class DeapPointsLoader(DataPointsLoader):
                     eid,
                     EEG(data=trial, fs=128, eid=eid).as_mod_tuple(),
                     Video(data=clip, fps=fps, resolution=size, eid=eid).as_mod_tuple(),
+                    Assessment(data=labels, eid=eid).as_mod_tuple(),
                     ("labels", {"values": labels}),
                 )

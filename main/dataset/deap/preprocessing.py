@@ -1,4 +1,11 @@
+import torch
+from torch import nn
+from torchvision.transforms import v2
+
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
+from main.core_data.media.assessment.assessment import Assessment
+from main.core_data.media.assessment.default_transform_pipe import assessment_transform_pipe
+from main.core_data.media.assessment.transform import RemapFieldToRange, ToObjectDict
 from main.dataset.deap.config import DeapConfig
 from main.core_data.media.eeg.config import EegTargetConfig
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
@@ -25,6 +32,7 @@ def deap_interleaved_preprocessor(
                                source_fs=DeapConfig.EEG.fs, max_length=output_max_length),
             # Audio and text do not exist so we don't use them.
             # TODO Check better if it was lost during processing.
+            assessment_transform_pipe()
         ),
         extraction_data_folder=extraction_data_folder
     )
