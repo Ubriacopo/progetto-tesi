@@ -36,16 +36,16 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
 
 
 def masked_info_nce(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
-                    mask_idx_match: tuple[int, int], tau: float = .2) -> Tensor:
-    idx = za_mask.any(dim=mask_idx_match[0]) & zb_mask.any(dim=mask_idx_match[1]).nonzero(as_tuple=True)[0]
-    if idx.numel() == 0:
-        return torch.tensor(.0)
+                    mask_idx_match: tuple[int, int], tau: float = .2) -> tuple[Tensor, int]:
+    idx = (za_mask.any(dim=mask_idx_match[0]) & zb_mask.any(dim=mask_idx_match[1])).nonzero(as_tuple=True)[0]
+    if idx.numel() <= 1:
+        return torch.tensor(.0, device=za.device), 0
 
     a = F.normalize(za[idx], p=2, dim=-1)
-    b = F.normalize(zb[idx], p=2, dim=-1)
+    b = F.normalize(zb[idx].detach(), p=2, dim=-1)
     logits = (a @ b.T) / tau
-
-    return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device))
+    # Return the INFO NCE loss + valid number of rows for this loss calc.
+    return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device)), idx.numel()
 
 
 def masked_cosine_similarity(za: Tensor, zb: Tensor, present: Tensor):

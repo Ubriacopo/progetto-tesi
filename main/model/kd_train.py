@@ -1,6 +1,6 @@
 from typing import Literal
 
-import pytorch_lightning as L
+import lightning as L
 import torch.nn.functional as F
 import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
@@ -23,10 +23,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                  teacher: MaskedContrastiveModel,
                  kd_loss_weight: float,
                  fusion_loss_weight: float,
-                 weakly_supervised_loss: float,
+                 weakly_supervised_weight: float,
                  ecg_correction_weight: float,
-                 kd_temperature: float = .2
-                 ):
+                 lr: float = 1e-4,
+                 kd_temperature: float = .2):
         super().__init__()
         self.student = student
         self.teacher = teacher
@@ -34,26 +34,32 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Weight terms for loss parts
         self.alpha: float = kd_loss_weight
         self.beta: float = fusion_loss_weight
-        self.gamma: float = weakly_supervised_loss
+        self.gamma: float = weakly_supervised_weight
         self.theta: float = ecg_correction_weight
         self.kd_temperature = kd_temperature
+        self.lr = lr
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         return torch.optim.AdamW(self.student.parameters(), lr=self.lr)
 
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) \
             -> float | torch.Tensor:
-        loss = .0
+        loss, w = .0, 0
         key: Literal['vid', 'txt', 'aud']
         for key in teacher_out.keys():
             if key not in student_out:
                 continue  # Keys do never match so no kd on this.
-            loss += masked_info_nce(
+            loss_k, n_rows = masked_info_nce(
                 za=student_out[key]["data"], za_mask=student_out[key]["mask"],
                 zb=teacher_out[key]["data"], zb_mask=teacher_out[key]["mask"],
                 mask_idx_match=(1, 0), tau=self.kd_temperature
             )
 
+            loss += loss_k * n_rows  # Weighed by number of valid rows
+            w += n_rows  # Track total number of valid rows
+
+        loss = (loss / w) if w != 0 else student_out[next(iter(student_out.keys()))]["data"].new_zeros()
+        self.log("kd_loss", loss, on_epoch=True)
         return loss * self.alpha
 
     # TODO ma va mascherato? Non credo da come ho fatto pipe di EEG ma controlla
@@ -84,13 +90,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         # Normalize by the correct number of modalities used
         loss = loss / max(present_modalities, 1)
+        self.log("unweighted_fusion_loss", loss, on_epoch=True)
         return loss * self.beta
 
     def compute_supervised_loss(self, pred: torch.Tensor, target: torch.Tensor):
         # Compute concordance correlation coefficient that measures the agreement between two variables.
         # In emotion regression (valence, arousal, dominance), this is the standard metric and loss used in benchmarks. TODO verify
         # Correlation and agreement rather than absolute distance
-        return ConcordanceCorrCoef()(pred, target) * self.gamma
+        ccc = ConcordanceCorrCoef(num_outputs=pred.shape[1]).to(pred.device)(pred, target).mean()
+        self.log("unweighted_supervised_loss", ccc, on_epoch=True)
+        return (1 - ccc) * self.gamma
 
     def training_step(self, batch, batch_idx):
         stud_out: WeaklySupervisedEEGAVIOutputs = self.student(batch["student"], use_kd=True)
@@ -112,6 +121,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 present=stud_out.multimodal_outs["eeg"]["mask"] & stud_out.multimodal_outs["ecg"]["mask"].any(dim=-1)
             )
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, prog_bar=True, on_epoch=True)
 
         return loss

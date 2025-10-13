@@ -6,7 +6,10 @@ from torch.utils.data import Dataset
 class KdDatasetWrapper(Dataset):
     def __init__(self, **datasets: Dataset):
         """
+        Collects multiple datasets to a single dataset so that the randomization of indexes
+        is respected always (student and teacher, for example, will always share same index).
 
+        :param datasets: The datasets to aggregate together.
         """
         self.datasets = datasets
 
@@ -23,7 +26,7 @@ class KdDatasetWrapper(Dataset):
         self.length = first_len
 
     def __getitem__(self, idx: int) -> dict:
-        return {key: ds[idx] for key, ds in self.datasets}
+        return {key: ds[idx] for key, ds in self.datasets.items()}
 
     def __len__(self):
         return self.length

@@ -135,6 +135,7 @@ class EEGAVI(nn.Module):
         masks: list[torch.Tensor] = []
 
         b = next(iter(x.values()))["data"].shape[0]
+        # todo refactor to class that randomly disables modality so this is not part of EEG model def?
         keep = self.select_keeps(b, base.device)
         for m, adapter in enumerate(self.supporting_modalities):
             key: str = adapter.get_code()
@@ -223,5 +224,5 @@ class WeaklySupervisedEEGAVI(nn.Module):
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
         outs: EEGAVIOutputs = self.eeg_avi(x, use_kd=use_kd, return_dict=False)
         pred = self.prediction_head(outs.embeddings)
-        o = WeaklySupervisedEEGAVIOutputs(pred=pred, **asdict(outs))
+        o = WeaklySupervisedEEGAVIOutputs(pred=pred, **vars(outs))
         return o if not return_dict else asdict(o)

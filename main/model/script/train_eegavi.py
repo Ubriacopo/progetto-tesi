@@ -1,33 +1,44 @@
 import dataclasses
 
 import hydra
+import lightning as L
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
-import lightning as L
+from torchview import draw_graph
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
-from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI
-from main.model.EEGAVI.kd_module import EegAviKdVateMaskedModule
+from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI, \
+    get_interleaved_weakly_supervised
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
+from main.model.kd_train import EegAviKdVateMaskedSemiSupervisedModule
 
 
 @dataclasses.dataclass
 class KdConfig:
     base_path: str
+    use_base_path: bool
 
-    batch_size: int
     student_dataset_path: list[str]
     teacher_dataset_path: list[str]
     teacher_weights_path: str
 
-    use_base_path: bool = True
+    # Args for training.
+    lr: float
+    batch_size: int
+
+    # Args for loss computation (weighting)
+    kd_loss_weight: float
+    fusion_loss_weight: float
+    weakly_supervised_weight: float
+    ecg_correction_weight: float
+    kd_temperature: float
 
 
 SEED = 42
 
-# todo far partire scritp
-@hydra.main(config_path="config", config_name="prepare_dataset_config_pre_extracted")
+
+@hydra.main(config_path="config", config_name="train_kd")
 def main(cfg: KdConfig):
     if cfg.use_base_path:
         for i in range(cfg.student_dataset_path.__len__()):
@@ -35,15 +46,22 @@ def main(cfg: KdConfig):
             cfg.teacher_dataset_path[i] = cfg.base_path + cfg.teacher_dataset_path[i]
         cfg.teacher_weights_path = cfg.base_path + cfg.teacher_weights_path
 
-    torch.manual_seed(SEED)
-    student = get_interleaved_EEG_AVI(target_size=384, supporting_latent_size=384)
+    torch.manual_seed(SEED)  # Reproducibility
+    student = get_interleaved_weakly_supervised(target_size=384, supporting_latent_size=384)
     teacher = MaskedContrastiveModel(hidden_channels=200, out_channels=100)
-    # "../../dependencies/VATE/best_model_contrastive.pt"
+
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
-    module = EegAviKdVateMaskedModule(student, teacher)
-
-    # "../../../data/amigos/p-interleaved-d/spec.csv"
+    module = EegAviKdVateMaskedSemiSupervisedModule(
+        student=student,
+        teacher=teacher,
+        kd_loss_weight=cfg.kd_loss_weight,
+        fusion_loss_weight=cfg.fusion_loss_weight,
+        weakly_supervised_weight=cfg.weakly_supervised_weight,
+        ecg_correction_weight=cfg.ecg_correction_weight,
+        lr=cfg.lr,
+        kd_temperature=cfg.kd_temperature,
+    )
 
     student_dataset = ConcatDataset([
         FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, cache_in_ram=True)
@@ -57,6 +75,21 @@ def main(cfg: KdConfig):
 
     dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
     train_dataloader = DataLoader(dataset_wrapper, batch_size=cfg.batch_size, shuffle=True)
+    # Plot trained model structure and store to file
+    model_graph = draw_graph(
+        student.eeg_avi,
+        input_data={"x": next(iter(train_dataloader))["student"], "use_kd": True},
+        filename="student_model",
+        directory="structure",
+        save_graph=True,
+        depth=1,
+        expand_nested=True,
+        hide_module_functions=True
+    )
 
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=10)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=10, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
+
+
+if __name__ == "__main__":
+    main()

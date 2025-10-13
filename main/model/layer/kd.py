@@ -32,7 +32,9 @@ class KDHead(nn.Module):
                 mask4d = mask4d[:, :, :, None]  # (B, T, P, 1)
 
             x = self.masked_mean(x, mask4d, dim=-2, eps=self.eps)  # → (B,T,D)
-            out_mask = mask4d
+            # Update mask after pooling over P dimension
+            if mask4d is not None:
+                out_mask = mask4d.squeeze(-1).any(dim=-1, keepdim=True)  # (B,T,1)
 
         if x.dim() == 3 and len(self.target_shape) == 2:
             mask3d = None
@@ -42,7 +44,9 @@ class KDHead(nn.Module):
                 mask3d = mask3d[:, :, None]  # (B, T, 1)
 
             x = self.masked_mean(x, mask3d, dim=-2, eps=self.eps)  # → (B,T,D)
-            out_mask = mask3d
+            # Update mask after pooling over T dimension
+            if mask3d is not None:
+                out_mask = mask3d.any(dim=1, keepdim=True)  # (B,1)
 
         if x.dim() != len(self.target_shape):
             raise ValueError(f"Shape mismatch after pooling: x:{tuple(x.shape)} vs target:{self.target_shape}")
@@ -54,7 +58,7 @@ class KDHead(nn.Module):
 
         if y.dim() != len(self.target_shape):
             y = y.squeeze(dim=-1)
-        if out_mask.dim() != len(self.target_shape):
+        if out_mask != None and out_mask.dim() > len(self.target_shape):
             out_mask = out_mask.squeeze(dim=-1)
 
         return y if not self.return_masks else {"data": y, "mask": out_mask}
