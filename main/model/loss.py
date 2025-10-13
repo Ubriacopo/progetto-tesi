@@ -37,7 +37,7 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
 
 def masked_info_nce(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
                     mask_idx_match: tuple[int, int], tau: float = .2) -> tuple[Tensor, int]:
-    idx = (za_mask.any(dim=mask_idx_match[0]) & zb_mask.any(dim=mask_idx_match[1])).nonzero(as_tuple=True)[0]
+    idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
     if idx.numel() <= 1:
         return torch.tensor(.0, device=za.device), 0
 

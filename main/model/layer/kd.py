@@ -17,10 +17,21 @@ class KDHead(nn.Module):
     @staticmethod
     def masked_mean(x: torch.Tensor, mask: torch.Tensor, dim: int, eps: float):
         if mask is None:
-            return x.mean(dim=dim)
+            pooled = x.mean(dim=dim)
+            # Mask of the valid samples of x is always ones as maskless
+            valid = torch.ones_like(pooled.select(-1, 0), dtype=torch.bool)
+            return pooled, valid
 
         mask = mask.to(dtype=x.dtype)
-        return (x * mask).sum(dim=dim) / mask.sum(dim=dim).clamp_min(eps)
+        mask_sum = mask.sum(dim=dim, keepdim=True)
+
+        valid = mask_sum > 0
+
+        numerator = (x * mask).sum(dim=dim)
+        denominator = mask_sum.squeeze(dim).clamp_min(eps)
+
+        pooled = torch.where(valid.squeeze(dim), numerator / denominator, torch.zeros_like(numerator))
+        return pooled, valid.squeeze(dim)
 
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> dict[str, torch.Tensor] | torch.Tensor:
         out_mask = mask
@@ -31,10 +42,8 @@ class KDHead(nn.Module):
                 assert mask4d.dim() == 3, "mask must be (B,T) or (B,T,P)"
                 mask4d = mask4d[:, :, :, None]  # (B, T, P, 1)
 
-            x = self.masked_mean(x, mask4d, dim=-2, eps=self.eps)  # → (B,T,D)
-            # Update mask after pooling over P dimension
-            if mask4d is not None:
-                out_mask = mask4d.squeeze(-1).any(dim=-1, keepdim=True)  # (B,T,1)
+            x, valid_tp = self.masked_mean(x, mask4d, dim=-2, eps=self.eps)  # (B,T,D), valid_tp: (B,T,1)
+            out_mask = valid_tp
 
         if x.dim() == 3 and len(self.target_shape) == 2:
             mask3d = None
@@ -43,10 +52,12 @@ class KDHead(nn.Module):
                 assert mask3d.dim() == 2, "mask must be (B,T) or (B,T,P)"
                 mask3d = mask3d[:, :, None]  # (B, T, 1)
 
-            x = self.masked_mean(x, mask3d, dim=-2, eps=self.eps)  # → (B,T,D)
-            # Update mask after pooling over T dimension
-            if mask3d is not None:
-                out_mask = mask3d.any(dim=1, keepdim=True)  # (B,1)
+            # prefer the already reduced mask if we have it
+            if out_mask is not None:
+                mask3d = out_mask[:, :, None].any(dim=-1)  # (B,T,1)
+
+            x, valid_t = self.masked_mean(x, mask3d, dim=-2, eps=self.eps)  # (B,D), valid_t: (B,1)
+            out_mask = valid_t.squeeze(-1)
 
         if x.dim() != len(self.target_shape):
             raise ValueError(f"Shape mismatch after pooling: x:{tuple(x.shape)} vs target:{self.target_shape}")
@@ -58,7 +69,7 @@ class KDHead(nn.Module):
 
         if y.dim() != len(self.target_shape):
             y = y.squeeze(dim=-1)
-        if out_mask != None and out_mask.dim() > len(self.target_shape):
-            out_mask = out_mask.squeeze(dim=-1)
+        if out_mask is None:
+            raise ValueError("Somehow you got no mask")
 
         return y if not self.return_masks else {"data": y, "mask": out_mask}

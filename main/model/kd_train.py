@@ -52,7 +52,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             loss_k, n_rows = masked_info_nce(
                 za=student_out[key]["data"], za_mask=student_out[key]["mask"],
                 zb=teacher_out[key]["data"], zb_mask=teacher_out[key]["mask"],
-                mask_idx_match=(1, 0), tau=self.kd_temperature
+                mask_idx_match=(0, 0), tau=self.kd_temperature
             )
 
             loss += loss_k * n_rows  # Weighed by number of valid rows
