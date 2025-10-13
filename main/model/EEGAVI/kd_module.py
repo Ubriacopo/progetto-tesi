@@ -1,5 +1,6 @@
 from typing import Literal
 
+from torchmetrics.regression import ConcordanceCorrCoef
 import lightning as pl
 import torch
 import torch.nn.functional as F
