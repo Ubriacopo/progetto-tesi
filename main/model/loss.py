@@ -34,7 +34,7 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
     loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
     return loss
 
-
+# todo riverifica
 def masked_info_nce(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
                     mask_idx_match: tuple[int, int], tau: float = .2) -> tuple[Tensor, int]:
     idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]

@@ -32,7 +32,7 @@ class KDHead(nn.Module):
 
         pooled = torch.where(valid.squeeze(dim), numerator / denominator, torch.zeros_like(numerator))
         return pooled, valid.squeeze(dim)
-
+    # todo review  dopo modifiche fatte
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> dict[str, torch.Tensor] | torch.Tensor:
         out_mask = mask
         if x.dim() == 4 and len(self.target_shape) <= 3:
