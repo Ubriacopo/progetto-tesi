@@ -60,11 +60,12 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
         loss = .0
         present_modalities = 0
+        # todo revisiona ci sono errorini
         # todo ma giusto cosi anche se maschero a riga? metti che modlaita per sample x manca?
         for key, value in modality_outputs.items():
             z, mask = value["data"], value["mask"]
             if mask.dim() == 3:
-                mask = mask[:, :, 0].squeeze()
+                mask = mask[:, :, 0].squeeze(dim=-1)
             # Usually stud_out_multimodal out: (b, T, P, D) (Differs for EEG)
             # Patch mean: (Has no mask patches are always max rank).
             if z.dim() > 3:

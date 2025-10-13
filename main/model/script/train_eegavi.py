@@ -26,7 +26,7 @@ class KdConfig:
 
 SEED = 42
 
-
+# todo far partire scritp
 @hydra.main(config_path="config", config_name="prepare_dataset_config_pre_extracted")
 def main(cfg: KdConfig):
     if cfg.use_base_path:
