@@ -69,7 +69,7 @@ def amigos_interleaved_preprocessor(
         extraction_data_folder=extraction_data_folder
     )
 
-
+# todo add index to output (cosi da verificare corretto allineamnto tra i ds)
 @safe_call
 def amigos_vate_basic_preprocessor(output_path: str, extraction_data_folder: str,
                                    vid_config: VidTargetConfig = VidTargetConfig(), ):

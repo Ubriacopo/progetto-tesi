@@ -26,6 +26,7 @@ class KdConfig:
     # Args for training.
     lr: float
     batch_size: int
+    epochs: int
 
     # Args for loss computation (weighting)
     kd_loss_weight: float
@@ -76,18 +77,18 @@ def main(cfg: KdConfig):
     dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
     train_dataloader = DataLoader(dataset_wrapper, batch_size=cfg.batch_size, shuffle=True)
     # Plot trained model structure and store to file
-    model_graph = draw_graph(
-        student.eeg_avi,
-        input_data={"x": next(iter(train_dataloader))["student"], "use_kd": True},
-        filename="student_model",
-        directory="structure",
-        save_graph=True,
-        depth=1,
-        expand_nested=True,
-        hide_module_functions=True
-    )
+    # model_graph = draw_graph(
+    #    student.eeg_avi,
+    #    input_data={"x": next(iter(train_dataloader))["student"], "use_kd": True},
+    #    filename="student_model",
+    #    directory="structure",
+    #    save_graph=True,
+    #    depth=1,
+    #    expand_nested=True,
+    #    hide_module_functions=True
+    # )
 
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=10, log_every_n_steps=24)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
 
 

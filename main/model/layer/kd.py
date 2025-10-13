@@ -6,7 +6,7 @@ from torch import nn
 
 class KDHead(nn.Module):
     def __init__(self, input_size: int, target_shape: Tuple[int, ...], transform: nn.Module = None,
-                 normalize: bool = True, return_masks: bool = True):
+                 normalize: bool = False, return_masks: bool = True):
         super(KDHead, self).__init__()
         self.transform = nn.Linear(input_size, target_shape[-1]) if transform is None else transform
         self.target_shape = target_shape
@@ -18,7 +18,6 @@ class KDHead(nn.Module):
     def masked_mean(x: torch.Tensor, mask: torch.Tensor, dim: int, eps: float):
         if mask is None:
             pooled = x.mean(dim=dim)
-            # Mask of the valid samples of x is always ones as maskless
             valid = torch.ones_like(pooled.select(-1, 0), dtype=torch.bool)
             return pooled, valid
 
@@ -32,6 +31,7 @@ class KDHead(nn.Module):
 
         pooled = torch.where(valid.squeeze(dim), numerator / denominator, torch.zeros_like(numerator))
         return pooled, valid.squeeze(dim)
+
     # todo review  dopo modifiche fatte
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> dict[str, torch.Tensor] | torch.Tensor:
         out_mask = mask

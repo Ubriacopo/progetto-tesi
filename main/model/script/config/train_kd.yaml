@@ -11,9 +11,10 @@ teacher_dataset_path: [
   # "data/deap/vate/spec.csv"
 ]
 # Training infos
-lr: 1e-3
+lr: 1e-4
 kd_loss_weight: 1.0
 fusion_loss_weight: 1.0
 weakly_supervised_weight: 0.5
 ecg_correction_weight: 0.2
-kd_temperature: 0.1
+kd_temperature: 0.05
+epochs: 20

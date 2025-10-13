@@ -9,7 +9,7 @@ from torchmetrics import ConcordanceCorrCoef
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.EEGAVI.EEGAVI import WeaklySupervisedEEGAVI, WeaklySupervisedEEGAVIOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import masked_info_nce, siglip, masked_cosine_similarity
+from main.model.loss import masked_info_nce_2d, siglip, masked_cosine_similarity, diagnose_siglip
 from main.utils.data import MaskedValue
 
 
@@ -40,6 +40,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.lr = lr
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
+        # todo warmup lr
         return torch.optim.AdamW(self.student.parameters(), lr=self.lr)
 
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) \
@@ -49,12 +50,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         for key in teacher_out.keys():
             if key not in student_out:
                 continue  # Keys do never match so no kd on this.
-            loss_k, n_rows = masked_info_nce(
+            loss_k, n_rows = masked_info_nce_2d(
                 za=student_out[key]["data"], za_mask=student_out[key]["mask"],
                 zb=teacher_out[key]["data"], zb_mask=teacher_out[key]["mask"],
-                mask_idx_match=(0, 0), tau=self.kd_temperature
+                tau=self.kd_temperature
             )
-
+            # todo possibile problema potrebbe essere dovuto a batch size piccola:
+            # Option 1: Gradient Accumulation (Recommended) Simulate larger batches without memory increase:
+            #       Memory Bank alternativa piu robusta (Al momento siamo in un punto "good enough" per batch che abbiamo)
             loss += loss_k * n_rows  # Weighed by number of valid rows
             w += n_rows  # Track total number of valid rows
 
@@ -68,8 +71,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         present_modalities = 0
         # todo revisiona ci sono errorini
         # todo ma giusto cosi anche se maschero a riga? metti che modlaita per sample x manca?
+
+        # TODO: Broken fusion module somehow.
         for key, value in modality_outputs.items():
             z, mask = value["data"], value["mask"]
+
             if mask.dim() == 3:
                 mask = mask[:, :, 0].squeeze(dim=-1)
             # Usually stud_out_multimodal out: (b, T, P, D) (Differs for EEG)
@@ -80,13 +86,18 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             w = mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)  # Normalization factor
             z = (z * mask.float().unsqueeze(-1)).sum(dim=-2) / w
-            z = F.normalize(z, dim=-1)
 
-            valid = mask.any(dim=1)
-            if valid.any():
-                # stud.out.embeddings: (b, D) already. No need for further transformations.
-                loss += siglip(fused_output[valid], z[valid])
-                present_modalities += 1
+            z_norms = z.norm(dim=-1)
+            valid = (mask.any(dim=1)) & (z_norms > 1e-6)
+            if valid.sum() == 0:
+                continue
+
+            z_valid = z[valid]
+            z_valid = F.normalize(z_valid, p=2, dim=-1)
+            modality_loss = diagnose_siglip(fused_output[valid], z_valid)
+
+            loss += modality_loss
+            present_modalities += 1
 
         # Normalize by the correct number of modalities used
         loss = loss / max(present_modalities, 1)
