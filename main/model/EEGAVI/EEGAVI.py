@@ -27,7 +27,7 @@ class EEGAVI(nn.Module):
                  xattn_blocks: int | list[GatedXAttentionCustomArgs],
                  remap_timesteps: int,
                  use_modality_encoder: bool = True,
-                 drop_p: float = 0.1
+                 drop_p: float = 0.0
                  ):
         """
         EEGAVI behaves like Flamingo models. It has a main feature space that acts as query in the attn mechanism.

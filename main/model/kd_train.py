@@ -31,8 +31,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         super().__init__()
         self.student = student
         self.teacher = teacher
-        # TODO Find defaults
-
+        # TODO Find defaults (questi sono per test a b=1)
         self.siglip_loss = SiglipLoss(init_tau=0.2, stop_grad_target=True)
 
         # Weight terms for loss parts
