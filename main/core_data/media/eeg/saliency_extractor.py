@@ -143,7 +143,7 @@ class EEGFeatureExtractor:
             e = s + int(round(duration * fs))
             i0 = max(0, (s - window) // hop + 1 if s > 0 else 0)
             i1 = min(nF, e // hop + 1)
-            if 'BAD_flat' in description or 'BAD' in description and 'muscle' not in description:
+            if ('BAD_flat' in description) or (('BAD' in description) and ('muscle' not in description)):
                 hard[i0:i1] = True
             if 'muscle' in description:
                 w[i0:i1] = np.minimum(w[i0:i1], 0.4)
