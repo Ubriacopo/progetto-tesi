@@ -63,14 +63,13 @@ class EEGFeatureExtractor:
     @staticmethod
     def poisson_disk_select(times: list, score: np.ndarray, min_gap_s: float, need_n: int, fs: int):
         keep_idx, keep_times, last_end = [], [], -np.inf
-        order = np.argsort(score)[::-1]
-
         gap = int(round(min_gap_s * fs))
-        for i in order:
-            t = times[i]
+
+        for sorted_idx in np.argsort(score)[::-1]:
+            t = times[sorted_idx]
 
             if all(abs(t - kt) >= gap for kt in keep_times):
-                keep_idx.append(i)
+                keep_idx.append(sorted_idx)
                 keep_times.append(t)
 
                 if len(keep_idx) == need_n:
@@ -187,6 +186,7 @@ class EEGFeatureExtractor:
 
     def _stft_features(self, duration_s: float, hop_s: float, bands=((0.5, 4), (4, 8), (8, 13), (13, 30))):
         x, fs = self.raw.get_data(picks='eeg'), self.raw.info['sfreq']
+        # Normalize
         x = (x - x.mean(axis=1, keepdims=True)) / (x.std(axis=1, keepdims=True) + self.epsilon)
         C, T = x.shape
 
