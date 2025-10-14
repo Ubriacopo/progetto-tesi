@@ -95,8 +95,7 @@ class EEGFeatureExtractor:
                 x = a[c, :, ftr]
                 med = np.array([np.median(x[max(0, i - window):i + 1]) for i in range(N)])
                 mad = np.array([np.median(np.abs(x[max(0, i - window):i + 1] - med[i])) for i in range(N)])
-                mad = mad + self.epsilon  # Ad a minimum term
-                Z[c, :, ftr] = (x - med) / (1.4826 * mad)
+                Z[c, :, ftr] = (x - med) / (1.4826 * (mad + self.epsilon))
 
         return Z
 
