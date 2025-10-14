@@ -17,14 +17,12 @@ class EEGFeatureExtractor:
         self.raw = raw.copy().load_data()
 
         if weights is not None and weights.shape[0] != 5:
-            raise ValueError(f"The shape of weights should be of 9 not {weights.shape[0]}")
+            raise ValueError(f"The shape of weights should be of 5 not {weights.shape[0]}")
 
-        self.weights: np.ndarray = weights
+        self.weights: Optional[np.ndarray] = weights
         if self.weights is None:
-            self.weights = np.array(
-                # Entropy - Spectral Flux - RMS - Line Length - TKEO (Teager-Kaiser)
-                [-0.4, 1.5, 0.7, 1.0, 1.0]
-            )
+            # Entropy - Spectral Flux - RMS - Line Length - TKEO (Teager-Kaiser)
+            self.weights = np.array([-0.4, 1.5, 0.7, -1.0, 1.0])
 
         self.k_frac = .4
 
@@ -33,7 +31,6 @@ class EEGFeatureExtractor:
         # self.raw.filter(l_freq, h_freq, phase='zero-double', verbose=False)
         # self.raw.notch_filter([notch, 2 * notch], phase='zero-double', verbose=False)
         # self.raw.set_eeg_reference('average')
-
         # Per-channel standardization (z-score)
         self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + self.epsilon))
 
@@ -41,13 +38,15 @@ class EEGFeatureExtractor:
                       bands: tuple[tuple, ...] = ((0.5, 4), (4, 8), (8, 13), (13, 30)),
                       band_weights: tuple[float, ...] = (0.5, 0.4, 0.5, 0.4),
                       need_number: int = 30):
-
         if len(bands) != len(band_weights):
             raise ValueError(f"Shape mismatch between bands and weights: {len(bands)}!= {len(band_weights)}")
 
         feats, names, starts = self._stft_features(duration, hop, bands)
 
         Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))  # 30 s window
+        # Heuristic: z-scores behave like this statistically in normal distribution: 99.7 % of data lie within [−3, 3].
+        # This avoids  RMS, TEKO and LL to dominate saliecny score.
+        Z = np.clip(Z, -6, 6)
         w = np.concatenate((band_weights, self.weights))[:Z.shape[2]]
 
         S_channels = (Z * w).sum(axis=2)
@@ -189,6 +188,7 @@ class EEGFeatureExtractor:
 
     def _stft_features(self, duration_s: float, hop_s: float, bands=((0.5, 4), (4, 8), (8, 13), (13, 30))):
         x, fs = self.raw.get_data(picks='eeg'), self.raw.info['sfreq']
+        x = (x - x.mean(axis=1, keepdims=True)) / (x.std(axis=1, keepdims=True) + self.epsilon)
         C, T = x.shape
 
         n_samples = int(round(duration_s * fs))
@@ -209,8 +209,7 @@ class EEGFeatureExtractor:
         for c in range(C):
             _, _, Z = stft(x[c], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
 
-            P = (Z.real ** 2 + Z.imag ** 2) + self.epsilon
-
+            P = Z.real ** 2 + Z.imag ** 2
             nF_use = min(nF, P.shape[1])
             starts_use = starts_all[:nF_use]
             if nF_use <= 0:
