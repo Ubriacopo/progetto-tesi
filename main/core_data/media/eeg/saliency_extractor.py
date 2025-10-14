@@ -152,6 +152,41 @@ class EEGFeatureExtractor:
         w[hard] = 0.0
         return starts, w
 
+    # Teager-Kaiser
+    @staticmethod
+    def tkeo(frames: np.ndarray):
+        # Teager–Kaiser Energy Operator averaged per frame; captures bursty, high-frequency energy.
+        # Sensitive to rapid local changes (popular in EEG, speech and seismic signal analysis)
+        return np.mean(np.abs(frames[:, 1:-1] ** 2 - frames[:, :-2] * frames[:, 2:]), axis=1)
+
+    @staticmethod
+    def line_length(frames: np.ndarray):
+        # > Line length (LL) is a simple but powerful time-domain EEG feature that measures the total amount of change in the signal within a window.
+        # Line length per frame: average absolute first difference; proxies “spikiness/complexity”.
+        # In EEG is usually correlates to high activity as scares/epilepsy. If not the case it measures artifacts.
+        # TODO: Vedi come fare se voglio usare per artifacts.
+        return np.mean(np.abs(np.diff(frames, axis=1)), axis=1)
+
+    @staticmethod
+    def rms(frames: np.ndarray):
+        # Root-mean-square per frame
+        # Measures the average signal amplitude (i.e., power or energy level) in a window — independent of frequency content.
+        return np.sqrt((frames ** 2).mean(axis=1))
+
+    @staticmethod
+    def spectral_flux(magnitude: np.ndarray, eps: float):
+        # Spectral flux measure of how quickly the power spectrum of a signal is changing
+        # Spectral dynamics
+        magnitude = magnitude / (magnitude.sum(axis=0, keepdims=True) + eps)
+        positive_change = np.maximum(np.diff(magnitude, axis=1), 0.0)
+        return np.r_[0.0, np.sqrt((positive_change ** 2).sum(axis=0))]
+
+    @staticmethod
+    def entropy(p: np.ndarray, eps: float):
+        # Spectral entropy per frame (Shannon). High when spectrum is flat, low when concentrated.
+        p_normalized = p / (np.sum(p, axis=0, keepdims=True) + eps)
+        return -(p_normalized * np.log(p_normalized + eps)).sum(axis=0)
+
     def _stft_features(self, duration_s: float, hop_s: float, bands=((0.5, 4), (4, 8), (8, 13), (13, 30))):
         x, fs = self.raw.get_data(picks='eeg'), self.raw.info['sfreq']
         C, T = x.shape
@@ -182,35 +217,21 @@ class EEGFeatureExtractor:
                 raise RuntimeError("No frames produced; check duration_s/hop_s vs signal length")
 
             P = P[:, :nF_use]
-
-            total_P = np.trapz(P, f, axis=0) + self.epsilon
+            total_P = np.trapezoid(P, f, axis=0) + self.epsilon
             relative_P = [
-                np.trapz(P[(f >= lo) & (f < hi)], f[(f >= lo) & (f < hi)], axis=0) / total_P
+                np.trapezoid(P[(f >= lo) & (f < hi)], f[(f >= lo) & (f < hi)], axis=0) / total_P
                 for lo, hi in bands
             ]
 
-            P_normalized = P / (np.sum(P, axis=0, keepdims=True) + self.epsilon)
-            entropy = -(P_normalized * np.log(P_normalized + self.epsilon)).sum(axis=0)
-
-            mag = np.sqrt(P)  # Magnitude
-            mag = mag / (mag.sum(axis=0, keepdims=True) + self.epsilon)
-            positive_change = np.maximum(np.diff(mag, axis=1), 0.0)
-            spectral_flux = np.r_[0.0, np.sqrt((positive_change ** 2).sum(axis=0))]
-
             # Time domain same framing
             frames = np.stack([x[c, s:s + n_samples] for s in starts_use])
-            rms = np.sqrt((frames ** 2).mean(axis=1))
-            line_length = np.mean(np.abs(np.diff(frames, axis=1)), axis=1)
-            tkeo = np.mean(np.abs(frames[:, 1:-1] ** 2 - frames[:, :-2] * frames[:, 2:]), axis=1)
 
             feats.append(
                 np.c_[
                     np.stack(relative_P, axis=1),  # Relative bandpower per frame
-                    entropy,  # Spectral entropy per frame (Shannon). High when spectrum is flat, low when concentrated.
-                    spectral_flux,  # Spectral flux measure of how quickly the power spectrum of a signal is changing
-                    rms,  # Root-mean-square per frame
-                    line_length,  # Line length per frame: average absolute first difference; proxies “spikiness/complexity”.
-                    tkeo  # Teager–Kaiser Energy Operator averaged per frame; captures bursty, high-frequency energy
+                    self.entropy(P, self.epsilon), self.spectral_flux(np.sqrt(P), self.epsilon),
+                        # Time-domain dynamics
+                    self.rms(frames), self.line_length(frames), self.tkeo(frames)
                 ])
 
         return (
