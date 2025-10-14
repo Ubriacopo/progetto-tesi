@@ -1,5 +1,5 @@
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with_logits
 import torch.nn.functional as F
 
@@ -31,8 +31,57 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
 
     logits = (za @ zb.T) * T + bias.to(za.device)
     labels = 2 * torch.eye(B, device=za.device) - 1
+
+    # This is original loss computation from siglip proposal
     loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
+    a = za
+    b = zb
+    with torch.no_grad():
+        a_n = F.normalize(a, dim=-1)
+        b_n = F.normalize(b, dim=-1)
+        S = a_n @ b_n.T
+        diag = S.diag()
+        off = S[~torch.eye(S.size(0), dtype=torch.bool, device=S.device)]
+        print("pos cos mean/std:", float(diag.mean()), float(diag.std()))
+        print("neg cos mean/std:", float(off.mean()), float(off.std()))
+
+    # But since we work with multi-losses we have to scale down to factor B^2 not B
+    # loss = -torch.mean(logsigmoid(logits * labels))
     return loss
+
+
+class SiglipLoss(nn.Module):
+    def __init__(self, init_tau=0.07, init_bias=0.0, stop_grad_target: bool = False):
+        super(SiglipLoss, self).__init__()
+        self.logt = nn.Parameter(torch.tensor([float(torch.log(torch.tensor(1.0 / init_tau)))]))  # ~ ln(1/τ)
+        # learnable scalar bias (start near 0 so positives can go > 0)
+        self.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float32))
+        self.stop_grad_target: bool = stop_grad_target
+
+    def forward(self, za: torch.Tensor, zb: torch.Tensor, ignore_mask=None):
+        # Normalization
+        za = normalize(za, dim=-1)
+        if self.stop_grad_target:
+            zb = zb.detach()
+        zb = normalize(zb, dim=-1)
+
+        T = self.logt.exp()
+        b = self.bias
+
+        logits = (za @ zb.T) * T + b  # [B, B]
+        B = logits.size(0)
+        # +1 on diag, -1 off-diag
+        labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  # [+1 diag, -1 off]
+        if ignore_mask is not None:
+            # ignore_mask: True where we want to drop loss (e.g., duplicates off-diag)
+            logits = logits.masked_fill(ignore_mask, 0.0)
+            labels = labels.masked_fill(ignore_mask, 0.0)
+
+        print("\nT=", T, " b=", b, " diag", torch.diag(logits).mean().item(),
+              " off", (logits.fill_diagonal_(0)).mean().item())
+
+        loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
+        return loss
 
 
 def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .2) -> tuple[Tensor, int]:
@@ -43,7 +92,8 @@ def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
     a = F.normalize(za[idx], p=2, dim=-1)
     b = F.normalize(zb[idx].detach(), p=2, dim=-1)
     logits = (a @ b.T) / tau
-    # Return the INFO NCE loss + valid number of rows for this loss calc.
+    # Return the INFO NCE loss + valid number of rows for this loss calc. As loss is compared with others we have to reduce it
+    # to a valid range [0,1]. This allows the loss to be better controlled while training.
     return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device)), idx.numel()
 
 
@@ -59,9 +109,9 @@ def diagnose_siglip(za: Tensor, zb: Tensor, logt: Tensor = None, bias: Tensor = 
     Run this on your FIRST batch and share the output.
     """
     if logt is None:
-        logt = torch.log(torch.tensor(10.0))
+        logt = torch.log(torch.tensor(.5))
     if bias is None:
-        bias = torch.tensor(-10.0)
+        bias = torch.tensor(-0.0)
 
     if verbose:
         print("\n" + "=" * 70)
@@ -84,8 +134,10 @@ def diagnose_siglip(za: Tensor, zb: Tensor, logt: Tensor = None, bias: Tensor = 
         print(f"\n2. NORMS BEFORE NORMALIZATION:")
         za_norms_before = za.norm(dim=-1)
         zb_norms_before = zb.norm(dim=-1)
-        print(f"   za: min={za_norms_before.min():.3f}, max={za_norms_before.max():.3f}, mean={za_norms_before.mean():.3f}")
-        print(f"   zb: min={zb_norms_before.min():.3f}, max={zb_norms_before.max():.3f}, mean={zb_norms_before.mean():.3f}")
+        print(
+            f"   za: min={za_norms_before.min():.3f}, max={za_norms_before.max():.3f}, mean={za_norms_before.mean():.3f}")
+        print(
+            f"   zb: min={zb_norms_before.min():.3f}, max={zb_norms_before.max():.3f}, mean={zb_norms_before.mean():.3f}")
 
         if za_norms_before.max() > 100:
             print(f"   ⚠️  WARNING: za has very large norms! This will cause huge logits.")
@@ -101,8 +153,10 @@ def diagnose_siglip(za: Tensor, zb: Tensor, logt: Tensor = None, bias: Tensor = 
         print(f"\n3. NORMS AFTER NORMALIZATION:")
         za_norms_after = za.norm(dim=-1)
         zb_norms_after = zb.norm(dim=-1)
-        print(f"   za: min={za_norms_after.min():.3f}, max={za_norms_after.max():.3f}, mean={za_norms_after.mean():.3f}")
-        print(f"   zb: min={zb_norms_after.min():.3f}, max={zb_norms_after.max():.3f}, mean={zb_norms_after.mean():.3f}")
+        print(
+            f"   za: min={za_norms_after.min():.3f}, max={za_norms_after.max():.3f}, mean={za_norms_after.mean():.3f}")
+        print(
+            f"   zb: min={zb_norms_after.min():.3f}, max={zb_norms_after.max():.3f}, mean={zb_norms_after.mean():.3f}")
 
         if not torch.allclose(za_norms_after, torch.ones_like(za_norms_after), atol=1e-5):
             print(f"   ⚠️  WARNING: za normalization failed!")

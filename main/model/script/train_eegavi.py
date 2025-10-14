@@ -88,7 +88,7 @@ def main(cfg: KdConfig):
     #    hide_module_functions=True
     # )
 
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24, overfit_batches=1)
     trainer.fit(module, train_dataloader)
 
 

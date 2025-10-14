@@ -63,6 +63,13 @@ class EEGAVI(nn.Module):
         self.remap_timesteps: int = remap_timesteps
         self.drop_p: float = drop_p
 
+        self.ff = nn.Sequential(
+            nn.Linear(pivot_latent_size, pivot_latent_size * 2),
+            nn.GELU(),
+            nn.Linear(pivot_latent_size * 2, pivot_latent_size),
+            nn.GELU(),
+        )
+
     def build_xattn_blocks(self, xattn_blocks: int | list[GatedXAttentionCustomArgs]) -> list[nn.Module]:
         """
         For how GatedXAttention works the dim and dim_latent are fixed (they do not change).
@@ -111,6 +118,7 @@ class EEGAVI(nn.Module):
             keep[dead, torch.randint(0, n_modalities, (dead.sum(),), device=device)] = True
 
         return keep
+
     # TODO vedi di semplificare sta roba
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False) \
             -> EEGAVIOutputs | dict[str, MaskedValue]:
@@ -135,7 +143,8 @@ class EEGAVI(nn.Module):
         masks: list[torch.Tensor] = []
 
         b = next(iter(x.values()))["data"].shape[0]
-        # todo refactor to class that randomly disables modality so this is not part of EEG model def?
+
+        # TODO Scova l'errore!
         keep = self.select_keeps(b, base.device)
         for m, adapter in enumerate(self.supporting_modalities):
             key: str = adapter.get_code()
@@ -193,8 +202,10 @@ class EEGAVI(nn.Module):
 
         # Initialize the variable to anything
         z: torch.Tensor = base
+        # TODO fare con ablation study via linear
         for gated_x_attn in self.gatedXAttn_layers:
             z = gated_x_attn(z, supp, attn_mask=allow, q_mask=base_mask, kv_mask=supp_mask)
+
 
         # TODO: for now simple pooling we could use some learned pooling later on
         w = base_mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)
