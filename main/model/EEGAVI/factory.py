@@ -19,7 +19,7 @@ class EegBaseModelFactory:
                     xattn_blocks: int = 2
                     ):
         # TODO Is this problem? Config of PerceiverResampler?
-        perceiver_resampler_config = PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=6, num_latents=16)
+        perceiver_resampler_config = PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=6, num_latents=16    )
         return EegBaseModel(
             output_size=target_size,
             pivot=ModalityStream(

@@ -64,6 +64,8 @@ class VideoAdapter(nn.Module):
 
 # todo verifica matematica e metti in utils
 # todo: Errore sta in perceiver resampler pare!
+#       -> All'inizio collapse 95% poi torna verso 85%
+#       Altra possibile cause sarebbe pooling. Prova a non avere pooling fino a loss e delegarla li
 @torch.no_grad()
 def batch_stats_5d(X: torch.Tensor,
                    mask: torch.Tensor | None = None,
@@ -137,7 +139,7 @@ class AudioAdapter(nn.Module):
         stats_post = batch_stats_5d(
             y, mask=repeat(mask, "b T -> b T p", p=y.shape[-2]), max_dim=2, reduce_axes=(1, 2)
         )  # the exact zb you pass to InfoNCE
-        print("PRE :", stats_pre)
+        print("\nPRE :", stats_pre)
         print("POST:", stats_post)
 
         return MaskedValue(data=y, mask=mask)

@@ -49,8 +49,8 @@ class PerceiverAttention(nn.Module):
         x, latents = self.norm_media(x), self.norm_latents(latents)
 
         q = self.q(latents)
-        kv = torch.cat((x, latents), dim=-2)
-        k, v = self.kv(kv).chunk(2, dim=-1)
+        # kv = torch.cat((x, latents), dim=-2)
+        k, v = self.kv(x).chunk(2, dim=-1)
 
         q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b h t n d", h=self.heads)
         q *= self.scale
@@ -60,8 +60,10 @@ class PerceiverAttention(nn.Module):
 
         mask = mask.to(dtype=torch.bool)
         keep_x = repeat(mask, "b T -> b T N", N=Nx)
-        keep_z = repeat(mask, "b T -> b T N", N=Nz)
-        key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
+        # keep_z = repeat(mask, "b T -> b T N", N=Nx)
+        # keep_z = repeat(mask, "b T -> b T N", N=Nz)
+        # key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
+        key_keep = keep_x
         key_keep = key_keep[:, None, :, None, :]  # (b, 1, T, 1, n1 + n2)
 
         # Attention
