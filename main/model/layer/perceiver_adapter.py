@@ -30,18 +30,19 @@ class PerceiverAttention(nn.Module):
         self.kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
-    def forward(self, x, latents, mask=None):
+    def forward(self, x: torch.Tensor, latents: torch.Tensor, mask=None):
         """
         Args:
-            x (torch.Tensor): image features
+            x (torch.Tensor): x features
                 shape (b, T, n1, D)
             latents (torch.Tensor): latent features
                 shape (b, T, n2, D)
-            :param mask:
+            mask (torch.Tensor): mask
         """
 
         b, T, Nx, D = x.shape
         _, _, Nz, _ = latents.shape
+
         assert T == latents.shape[1] and D == latents.shape[-1], \
             f"Mismatch: x(T={T},D={D}) vs latents(T={latents.shape[1]},D={latents.shape[-1]})"
 
@@ -56,29 +57,27 @@ class PerceiverAttention(nn.Module):
 
         if mask is None:
             mask = torch.ones((b, T), dtype=torch.bool, device=x.device)
-        mask = mask.to(dtype=torch.bool)
-        q *= mask[:, None, :, None, None]
 
-        keep_x = mask[:, :, None].expand(b, T, Nx)
-        keep_z = mask[:, :, None].expand(b, T, Nz)
+        mask = mask.to(dtype=torch.bool)
+        keep_x = repeat(mask, "b T -> b T N", N=Nx)
+        keep_z = repeat(mask, "b T -> b T N", N=Nz)
         key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
-        key_keep = key_keep[:, None, :, None, :]  # (b,1,T,1,nk)
+        key_keep = key_keep[:, None, :, None, :]  # (b, 1, T, 1, n1 + n2)
 
         # Attention
         sim = einsum("... i d, ... j d  -> ... i j", q, k)
         sim = sim.masked_fill(~key_keep, float("-inf"))
 
         row_has_key = key_keep.any(dim=-1, keepdim=True)
-        sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
 
+        sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1)
-        attn = attn * row_has_key
+        attn = sim.softmax(dim=-1) * row_has_key
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h t n d -> b t n (h d)", h=self.heads)
-
         out *= mask[:, :, None, None]
+
         return self.out(out)
 
 
@@ -150,7 +149,15 @@ class PerceiverResampler(nn.Module):
         latents = repeat(self.latents, "n d -> b T n d", b=b, T=T)
         # Transformer Block
         for att, feed_forward in self.layers:
+
             latents = att(x, latents, mask=mask) + latents  # Residual network style.
+            # Remask the latents
+            if mask is not None:
+                latents = latents * mask[:, :, None, None].to(latents.dtype)
+
             latents = feed_forward(latents) + latents  # Residual network style.
+            # Remask the latents
+            if mask is not None:
+                latents = latents * mask[:, :, None, None].to(latents.dtype)
 
         return self.norm(latents)

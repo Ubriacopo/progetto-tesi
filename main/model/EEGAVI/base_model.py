@@ -1,15 +1,22 @@
+import dataclasses
 from dataclasses import asdict
 from typing import Optional
 
 import torch
 from torch import nn
 
-from main.model.EEGAVI.EEGAVI import EEGAVIOutputs
 from main.model.EEGAVI.utils import remap_with_overlap
 from main.model.layer.attention.x_attention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.model.layer.base import ModalContextEncoder
 from main.model.layer.modality_stream import ModalityStream
 from main.utils.data import MaskedValue, KdMaskedValue
+
+
+@dataclasses.dataclass
+class EegBaseModelOutputs:
+    embeddings: torch.Tensor
+    kd_outs: dict[str, MaskedValue]
+    multimodal_outs: dict[str, MaskedValue]
 
 
 class FusionPooling(nn.Module):
@@ -26,6 +33,7 @@ class EegBaseModel(nn.Module):
                  output_size: int,
                  pivot: ModalityStream, supports: list[ModalityStream],
                  xattn_blocks: int | list[GatedXAttentionCustomArgs],
+                 remap_timesteps: int,
                  drop_p: float = 0.0, use_modality_encoder: bool = True):
         super().__init__()
 
@@ -39,6 +47,7 @@ class EegBaseModel(nn.Module):
 
         self.gatedXAttn_layers = nn.ModuleList(self.build_xattn_blocks(xattn_blocks))
 
+        self.remap_timesteps: int = remap_timesteps
         self.fusion_pooling: nn.Module = self.build_fusion_pooling()
         self.fused_norm = nn.LayerNorm(output_size)
         self.drop_p = drop_p
@@ -97,7 +106,7 @@ class EegBaseModel(nn.Module):
 
         return output
 
-    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False) -> torch.Tensor:
+    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False) -> EegBaseModelOutputs | dict:
         kd_outs: dict = {}
         multimodal_outs: dict = {}
         device = x[self.pivot.get_code()]["data"].device
@@ -131,7 +140,7 @@ class EegBaseModel(nn.Module):
         z = self.fusion_pooling(z, mask=pivot_out["mask"])
         z = self.fused_norm(z)
 
-        return_object = EEGAVIOutputs(embeddings=z, kd_outs=kd_outs, multimodal_outs=multimodal_outs)
+        return_object = EegBaseModelOutputs(embeddings=z, kd_outs=kd_outs, multimodal_outs=multimodal_outs)
         return return_object if not return_dict else asdict(return_object)
 
     def select_keeps(self, b: int, device):

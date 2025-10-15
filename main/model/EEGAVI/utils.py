@@ -30,7 +30,7 @@ def interval_overlap_weights(t_source: int, t_target: int, device=None):
     w = torch.where(row_sum > 0, overlap / row_sum, overlap)  # rows with all-zero stay zero
     return w  # (T_tgt, T_src)
 
-
+# todo revisiona
 def remap_with_overlap(x: torch.Tensor, mask: torch.Tensor, t: int):
     """
 
