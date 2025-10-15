@@ -6,13 +6,16 @@ import torch
 from torch import nn
 
 from main.model.layer.kd import KDHead
-from main.utils.data import MaskedValue
+from main.utils.data import MaskedValue, KdMaskedValue
 
 
 class ModalityStream(nn.Module):
-    def __init__(self, code: str, adapter: nn.Module, kd_head: KDHead = None, post_kd_adapter: nn.Module = None,
-                 drop_mask: bool = False):
+    def __init__(self, code: str, output_size: int, adapter: nn.Module,
+                 kd_head: KDHead = None, post_kd_adapter: nn.Module = None):
         super().__init__()
+
+        self.output_size = output_size
+
         self.code: str = code
         self.adapter: nn.Module = adapter
 
@@ -21,28 +24,24 @@ class ModalityStream(nn.Module):
             raise ValueError("You have to use KD to use the post_kd_adapter")
 
         self.use_kd: bool = kd_head is not None
-        self.drop_mask: bool = drop_mask
         self.kd_head: Optional[KDHead] = kd_head
 
-    def forward(self, x: torch.Tensor, mask=None, use_kd=True) \
-            -> MaskedValue | tuple[MaskedValue, torch.Tensor] | tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
+    def forward(self, x: torch.Tensor, mask=None, use_kd=True) -> MaskedValue | KdMaskedValue:
+        output = {}
+
         y = self.adapter(x, mask=mask)
         if isinstance(y, tuple) and len(y) == 2:
-            y, mask = y
+            output["data"], output["mask"] = y
         elif isinstance(y, dict):
-            y, mask = y["data"], y["mask"]
+            output = y
 
-        use_kd = use_kd and self.use_kd
-        kd_y: Optional[torch.Tensor] = None
-        if use_kd:
-            kd_y = self.kd_head(y, mask=mask)
+        if use_kd and self.use_kd:
+            output["kd"] = self.kd_head(y, mask=mask)
 
         if self.post_kd_adapter is not None:
-            y = self.post_kd_adapter(y)
+            output["data"] = self.post_kd_adapter(y)
 
-        if mask is not None and not self.drop_mask:
-            y = MaskedValue(data=y, mask=mask)
-        return (y, kd_y) if use_kd else y
+        return output
 
     def get_code(self):
         return self.code

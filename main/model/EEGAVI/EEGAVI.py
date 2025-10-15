@@ -206,7 +206,8 @@ class EEGAVI(nn.Module):
         for gated_x_attn in self.gatedXAttn_layers:
             z = gated_x_attn(z, supp, attn_mask=allow, q_mask=base_mask, kv_mask=supp_mask)
 
-
+        # TODO Forse è questo il problema? Il pooling? Anzi no frose serve per mathcare dim di altri
+        # Ridurre bathc size e vedfere se va
         # TODO: for now simple pooling we could use some learned pooling later on
         w = base_mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)
         z = (z * base_mask.unsqueeze(-1)).sum(dim=-2) / w  # Normalization factor

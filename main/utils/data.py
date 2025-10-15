@@ -14,3 +14,7 @@ def pad_main_axis(arr: np.ndarray, increment: int, value=0) -> np.ndarray:
 class MaskedValue(TypedDict):
     data: torch.Tensor
     mask: Optional[torch.Tensor]
+
+
+class KdMaskedValue(MaskedValue, total=False):
+    kd: MaskedValue | torch.Tensor
