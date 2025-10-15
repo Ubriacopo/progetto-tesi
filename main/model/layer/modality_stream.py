@@ -27,21 +27,13 @@ class ModalityStream(nn.Module):
         self.kd_head: Optional[KDHead] = kd_head
 
     def forward(self, x: torch.Tensor, mask=None, use_kd=True) -> MaskedValue | KdMaskedValue:
-        output = {}
-
-        y = self.adapter(x, mask=mask)
-        if isinstance(y, tuple) and len(y) == 2:
-            output["data"], output["mask"] = y
-        elif isinstance(y, dict):
-            output = y
-
+        output = {"data": x, "mask": mask}
+        y: MaskedValue = self.adapter(x, mask=mask)
         if use_kd and self.use_kd:
-            output["kd"] = self.kd_head(y, mask=mask)
-
+            output["kd"] = self.kd_head(y["data"], mask=y["mask"])
         if self.post_kd_adapter is not None:
-            output["data"] = self.post_kd_adapter(y)
-
-        return output
+            y |= self.post_kd_adapter()
+        return output | y
 
     def get_code(self):
         return self.code

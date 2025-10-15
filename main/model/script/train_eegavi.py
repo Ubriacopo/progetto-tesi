@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchview import draw_graph
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
+from main.model.EEGAVI.factory import EegBaseModelFactory
 from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI, \
     get_interleaved_weakly_supervised
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
@@ -48,7 +49,9 @@ def main(cfg: KdConfig):
         cfg.teacher_weights_path = cfg.base_path + cfg.teacher_weights_path
 
     torch.manual_seed(SEED)  # Reproducibility
-    student = get_interleaved_weakly_supervised(target_size=384, supporting_latent_size=384)
+    student = EegBaseModelFactory.weak_supervised_interleaved(
+        output_size=384, base_model_target_size=384, supports_latent_size=384
+    )
     teacher = MaskedContrastiveModel(hidden_channels=200, out_channels=100)
 
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))

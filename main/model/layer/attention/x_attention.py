@@ -30,10 +30,10 @@ class GatedXAttentionBlock(nn.Module):
         super().__init__()
         # First call
         self.attn = MaskedCrossAttention(dim=dim, dim_latent=dim_latent, dim_head=dim_head, heads=heads)
-        self.attn_gate = nn.Parameter(torch.tensor([1.]))
+        self.attn_gate = torch.tensor(1)  # nn.Parameter(torch.tensor([1.]))
 
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
-        self.ff_gate = nn.Parameter(torch.tensor([1.]))
+        self.ff_gate = torch.tensor(1)  # nn.Parameter(torch.tensor([1.]))
 
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
         q = self.attn(q, kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh() + q
@@ -61,17 +61,19 @@ class MaskedCrossAttention(nn.Module):
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
     def forward(self, qo, kvo, attn_mask=None, q_mask=None, kv_mask=None):
+        # TODO Maschere sbagliate.
         """
         Args:
             qo (torch.Tensor): Main modality wanted features
-                shape (B, T1, D1)
+                shape (B, T, D1)
             kvo (torch.Tensor): Fused features
-                shape (B, T_img, n, D_img) where n is the dim of the latents
+                shape (B, T, n, D2) where n is the dim of the latents
             attn_mask: boolean mask identifying the media tokens in x
-                shape (B, T_txt)
+                shape (1, B, T)
             kv_mask:
-
+                shape (B, T, n)
             q_mask:
+                shape (B, T)
         """
         _, Tkv, n = kvo.shape[:3]  # Time steps of kv
         # Build the query object.
