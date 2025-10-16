@@ -64,6 +64,8 @@ class VideoAdapter(nn.Module):
 # todo: Errore sta in perceiver resampler pare!
 #       -> All'inizio collapse 95% poi torna verso 85%
 #       Altra possibile cause sarebbe pooling. Prova a non avere pooling fino a loss e delegarla li
+# todo usare un Absolute timestamp embedding (seconds from clip start) + duration scalar.?
+#       Fai preprocessing per dare anche idx sample & origin 
 class AudioAdapter(nn.Module):
     def __init__(self, perceiver_config: PerceiverResamplerConfig, project_out_size: int = None, ):
         super().__init__()

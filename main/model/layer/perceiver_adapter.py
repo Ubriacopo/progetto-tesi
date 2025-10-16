@@ -110,6 +110,7 @@ class PerceiverResampler(nn.Module):
         # We learn the latents
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
 
+        #todo prova ad usare questie  fixare
         self.frame_embeddings: Optional[nn.Parameter] = None
         if max_num_frames is not None:
             self.frame_embeddings = nn.Parameter(torch.randn(max_num_frames, dim))
