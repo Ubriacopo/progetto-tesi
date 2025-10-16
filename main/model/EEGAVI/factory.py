@@ -4,7 +4,8 @@ from typing import Tuple
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
 from main.model.EEGAVI.base_model import EegBaseModel, WeaklySupervisedEegBaseModel
-from main.model.EEGAVI.interleaved_EEGAVI.adapters import EegAdapter, AudioAdapter, PerceiverResamplerConfig
+from main.model.EEGAVI.interleaved_EEGAVI.adapters import EegAdapter, AudioAdapter, PerceiverResamplerConfig, \
+    PMAAudioAdapter
 from main.model.layer.kd import KDHead
 from main.model.layer.modality_stream import ModalityStream
 
@@ -19,7 +20,9 @@ class EegBaseModelFactory:
                     xattn_blocks: int = 2
                     ):
         # TODO Is this problem? Config of PerceiverResampler?
-        perceiver_resampler_config = PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=6, num_latents=16    )
+        perceiver_resampler_config = PerceiverResamplerConfig(
+            dim=768, depth=2, dim_head=64, heads=6, num_latents=16, max_num_time_steps=34 # dipenda da modality
+        )
         return EegBaseModel(
             output_size=target_size,
             pivot=ModalityStream(
@@ -30,7 +33,8 @@ class EegBaseModelFactory:
                 ModalityStream(
                     Audio.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                    adapter=AudioAdapter(perceiver_resampler_config, project_out_size=target_size),
+                    # adapter=PMAAudioAdapter(project_out_size=target_size),
+                    adapter=AudioAdapter(perceiver_config=perceiver_resampler_config, project_out_size=target_size),
                 )
             ],
 

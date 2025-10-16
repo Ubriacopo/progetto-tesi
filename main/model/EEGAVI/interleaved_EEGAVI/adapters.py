@@ -6,8 +6,9 @@ from einops import rearrange, repeat
 from torch import nn
 
 from main.model.EEGAVI.utils import batch_stats_5d, batch_stats_generic
+from main.model.layer.ISAB import PMA
 from main.model.layer.base import TemporalEncoder
-from main.model.layer.perceiver_adapter import PerceiverResampler
+from main.model.layer.perceiver_simple import PerceiverResampler
 from main.utils.data import MaskedValue
 
 
@@ -18,7 +19,7 @@ class PerceiverResamplerConfig:
     dim_head: int = 64
     heads: int = 8
     num_latents: int = 64
-    max_num_media: int = None
+    max_num_time_steps: int = None
     max_num_frames: int = None
     ff_mult: int = 4
 
@@ -77,21 +78,40 @@ class AudioAdapter(nn.Module):
     def forward(self, x: torch.Tensor, mask=None) -> MaskedValue:
         # BEFORE resampler (raw audio features you feed in)
         # stats_pre = batch_stats_generic(x, mask=mask_5d[..., 0], reduce_axes=(1,2,3))
+        t = rearrange(x, "b T (F p) D -> b T F p D", F=1)
         stats_pre = batch_stats_generic(
-            rearrange(x, "b T (F p) D -> b T F p D", F=1),
-            mask=repeat(mask, "b T -> b T F p", F=1, p=x.shape[-2]),
+            t, mask=repeat(mask, "b T -> b T F p", F=1, p=t.shape[-2]),
             reduce_axes=(1, 2, 3)
 
         )  # e.g., pooled or CLS before Perceiver
 
         y = self.resampler(x=x, mask=mask)
+        # AFTER resampler + your pooling to [B,D] that goes into loss
+        #stats_post = batch_stats_generic(
+        ##    y, mask=repeat(mask, "b T -> b T p", p=y.shape[-2]), reduce_axes=(1, 2)
+        #)  # the exact zb you pass to InfoNCE
+        print("\nPRE :", stats_pre)
+        #print("POST:", stats_post)
         if self.projection is not None:
             y = self.projection(y)
 
-        # AFTER resampler + your pooling to [B,D] that goes into loss
-        stats_post = batch_stats_generic(
-            y, mask=repeat(mask, "b T -> b T p", p=y.shape[-2]), max_dim=2, reduce_axes=(1, 2)
-        )  # the exact zb you pass to InfoNCE
+        return MaskedValue(data=y, mask=mask)
+
+
+class PMAAudioAdapter(nn.Module):
+    def __init__(self, project_out_size: int = None):
+        super().__init__()
+        self.pma = PMA(768, num_heads=6, num_seeds=8, ffn_dropout=0)
+        if project_out_size is not None and project_out_size != 768:
+            self.projection = nn.Linear(768, project_out_size)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> MaskedValue:
+        stats_pre = batch_stats_generic(x, mask=repeat(mask, "b T -> b T p", p=x.shape[-2]), reduce_axes=(1, 2,))
+        y = self.pma(x, mask=mask)
+        if self.projection is not None:
+            y = self.projection(y)
+
+        stats_post = batch_stats_generic(y, mask=repeat(mask, "b T -> b T p", p=y.shape[-2]), reduce_axes=(1, 2))
         print("\nPRE :", stats_pre)
         print("POST:", stats_post)
 

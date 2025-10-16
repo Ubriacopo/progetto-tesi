@@ -87,9 +87,9 @@ def batch_stats_generic(X: torch.Tensor,
             mask = mask.unsqueeze(-1)
         w = mask.to(X.dtype)
 
-        num = (X * w).sum(dim=reduce_axes)
+        num = (X * w.unsqueeze(dim=-1)).sum(dim=reduce_axes)
         den = w.sum(dim=reduce_axes).clamp_min(1e-6)
-        Xb = num / den  # [B,D]
+        Xb = num / den.unsqueeze(-1)  # [B,D]
     else:
         Xb = X.mean(dim=reduce_axes)  # [B,D]
 
