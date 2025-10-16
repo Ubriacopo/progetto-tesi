@@ -111,6 +111,16 @@ class PerceiverResampler(nn.Module):
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
 
         #todo prova ad usare questie  fixare
+
+        # todo
+        # Set Transformer PMA (Pooling by Multihead Attention):
+        # Replace learned queries with PMA seeds (k≈8–32). It’s still cross-attn,
+        # but PMA tends to give better coverage/diversity, especially with a coverage loss. Works naturally with masks.
+
+        # oppure
+        # Perceiver IO (not just Resampler):
+        # Keep a latent array (L≈128–256) with cross-attn in and cross-attn out.
+        # Add relative time bias and mask-aware logits. It’s heavier but robust for ragged inputs.
         self.frame_embeddings: Optional[nn.Parameter] = None
         if max_num_frames is not None:
             self.frame_embeddings = nn.Parameter(torch.randn(max_num_frames, dim))
