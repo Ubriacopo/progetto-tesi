@@ -10,9 +10,9 @@ class SimpleFeedForward(nn.Module):
         x, y = dim, dim * mult
         self.net = nn.Sequential(
             nn.LayerNorm(x),  # Normalize
-            nn.Linear(x, y),  # Map to new shape
+            nn.Linear(x, y, bias=False),  # Map to new shape
             nn.GELU(),  # Non-linearity
-            nn.Linear(y, x),  # Rebuild the original shape
+            nn.Linear(y, x, bias=False),  # Rebuild the original shape
         )
 
     def forward(self, x):

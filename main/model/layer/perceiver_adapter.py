@@ -80,6 +80,11 @@ class PerceiverAttention(nn.Module):
         out = rearrange(out, "b h t n d -> b t n (h d)", h=self.heads)
         out *= mask[:, :, None, None]
 
+        with torch.no_grad():
+            # Very low entropy + coarse masks → attending to identical token sets; very high/flat entropy → not focusing.
+            H = -(attn.clamp_min(1e-6) * attn.clamp_min(1e-6).log()).sum(-1).mean().item()
+            print("attn_entropy:", H, "attn_mean:", attn.mean().item())
+
         return self.out(out)
 
 
@@ -133,16 +138,20 @@ class PerceiverResampler(nn.Module):
                     - F: are the frames fed that compose a single time-step (For ViViT it's 16 for example as it has a temporal stride of 2)
                     - v: Are the generated patches by the embedder previously.
                     - D: Is the final embedding space (e.g. 768 for ViViT)
+
+                    or 4D [b, T, Fv, D]
         :return:
         """
+
         b, T, F, v = x.shape[:4]
 
         if self.frame_embeddings is not None:
             # Add the frame embeddings to the input to not lose the temporal alignment information
             x += repeat(self.frame_embeddings[:F], "F d -> b T F v d", b=b, T=T, v=v)
 
-        # Flatten the frame and spatial dimensions
-        x = rearrange(x, "b T F v d -> b T (F v) d")
+        if x.dim() == 5:
+            # Flatten the frame and spatial dimensions that we suppose are in [-3:-2]
+            x = rearrange(x, "b T F v d -> b T (F v) d")
 
         if self.media_time_embeddings is not None:
             # Add to the resampled x the time embeddings. Mostly won't be used as T tends to be 1.

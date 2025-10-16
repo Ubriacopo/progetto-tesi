@@ -1,4 +1,5 @@
 import torch
+from torch.nn import functional as F
 
 
 # todo explain and review
@@ -66,3 +67,92 @@ def remap_with_overlap(x: torch.Tensor, mask: torch.Tensor, t: int):
         y = y.squeeze(2)  # (B, T_tgt, D)
 
     return y, y_mask
+
+
+@torch.no_grad()
+def batch_stats_generic(X: torch.Tensor,
+                        mask: torch.Tensor | None = None,
+                        reduce_axes: tuple[int, ...] = (1,),  # e.g. (1,2,3) or (1,2)
+                        ):
+    """
+    X: [B, *A, D]   (any number of reduce axes A, then D)
+    mask: [B, *A]   (True=valid) or None
+    """
+    B = X.size(0)
+    X = X.float()
+
+    if mask is not None:
+        # bring mask to same rank as X by adding the last dim
+        while mask.dim() < X.dim() - 1:
+            mask = mask.unsqueeze(-1)
+        w = mask.to(X.dtype)
+
+        num = (X * w).sum(dim=reduce_axes)
+        den = w.sum(dim=reduce_axes).clamp_min(1e-6)
+        Xb = num / den  # [B,D]
+    else:
+        Xb = X.mean(dim=reduce_axes)  # [B,D]
+
+    Xn = F.normalize(Xb, dim=-1)
+    S = Xn @ Xn.T  # [B,B]
+
+    # rank-1 dominance
+    Xm = Xn - Xn.mean(0, keepdim=True)
+    s = torch.linalg.svdvals(Xm)
+    rank1_ratio = (s[0] / (s.sum() + 1e-9)).item()
+
+    Bf = float(B)
+    diag = float(S.diag().mean())
+    off = float((S.sum() - S.diag().sum()) / (Bf * Bf - Bf))
+    return dict(diag=diag, off=off, gap=diag - off,
+                S_min=float(S.min()), S_max=float(S.max()),
+                rank1_ratio=rank1_ratio,
+                across_batch_std=float(Xb.std(0).mean()))
+
+
+@torch.no_grad()
+def batch_stats_5d(x: torch.Tensor, mask: torch.Tensor | None = None, reduce_axes=(1, 2, 3), max_dim=3):
+    """
+    Pool over T,F,P by default
+
+    X:    [B, T, F, P, D]
+    mask: [B, T, F] or [B, T, F, P] (True = valid)
+    """
+    B = x.size(0)
+    x = x.to(torch.float32)
+
+    if mask is not None:
+        # broadcast mask to [B,T,F,P,1]
+        if mask.dim() == max_dim:  # [B,T,F]
+            mask = mask.unsqueeze(-1)  # [B,T,F,1]
+        mask = mask.to(x.device)
+        w = mask.unsqueeze(-1).to(x.dtype)  # [B,T,F,P,1]
+
+        # masked numerator/denominator
+        num = (x * w).sum(dim=reduce_axes)  # -> [B, D]
+        den = w.sum(dim=reduce_axes)  # -> [B, 1]
+        den = den.clamp_min(1e-6)
+        Xb = num / den  # [B, D]
+    else:
+        Xb = x.mean(dim=reduce_axes)  # [B, D]
+
+    # similarity stats across the batch
+    Xn = F.normalize(Xb, dim=-1)
+    S = Xn @ Xn.T  # [B, B]
+    diag = S.diag().mean().item()
+    off = (S.sum() - S.diag().sum()) / (S.numel() - B)
+
+    # rank-1 dominance check
+    Xm = Xn - Xn.mean(0, keepdim=True)
+    s = torch.linalg.svdvals(Xm)  # faster than full svd
+    rank1_ratio = (s[0] / (s.sum() + 1e-9)).item()
+
+    return dict(
+        diag=float(diag),
+        off=float(off),
+        gap=float(diag - off),
+        S_min=float(S.min()),
+        S_max=float(S.max()),
+        rank1_ratio=rank1_ratio,
+        across_batch_std=float(Xb.std(0).mean())
+    )
