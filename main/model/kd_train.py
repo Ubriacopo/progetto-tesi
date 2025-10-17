@@ -90,6 +90,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         # Build a union time mask across modalities to pool fused_output safely
         union_mask = None
+        # TODO Qui ora mascherews sono diversa dimensione.
         for key, mv in modality_outputs.items():
             m = mv["mask"]
             if m is None:
@@ -97,9 +98,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 break
             if m.dim() > 2:
                 m = m.any(dim=-1)  # [B,T]
-            union_mask = m if union_mask is None else (union_mask | m)
-
-        fused_vec = masked_mean_over_t(fused_output, union_mask)  # [B,D]
+            # union_mask = m if union_mask is None else (union_mask | m)
+        fused_vec = fused_output
+        # fused_vec = masked_mean_over_t(fused_output, union_mask)  # [B,D]
 
         # todo errore qui? -> Errore era numerico./
         # Resta nuovo errore: La diagonale e altri sample sono troppo simili.
@@ -147,6 +148,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 logits = (za @ zb.T).to(torch.float32) / tau
                 t = torch.arange(za.size(0), device=za.device)
                 return 0.5 * (F.cross_entropy(logits, t) + F.cross_entropy(logits.T, t))
+
             assert not zb.requires_grad, "Target side is NOT detached"
 
             # keep for debug

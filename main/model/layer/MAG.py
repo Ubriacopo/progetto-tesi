@@ -28,7 +28,7 @@ class MAG3D(nn.Module):
         gating_z = self.z_sequential(torch.cat((z, anchor), dim=-1))  # Gating of z
 
         h_m: torch.Tensor = gating_y * self.W_y(y) + gating_z * self.W_z(z)
-        anchor_norm: torch.Tensor = anchor.norm(p=2, dim=-1, keepdim=True)
+        anchor_norm: torch.Tensor = anchor.norm_qo(p=2, dim=-1, keepdim=True)
         hm_norm: torch.Tensor = h_m.norm(p=2, dim=-1, keepdim=True)
 
         hm_norm_ones: torch.Tensor = torch.ones(hm_norm.shape, requires_grad=True)

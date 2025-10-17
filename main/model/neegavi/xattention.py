@@ -63,17 +63,15 @@ class MaskedCrossAttention(nn.Module):
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
     def forward(self, qo, kvo, attn_mask=None, q_mask=None, kv_mask=None):
-        # TODO Maschere sbagliate.
         """
         Args:
             qo (torch.Tensor): Main modality wanted features
                 shape (B, T, D1)
             kvo (torch.Tensor): Fused features
-                shape (B, T, n, D2) where n is the dim of the latents
+                shape (B, T, D2)
             attn_mask: boolean mask identifying the media tokens in x
-                shape (1, B, T)
             kv_mask:
-                shape (B, T, n)
+                shape (B, T)
             q_mask:
                 shape (B, T)
         """
@@ -83,7 +81,6 @@ class MaskedCrossAttention(nn.Module):
         kvo = self.norm_kvo(kvo)
 
         q = self.q(qo)
-        kvo = rearrange(kvo, "b t n d -> b (t n) d")
         k, v = self.kv(kvo).chunk(2, dim=-1)
 
         q, k, v = rearrange_many((q, k, v), "b n (h d) -> b h n d", h=self.heads)
@@ -96,11 +93,15 @@ class MaskedCrossAttention(nn.Module):
         NEG_INF = torch.finfo(qo.dtype).min
         # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
         if kv_mask is not None:
-            kv_keep = rearrange(kv_mask, "b t p -> b (t p)")  # (B, Tkv*n)
-            sim = sim.masked_fill(~kv_keep[:, None, None, :], NEG_INF)
-
+            sim = sim.masked_fill(~kv_mask[:, None, None, :], NEG_INF)
         if attn_mask is not None:
             sim = sim.masked_fill(~attn_mask[:, None, :, :], NEG_INF)
+
+        # optional: add soft time bias too (independent of hard mask)
+        # if (t_q is not None) and (t_kv is not None):
+        #    tb = _time_bias(t_q, t_kv, alpha=self.alpha, dmax=self.dmax)  # [B,Tq,Tk]
+        #    # (optional) zero tb on text spans: tb[:, :, s:e] = 0
+        #    sim = sim + tb.unsqueeze(1)
 
         # Guard rows that are fully -inf (all keys masked)
         row_has_key = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
@@ -112,8 +113,7 @@ class MaskedCrossAttention(nn.Module):
 
         # Zero invalid query steps defensively
         if q_mask is not None:
-            attn = attn.masked_fill(q_mask[:, :, None], 0.0)
-
+            attn = attn.masked_fill(~q_mask[:, None, :, None], 0.0)
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h n d -> b n (h d)")

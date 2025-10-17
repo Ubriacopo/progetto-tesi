@@ -13,6 +13,7 @@ from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleav
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.kd_train import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.factory import NEEGAviFactory
 
 
 @dataclasses.dataclass
@@ -49,7 +50,7 @@ def main(cfg: KdConfig):
         cfg.teacher_weights_path = cfg.base_path + cfg.teacher_weights_path
 
     torch.manual_seed(SEED)  # Reproducibility
-    student = EegBaseModelFactory.weak_supervised_interleaved(
+    student = NEEGAviFactory.weak_supervised_interleaved(
         output_size=384, base_model_target_size=384, supports_latent_size=384
     )
     teacher = MaskedContrastiveModel(hidden_channels=200, out_channels=100)

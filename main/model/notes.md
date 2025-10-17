@@ -54,14 +54,14 @@ for name, mv in modality_outputs.items():
         z = masked_mean_over_p(z, mv["mask"])
     if m is not None and m.dim() > 2: m = m.any(-1)
     z_vec = masked_mean_over_t(z, m)
-    valid = (z_vec.norm(dim=-1) > 1e-6)
+    valid = (z_vec.norm_qo(dim=-1) > 1e-6)
     kv_vecs.append(z_vec[valid].detach())  # stop-grad target
     rows_accum = valid if rows_accum is None else (rows_accum & valid)
 
 # 3) align rows across all KV and fused
 rows = rows_accum
-zq = proj_fused(fused_vec[rows])                 # learnable
-zk_list = [proj_kv[name](vec) for name, vec in zip([n for n in modality_outputs if n!="EEG"], kv_vecs)]
+zq = proj_fused(fused_vec[rows])  # learnable
+zk_list = [proj_kv[name](vec) for name, vec in zip([n for n in modality_outputs if n != "EEG"], kv_vecs)]
 L_kv = multi_positive_infonce(zq, zk_list, tau=0.3)
 ```
 
@@ -72,10 +72,11 @@ L_kv = multi_positive_infonce(zq, zk_list, tau=0.3)
 Simplest: cosine preservation (or InfoNCE) **with a small λ_q**. Keep targets detached here too to prevent the “both sides move” collapse during sanity runs.
 
 ```python
-eeg = modality_outputs["EEG"]["data"]; me = modality_outputs["EEG"]["mask"]
+eeg = modality_outputs["EEG"]["data"];
+me = modality_outputs["EEG"]["mask"]
 if eeg.dim() > 3 and me is not None and me.dim() > 2: me = me.any(-1)
 eeg_vec = masked_mean_over_t(eeg, me)
-rows_q = (eeg_vec.norm(dim=-1) > 1e-6)
+rows_q = (eeg_vec.norm_qo(dim=-1) > 1e-6)
 zq_q = F.normalize(proj_fused(fused_vec[rows_q]), -1)
 ze_q = F.normalize(proj_eeg(eeg_vec[rows_q]).detach(), -1)
 

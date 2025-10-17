@@ -56,7 +56,7 @@ class ModalContextEncoder(nn.Module):
     def forward(self, x: torch.Tensor, modality: str):
         if x is None: return None
         idx = torch.tensor(self.modality_mappings[modality], dtype=torch.long, device=x.device)
-        return self.norm(x) + self.modal_embeddings(idx).view(1, 1, 1, -1)
+        return self.norm(x + self.modal_embeddings(idx).view(1, 1, 1, -1))
 
 
 class TemporalEncoder(nn.Module):

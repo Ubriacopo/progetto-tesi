@@ -11,7 +11,7 @@ from main.utils.data import MaskedValue, KdMaskedValue
 
 class ModalityStream(nn.Module):
     def __init__(self, code: str, output_size: int, adapter: nn.Module,
-                 kd_head: KDHead = None, post_kd_adapter: nn.Module = None):
+                 kd_head: KDHead = None, post_kd_adapter: nn.Module = None, time_step_length: int = 1.0):
         super().__init__()
 
         self.output_size = output_size
@@ -23,6 +23,7 @@ class ModalityStream(nn.Module):
         if self.post_kd_adapter is not None and not self.use_kd:
             raise ValueError("You have to use KD to use the post_kd_adapter")
 
+        self.time_step_length: float = time_step_length
         self.use_kd: bool = kd_head is not None
         self.kd_head: Optional[KDHead] = kd_head
 
