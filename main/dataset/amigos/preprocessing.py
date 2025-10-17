@@ -16,6 +16,8 @@ from main.core_data.media.ecg import EcgTargetConfig
 from main.core_data.media.ecg.default_transform_pipe import ecg_interleaved_transform_pipe
 from main.core_data.media.eeg.config import EegTargetConfig
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
+from main.core_data.media.metadata.metadata import Metadata
+from main.core_data.media.metadata.transforms import MetadataToTensor
 from main.core_data.media.text import Text
 from main.core_data.media.text import TxtTargetConfig
 from main.core_data.media.text.default_transform_pipe import txt_from_aud_interleaved_txt_extract_transform_pipe, \
@@ -59,7 +61,8 @@ def amigos_interleaved_preprocessor(
                                source_fs=AmigosConfig.EEG.fs, max_length=output_max_length),
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
             txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
-            (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data)))
+            (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data))),
+            (Metadata.modality_code(), MetadataToTensor())
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
@@ -68,6 +71,7 @@ def amigos_interleaved_preprocessor(
         ),
         extraction_data_folder=extraction_data_folder
     )
+
 
 # todo add index to output (cosi da verificare corretto allineamnto tra i ds)
 @safe_call
@@ -80,7 +84,8 @@ def amigos_vate_basic_preprocessor(output_path: str, extraction_data_folder: str
             "default_preprocessor",
             vid_vate_basic_transform_pipe(vid_config),
             aud_vate_basic_transform_pipe(AmigosConfig.Audio.fs),
-            txt_vate_basic_transform_pipe()
+            txt_vate_basic_transform_pipe(),
+            (Metadata.modality_code(), MetadataToTensor())
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",

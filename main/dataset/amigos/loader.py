@@ -8,6 +8,7 @@ import pandas as pd
 from moviepy import VideoFileClip
 
 from main.core_data.media.assessment.assessment import Assessment
+from main.core_data.media.metadata.metadata import Metadata
 from main.dataset.amigos.config import AmigosConfig
 from main.dataset.amigos.utils import extract_trial_data, load_participant_data
 from main.core_data.media.audio.audio import Audio
@@ -58,6 +59,8 @@ class AmigosPointsLoader(DataPointsLoader):
             info = mne.create_info(ch_names=AmigosConfig.CH_NAMES, ch_types=AmigosConfig.CH_TYPES, sfreq=fs)
             raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
 
+            metadata = {"nei": int(person + "010" + video_id), "dataset_id": 0}
+
             # Take from Audio
             yield FlexibleDatasetPoint(
                 experiment_id,
@@ -69,4 +72,5 @@ class AmigosPointsLoader(DataPointsLoader):
                 Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
                 Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
                 Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
+                Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
             )
