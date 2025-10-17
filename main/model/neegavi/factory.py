@@ -3,10 +3,11 @@ from typing import Tuple
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
-from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig, AudioAdapter, EegAdapter, \
+from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig, EegAdapter, \
     TextAdapter
 from main.model.layer.kd import KDHead
 from main.model.layer.modality_stream import ModalityStream
+from main.model.neegavi.adapters import AudioAdapter
 from main.model.neegavi.base_model import NEEGAviModel, WeaklySupervisedNEEEGBaseModel
 
 
@@ -34,14 +35,14 @@ class NEEGAviFactory:
                     Audio.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
                     #   adapter=PMAAudioAdapter(project_out_size=target_size),
-                    adapter=AudioAdapter(perceiver_config=perceiver_resampler_config, project_out_size=target_size),
+                    adapter=AudioAdapter(input_size=768, project_out_size=target_size),
                 ),
-                ModalityStream(
-                    Text.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                    # adapter=PMAAudioAdapter(project_out_size=target_size),
-                    adapter=TextAdapter(p=64, perceiver_config=perceiver_resampler_config),
-                )
+                #ModalityStream(
+                #    Text.modality_code(), target_size,
+                #    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                #    # adapter=PMAAudioAdapter(project_out_size=target_size),
+                #   adapter=TextAdapter(p=64, perceiver_config=perceiver_resampler_config),
+                #)
             ],
 
             use_modality_encoder=use_modality_encoder,

@@ -12,6 +12,17 @@ from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, Siglip
 from main.utils.data import MaskedValue
 
 
+def sym_infonce(za: torch.Tensor, zb: torch.Tensor, tau=0.7):  # start higher tau
+    za = F.normalize(za, dim=-1)
+    zb = F.normalize(zb, dim=-1)
+    # center to fight batch-wise shared direction
+    za = F.normalize(za - za.mean(0, keepdim=True), dim=-1)
+    zb = F.normalize(zb - zb.mean(0, keepdim=True), dim=-1)
+    logits = (za @ zb.T).to(torch.float32) / tau
+    t = torch.arange(za.size(0), device=za.device)
+    return 0.5 * (F.cross_entropy(logits, t) + F.cross_entropy(logits.T, t))
+
+
 class EegAviKdVateMaskedModule(L.LightningModule):
     pass
 
@@ -73,20 +84,24 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log("kd_loss", loss, on_epoch=True)
         return loss * self.alpha
 
+    def fusion_loss(self, after: torch.Tensor, before: MaskedValue) -> torch:
+        # before is 3D. We mean over valid masked rows
+        y_before = before["data"]
+        mask_before = before["mask"].unsqueeze(-1)
+        y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
+        loss = sym_infonce(after, y_before, tau=0.3)
+        return loss
+
+    # todo sistemare
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
         device, dtype = fused_output.device, fused_output.dtype
+
+        for key, value in modality_outputs.items():
+            l = self.fusion_loss(fused_output, value)
+            self.log("fus_" + key, l, on_epoch=True, prog_bar=True)
+
         num = torch.zeros((), device=device, dtype=dtype)
         den = torch.zeros((), device=device, dtype=dtype)
-
-        # If fused_output is token-level [B,T,D], pool it to [B,D] with the union mask over modalities (safer).
-        # Otherwise, if it's already [B,D], this is a no-op.
-        def masked_mean_over_t(x, mask_BT):
-            if mask_BT is None:
-                return x.mean(dim=1) if x.dim() == 3 else x
-            if x.dim() == 2:
-                return x
-            w = mask_BT.float().unsqueeze(-1)  # [B,T,1]
-            return (x * w).sum(dim=1) / w.sum(dim=1).clamp_min(1e-6)
 
         # Build a union time mask across modalities to pool fused_output safely
         union_mask = None
