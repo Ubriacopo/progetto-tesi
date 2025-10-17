@@ -8,162 +8,172 @@ from torch import nn, einsum
 from main.model.layer.base import SimpleFeedForward
 
 
-class PerceiverAttention(nn.Module):
+def feed_forward_layer(dim: int, mult: int = 4, activation: str = 'gelu'):
+    """Feed forward layer with given activation function"""
+
+    activations = dict(gelu=nn.GELU, relu=nn.ReLU)
+    assert activation in activations, f'activation can only be one of {activations.keys()}'
+
+    inner_dim = int(dim * mult)
+    return nn.Sequential(
+        nn.LayerNorm(dim),
+        nn.Linear(dim, inner_dim, bias=False),
+        activations[activation](),
+        nn.Linear(inner_dim, dim, bias=False),
+    )
+
+
+class PerceiverAttentionLayer(nn.Module):
+    """Perceiver Attention Layer"""
 
     def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
-        """
-
-        Perceiver Attention take from OpenFlamingo and adapted.
-
-        :param dim: Input latent dimension
-        :param dim_head: Attention head latent size
-        :param heads: Number of attention heads
-        """
         super().__init__()
-        self.scale: float = dim_head ** -0.5
-        self.heads: int = heads
-        self.dim_head: int = dim_head
+        self.scale = dim_head ** -0.5
+        self.heads = heads
+        self.dim_head = dim_head
+        inner_dim = dim_head * heads
 
+        # trainable components of PerceiverAttentionLayer
         self.norm_media = nn.LayerNorm(dim)
         self.norm_latents = nn.LayerNorm(dim)
-        # Linear projections to fit the attention shapes
-        self.q = nn.Linear(dim, dim_head * heads, bias=False)
-        self.k = nn.Linear(dim, dim_head * heads, bias=False)
-        self.v = nn.Linear(dim, dim_head * heads, bias=False)
-        # self.kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
-        self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
-    def forward(self, x: torch.Tensor, latents: torch.Tensor):
-        """
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(dim, inner_dim, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+
+    def forward(self, features, latents):
+        """Latent vectors are cross-attending to the visual features x
+
         Args:
-            x (torch.Tensor): x features
-                shape (b, n1, D)
-            latents (torch.Tensor): latent features
-                shape (b, n2, D)
-            mask (torch.Tensor): mask
+            features: Batch of visual features with shape (batch_size, n_features, dim)
+            latents: Latent learnt vectors which are used to compute queries with shape (batch_size, n_latents, dim)
+
+        Returns:
+            Attention score with shape (batch_size, n_latents, dim)
         """
+        assert features.ndim == 3
+        assert latents.ndim == 3
+        assert features.shape[0] == latents.shape[0]
+        assert features.shape[2] == latents.shape[2]
 
-        b, Nx, D = x.shape
-        _, Nz, _ = latents.shape
+        n_heads = self.heads
+        n_batch, n_features, dim = features.shape
+        n_queries = latents.shape[1]
 
-        x = self.norm_media(x)
+        # Layer normalization
+        x = self.norm_media(features)
         latents = self.norm_latents(latents)
 
-        q = self.q(latents)
-        q = rearrange(q, 'b q (h d) -> b h q d', h=self.heads)
-        assert q.shape == torch.Size([b, self.heads, Nz, self.dim_head])
+        # Compute the queries from the latents, for all attention heads simultaneously
+        q = self.to_q(latents)
+        q = rearrange(q, 'b q (h d) -> b h q d', h=n_heads)
+        assert q.shape == torch.Size([n_batch, n_heads, n_queries, self.dim_head])
 
-        # kv = torch.cat((x, latents), dim=-2)
+        # Keys and values for all attention heads
         kv_input = torch.cat((x, latents), dim=-2)
-        k = self.k(kv_input)
-        v = self.v(kv_input)
+        n_features_latents = n_features + n_queries
+        k = self.to_k(kv_input)
+        v = self.to_v(kv_input)
 
-        # k, v = self.kv(x).chunk(2, dim=-1)
-        k, v = rearrange_many((k, v), 'b f (h d) -> b h f d', h=self.heads)
-        assert v.shape == torch.Size([b, self.heads, Nx + Nz, self.dim_head])
+        k, v = rearrange_many((k, v), 'b f (h d) -> b h f d', h=n_heads)
+        assert v.shape == torch.Size([n_batch, n_heads, n_features_latents, self.dim_head])
 
-        q *= self.scale
+        q = q * self.scale
 
+        # Attention scores
         sim = einsum('b h q d, b h f d -> b h q f', q, k)
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         alphas = sim.softmax(dim=-1)
 
         out = einsum('b h q f, b h f v -> b h q v', alphas, v)
         out = rearrange(out, 'b h q v -> b q (h v)')
-        return self.out(out)
+
+        return self.to_out(out)
 
 
 class PerceiverResampler(nn.Module):
-    def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
-                 max_num_time_steps: int = None, max_num_frames: int = None, ff_mult: int = 4):
-        """
-        The PerceiverResampler comes from the Flamingo definition and enrichest the Perceiver architecture.
-        It has a lower computational complexity and allows us to draw information from timed sequences.
-        It condenses the info where possible.
-        It is good to merge multimodal data later down the stream.
+    """Perceiver Resampler with multi-head attention layer"""
 
-        :param dim: Size of the last dimension of the input (latent space).
-        :param depth: Number of iterations of Perceiver Attention (nested PerceiverAttention + Projection Head).
-        :param dim_head: Size of the heads of Perceiver Attention.
-        :param heads: Number of attention heads.
-        :param num_latents: Number of latent dimensions for the generation of latens that are passed to the attention.
-        :param max_num_time_steps: To create Embeddings for the frames by tagging sequence positioning of media.
-        :param max_num_frames: To create Embeddings for the frames by tagging sequence positioning of frames.
-        :param ff_mult: Multiplier for the feed forward network to remap the input dim.
-        """
+    def __init__(
+            self,
+            dim: int,
+            depth: int,
+            dim_head: int = 64,
+            heads: int = 8,
+            num_latents: int = 64,
+            max_num_time_steps: int = 4,
+            max_num_frames: int = None,
+            ff_mult: int = 4,
+            activation: str = 'gelu',
+            trainable: bool = True,
+    ):
         super().__init__()
-        # We learn the latents
-        self.latents = nn.Parameter(torch.randn(num_latents, dim))
 
-        # todo prova ad usare questie  fixare
+        self.dim = dim
+        self.num_queries = num_latents
 
-        # todo
-        # Set Transformer PMA (Pooling by Multihead Attention):
-        # Replace learned queries with PMA seeds (k≈8–32). It’s still cross-attn,
-        # but PMA tends to give better coverage/diversity, especially with a coverage loss. Works naturally with masks.
+        self.latents = nn.Parameter(torch.randn(num_latents, dim))  # type: ignore[reportPrivateUsage]
+        self.time_pos_emb = nn.Parameter(torch.randn(max_num_time_steps, 1, dim))  # type: ignore[reportPrivateUsage]
 
-        # oppure
-        # Perceiver IO (not just Resampler):
-        # Keep a latent array (L≈128–256) with cross-attn in and cross-attn out.
-        # Add relative time bias and mask-aware logits. It’s heavier but robust for ragged inputs.
-        self.frame_embeddings: Optional[nn.Parameter] = None
-        if max_num_frames is not None:
-            self.frame_embeddings = nn.Parameter(torch.randn(max_num_frames, dim))
-
-        self.time_pos_embeddings: Optional[nn.Parameter] = None
-        if max_num_time_steps is not None:
-            self.time_pos_embeddings = nn.Parameter(torch.randn(max_num_time_steps, 1, dim))
-
-        # Build perceiver layers.
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
-                SimpleFeedForward(dim=dim, mult=ff_mult)
-            ]))
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
+                        feed_forward_layer(dim=dim, mult=ff_mult, activation=activation),
+                    ]
+                )
+            )
 
+        # Layer normalization takes as input the query vector length
         self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x: torch.Tensor, mask=None):
+        self._update_trainable_state(trainable)
+
+    def _update_trainable_state(self, trainable: bool = True):
+        for param in self.parameters():
+            param.requires_grad = trainable
+
+    def forward(self, x: torch.Tensor, mask: torch.BoolTensor = None):
+        """Run perceiver resampler on the input visual embeddings
+
+        Args:
+            x: Input visual embeddings of shape (batch_size, n_frames, n_features, d_visual)
+            mask: Mask for the input visual embeddings of shape (batch_size, n_frames)
+
+        Returns:
+            Resampler features of shape (batch_size, num_queries, d_visual)
         """
+        assert x.ndim == 4
 
-        :param mask:
-        :param x: Features of the modality in input. It is supposed to be a 5D tensor [b, T, F, v, D] with:
-                    - b: is batch size of the input. (Fixed during training).
-                    - T: is number of time steps.
-                    - F: are the frames fed that compose a single time-step (For ViViT it's 16 for example as it has a temporal stride of 2)
-                    - v: Are the generated patches by the embedder previously.
-                    - D: Is the final embedding space (e.g. 768 for ViViT)
+        batch_size, max_length, _, dim = x.shape
 
-                    or 4D [b, T, Fv, D]
-        :return:
-        """
+        assert dim == self.dim
 
-        b, T, F, v = x.shape[:4]
+        # Mask the position embeddings for the padded frames
+        time_pos_emb = (
+            self.time_pos_emb[:max_length].unsqueeze(0).expand(batch_size, -1, -1, -1)
+        )  # [batch_size, max_length, 1, dim]
+        if mask is not None:
+            time_pos_emb = time_pos_emb * mask.unsqueeze(-1).unsqueeze(-1)
 
-        if self.frame_embeddings is not None:
-            # Add the frame embeddings to the input to not lose the temporal alignment information
-            x += repeat(self.frame_embeddings[:F], "F d -> b T F v d", b=b, T=T, v=v)
-
-        if x.dim() == 5:
-            # Flatten the frame and spatial dimensions that we suppose are in [-3:-2]
-            x = rearrange(x, "b T F v d -> b T (F v) d")
-
-        if self.time_pos_embeddings is not None:
-            # Add to the resampled x the time embeddings. Mostly won't be used as T tends to be 1.
-            time_pos_emb = self.time_pos_embeddings[:T].unsqueeze(0).expand(b, -1, -1, -1)
-            if mask is not None:
-                time_pos_emb = time_pos_emb * mask.unsqueeze(-1).unsqueeze(-1)
-
-            x += time_pos_emb
+        # Apply the position embeddings
+        x = x + time_pos_emb
 
         # Flatten the frames
         x = rearrange(x, 'b T n d -> b (T n) d')
-        latents = repeat(self.latents, "n d -> b n d", b=b)
 
-        # Transformer Block
-        for att, feed_forward in self.layers:
-            latents = latents + att(x, latents)
-            latents = latents + feed_forward(latents)
+        # Copy the latents for every element in the batch
+        latents = repeat(self.latents, 'q d -> b q d', b=batch_size)
 
-        return self.norm(latents)
+        # Apply attention and feed forward layer
+        for attn, ffw in self.layers:
+            latents = latents + attn(x, latents)
+            latents = latents + ffw(latents)
+
+        assert latents.shape == torch.Size([batch_size, self.num_queries, self.dim])
+
+        norm = self.norm(latents)
+        return norm
