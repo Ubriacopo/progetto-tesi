@@ -222,7 +222,7 @@ class NEEGAviModel(nn.Module):
             z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_output["mask"], kv_mask=masks)
 
         z = self.fusion_pooling(z, mask=pivot_output["mask"])
-        z = self.fused_norm(z)
+        # z = self.fused_norm(z)
         return_object = EegBaseModelOutputs(embeddings=z, kd_outs=kd_outputs, multimodal_outs=multimodal_outs)
         return return_object if not return_dict else asdict(return_object)
 

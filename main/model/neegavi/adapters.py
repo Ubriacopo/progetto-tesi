@@ -12,9 +12,10 @@ class AudioAdapter(nn.Module):
     def __init__(self, input_size: int, project_out_size: int = None):
         super().__init__()
         self.ff = nn.Sequential(
-            nn.Linear(input_size, input_size * 2),
-            nn.ReLU(),
-            nn.Linear(input_size * 2, project_out_size),
+            nn.Linear(input_size, input_size * 4),
+            nn.GELU(),
+            nn.LayerNorm(input_size * 4),
+            nn.Linear(input_size * 4, project_out_size),
         )
 
     def forward(self, x: torch.Tensor, mask=None):
