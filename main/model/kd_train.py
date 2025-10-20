@@ -1,14 +1,14 @@
 from typing import Literal
-import torch.nn.functional as F
+
 import lightning as L
+import torch.nn.functional as F
 import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
 from torchmetrics.functional import concordance_corrcoef
 
-from main.model.EEGAVI.EEGAVI import WeaklySupervisedEEGAVIOutputs
 from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss, siglip
+from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss
 from main.utils.data import MaskedValue
 
 
@@ -40,8 +40,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         super().__init__()
         self.student = student
         self.teacher = teacher
+
         # TODO Find defaults (questi sono per test a b=1)
-        self.siglip_loss = SiglipLoss(init_tau=0.2, stop_grad_target=False)
+        self.verbose = True
+        self.siglip_loss = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
+        self.aud_siglip_loss = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
 
         # Weight terms for loss parts
         self.alpha: float = kd_loss_weight
@@ -54,10 +57,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def configure_optimizers(self) -> OptimizerLRScheduler:
         # todo warmup lr
         return torch.optim.Adam([
-            {"params": self.student.parameters()},
-            {"params": self.siglip_loss.parameters()}
-        ], lr=self.lr, weight_decay=0
-        )
+            {"params": self.student.parameters(), "lr": self.lr},
+            {"params": self.siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0},
+            {"params": self.aud_siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+        ], weight_decay=0.01)
 
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) \
             -> float | torch.Tensor:
@@ -84,26 +87,20 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log("kd_loss", loss, on_epoch=True)
         return loss * self.alpha
 
-    def fusion_loss(self, after: torch.Tensor, before: MaskedValue, variant="") -> torch.Tensor:
-        # before is 3D. We mean over valid masked rows
-        y_before = before["data"]
-        mask_before = before["mask"].unsqueeze(-1)
-        y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
-
-        if variant == "siglip":
-            loss = self.siglip_loss(after, y_before)
-        else:
-            loss = sym_infonce(after, y_before, tau=0.3)
-        return loss
-
     # todo sistemare
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
         base_loss = torch.tensor(0.0, device=fused_output.device)
         for key, value in modality_outputs.items():
-            l = self.fusion_loss(fused_output, value)
-            self.log("fus_" + key, l, on_epoch=True, prog_bar=True)
-            l = self.fusion_loss(fused_output, value, variant="siglip")
-            self.log("siglip_" + key, l, on_epoch=True, prog_bar=True)
+            print(f"\nFor key {key}:")
+            # before is 3D. We mean over valid masked rows
+            y_before = value["data"]
+            mask_before = value["mask"].unsqueeze(-1)
+            y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
+            if key == "aud":
+                l = self.aud_siglip_loss(fused_output, y_before)
+            else:
+                l = self.siglip_loss(fused_output, y_before)
+            self.log("siglip_" + key, l, on_step=True, on_epoch=True, prog_bar=True)
             base_loss += l
 
         return base_loss
@@ -139,6 +136,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 present=stud_out.multimodal_outs["eeg"]["mask"] & stud_out.multimodal_outs["ecg"]["mask"].any(dim=-1)
             )
 
-        self.log("train_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
 
         return loss

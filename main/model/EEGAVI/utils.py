@@ -70,28 +70,41 @@ def remap_with_overlap(x: torch.Tensor, mask: torch.Tensor, t: int):
 
 
 @torch.no_grad()
-def batch_stats_generic(X: torch.Tensor,
-                        mask: torch.Tensor | None = None,
-                        reduce_axes: tuple[int, ...] = (1,),  # e.g. (1,2,3) or (1,2)
-                        ):
+def batch_stats_generic(x: torch.Tensor, mask: torch.Tensor = None, reduce_axes: tuple[int, ...] = None, center=False):
     """
     X: [B, *A, D]   (any number of reduce axes A, then D)
     mask: [B, *A]   (True=valid) or None
     """
-    B = X.size(0)
-    X = X.float()
+    B = x.size(0)
+    x = x.float()
+
+    # Pick sensible default: reduce all non-batch, non-feature dims
+    if reduce_axes is None:
+        reduce_axes = tuple(range(1, x.dim() - 1))
+    else:
+        # normalize negative axes and validate
+        reduce_axes = tuple(a if a >= 0 else x.dim() + a for a in reduce_axes)
+        for a in reduce_axes:
+            assert 1 <= a < x.dim() - 1, f"reduce_axes must be within [1, {x.dim() - 2}] (got {a})"
+
+    x = x.to(torch.float32)
 
     if mask is not None:
         # bring mask to same rank as X by adding the last dim
-        while mask.dim() < X.dim() - 1:
+        while mask.dim() < x.dim() - 1:
             mask = mask.unsqueeze(-1)
-        w = mask.to(X.dtype)
+        w = mask.to(dtype=x.dtype)
+        w_feat = w.unsqueeze(-1)
 
-        num = (X * w.unsqueeze(dim=-1)).sum(dim=reduce_axes)
-        den = w.sum(dim=reduce_axes).clamp_min(1e-6)
-        Xb = num / den.unsqueeze(-1)  # [B,D]
+        num = (x * w_feat).sum(dim=reduce_axes)
+        den = w.sum(dim=reduce_axes).clamp_min(1e-6).unsqueeze(-1)
+        Xb = num / den  # [B,D]
     else:
-        Xb = X.mean(dim=reduce_axes)  # [B,D]
+        Xb = x.mean(dim=reduce_axes)  # [B,D]
+
+    # optional per-batch centering (mini-whitening)
+    if center:
+        Xb = Xb - Xb.mean(dim=0, keepdim=True)
 
     Xn = F.normalize(Xb, dim=-1)
     S = Xn @ Xn.T  # [B,B]
@@ -104,55 +117,5 @@ def batch_stats_generic(X: torch.Tensor,
     Bf = float(B)
     diag = float(S.diag().mean())
     off = float((S.sum() - S.diag().sum()) / (Bf * Bf - Bf))
-    return dict(diag=diag, off=off, gap=diag - off,
-                S_min=float(S.min()), S_max=float(S.max()),
-                rank1_ratio=rank1_ratio,
-                across_batch_std=float(Xb.std(0).mean()))
-
-
-@torch.no_grad()
-def batch_stats_5d(x: torch.Tensor, mask: torch.Tensor | None = None, reduce_axes=(1, 2, 3), max_dim=3):
-    """
-    Pool over T,F,P by default
-
-    X:    [B, T, F, P, D]
-    mask: [B, T, F] or [B, T, F, P] (True = valid)
-    """
-    B = x.size(0)
-    x = x.to(torch.float32)
-
-    if mask is not None:
-        # broadcast mask to [B,T,F,P,1]
-        if mask.dim() == max_dim:  # [B,T,F]
-            mask = mask.unsqueeze(-1)  # [B,T,F,1]
-        mask = mask.to(x.device)
-        w = mask.unsqueeze(-1).to(x.dtype)  # [B,T,F,P,1]
-
-        # masked numerator/denominator
-        num = (x * w).sum(dim=reduce_axes)  # -> [B, D]
-        den = w.sum(dim=reduce_axes)  # -> [B, 1]
-        den = den.clamp_min(1e-6)
-        Xb = num / den  # [B, D]
-    else:
-        Xb = x.mean(dim=reduce_axes)  # [B, D]
-
-    # similarity stats across the batch
-    Xn = F.normalize(Xb, dim=-1)
-    S = Xn @ Xn.T  # [B, B]
-    diag = S.diag().mean().item()
-    off = (S.sum() - S.diag().sum()) / (S.numel() - B)
-
-    # rank-1 dominance check
-    Xm = Xn - Xn.mean(0, keepdim=True)
-    s = torch.linalg.svdvals(Xm)  # faster than full svd
-    rank1_ratio = (s[0] / (s.sum() + 1e-9)).item()
-
-    return dict(
-        diag=float(diag),
-        off=float(off),
-        gap=float(diag - off),
-        S_min=float(S.min()),
-        S_max=float(S.max()),
-        rank1_ratio=rank1_ratio,
-        across_batch_std=float(Xb.std(0).mean())
-    )
+    return dict(diag=diag, off=off, gap=diag - off, S_min=float(S.min()), S_max=float(S.max()),
+                rank1_ratio=rank1_ratio, across_batch_std=float(Xb.std(0).mean()))

@@ -7,9 +7,9 @@ from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConf
     TextAdapter
 from main.model.layer.kd import KDHead
 from main.model.layer.modality_stream import ModalityStream
-from main.model.neegavi.adapters import AudioAdapter
+from main.model.EEGAVI.interleaved_EEGAVI.adapters import AudioAdapter
 from main.model.neegavi.base_model import NEEGAviModel, WeaklySupervisedNEEEGBaseModel
-
+from main.model.neegavi.adapters import AudioAdapter as SimpleAudioAdapter
 
 class NEEGAviFactory:
     @staticmethod
@@ -35,7 +35,8 @@ class NEEGAviFactory:
                     Audio.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
                     #   adapter=PMAAudioAdapter(project_out_size=target_size),
-                    adapter=AudioAdapter(input_size=768, project_out_size=target_size),
+                    # adapter=AudioAdapter(perceiver_resampler_config, project_out_size=384),
+                    adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size)
                 ),
                 #ModalityStream(
                 #    Text.modality_code(), target_size,

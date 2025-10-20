@@ -5,7 +5,7 @@ import torch
 from einops import rearrange, repeat
 from torch import nn
 
-from main.model.EEGAVI.utils import batch_stats_5d, batch_stats_generic
+from main.model.EEGAVI.utils import batch_stats_generic
 from main.model.layer.ISAB import PMA
 from main.model.layer.base import TemporalEncoder
 from main.model.reworked.perceiver import PerceiverResampler
@@ -78,23 +78,10 @@ class AudioAdapter(nn.Module):
     def forward(self, x: torch.Tensor, mask=None) -> MaskedValue:
         # BEFORE resampler (raw audio features you feed in)
         # stats_pre = batch_stats_generic(x, mask=mask_5d[..., 0], reduce_axes=(1,2,3))
-        t = rearrange(x, "b T (F p) D -> b T F p D", F=1)
-        stats_pre = batch_stats_generic(
-            t, mask=repeat(mask, "b T -> b T F p", F=1, p=t.shape[-2]),
-            reduce_axes=(1, 2, 3)
-
-        )  # e.g., pooled or CLS before Perceiver
-
         y = self.resampler(x=x, mask=mask)
         # AFTER resampler + your pooling to [B,D] that goes into loss
-        stats_post = batch_stats_generic(
-            y, mask=repeat(mask, "b T -> b T p", p=y.shape[-2]), reduce_axes=(1, 2)
-        )  # the exact zb you pass to InfoNCE
-        print("\nPRE :", stats_pre)
-        print("POST:", stats_post)
         if self.projection is not None:
             y = self.projection(y)
-
         return MaskedValue(data=y, mask=mask)
 
 

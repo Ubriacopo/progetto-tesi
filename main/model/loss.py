@@ -51,23 +51,45 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
 
 
 class SiglipLoss(nn.Module):
-    def __init__(self, init_tau=0.07, init_bias=0.0, stop_grad_target: bool = False):
+    def __init__(self, init_tau=0.07, init_bias=-10, stop_grad_target: bool = False, verbose: bool = False):
         super(SiglipLoss, self).__init__()
+
         self.logt = nn.Parameter(torch.tensor([float(torch.log(torch.tensor(1.0 / init_tau)))]))  # ~ ln(1/τ)
+        # self.logt = torch.log(torch.tensor([1. / init_tau], device="cuda"))
         # learnable scalar bias (start near 0 so positives can go > 0)
         self.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float32))
+        # self.bias = torch.tensor([init_bias], device="cuda")
+        self.verbose = verbose
         self.stop_grad_target: bool = stop_grad_target
+
+    @staticmethod
+    def prep(z: torch.Tensor):
+        """
+        common component removal / mean-centering (lightweight version of whitening that works great for small-batch contrastive training).
+        Remember: this makes the loss batch-dependent (the center is computed over the current batch).
+        Usually fine in practice. (no good for multi GPUs)
+
+        As seen in SimCLR / MoCo-v3 / BYOL-A and formulated in Whitening Contrastive Learning (WCL, CVPR 2021)
+        TODO: Read paper
+
+        :param z:
+        :return:
+        """
+        z = F.normalize(z, dim=-1)
+        z = F.normalize(z - z.mean(0, keepdim=True), dim=-1)  # optional but stabilizes small-batch
+        return z
 
     def forward(self, za: torch.Tensor, zb: torch.Tensor, ignore_mask=None):
         # Normalization
-        za = normalize(za, dim=-1)
+        za = self.prep(za)
         if self.stop_grad_target:
+            self.verbose and print("Head has been detached")
             zb = zb.detach()
-        zb = normalize(zb, dim=-1)
 
-        T = self.logt.exp()
+        zb = self.prep(zb)
+
         b = self.bias
-
+        T = self.logt.exp()
         logits = (za @ zb.T) * T + b  # [B, B]
         B = logits.size(0)
         # +1 on diag, -1 off-diag
@@ -77,10 +99,13 @@ class SiglipLoss(nn.Module):
             logits = logits.masked_fill(ignore_mask, 0.0)
             labels = labels.masked_fill(ignore_mask, 0.0)
 
-        print("\nT=", T, " b=", b, " diag", torch.diag(logits).mean().item(),
-              " off", (logits.fill_diagonal_(0)).mean().item())
-
         loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
+
+        diag_mean = torch.diag(logits).mean().item()
+        ey = torch.eye(logits.size(-1), dtype=torch.bool, device=logits.device)
+        off_mean = logits.masked_fill(ey, 0).mean().item()
+        self.verbose and print("\nT=", T, "\nb=", b, "\ndiag", diag_mean, "\noff", off_mean, "\nloss=", loss, "\n")
+
         return loss
 
 
