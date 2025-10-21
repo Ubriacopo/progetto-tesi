@@ -20,7 +20,6 @@ class AudioAdapter(nn.Module):
 
     def forward(self, x: torch.Tensor, mask=None):
         """
-        problema quii
         :param x: [b T P D]
         :param mask: [b T]
         :return:

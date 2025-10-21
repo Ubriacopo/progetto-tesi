@@ -1,5 +1,3 @@
-By GPT-5:
-
 I’ve got (B, T, C, P, D) from CBraMod and need Q as (B, T, E) for Flamingo-style gated cross-attn. 
 Here are the viable ways to get there, with crisp trade-offs.
 

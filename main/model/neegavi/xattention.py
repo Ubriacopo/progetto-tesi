@@ -89,12 +89,12 @@ class MaskedCrossAttention(nn.Module):
         # Check similarity between key and query
         sim = einsum("... i d, ... j d -> ... i j", q, k)
 
-        NEG_INF = torch.finfo(qo.dtype).min
+        neg_inf = torch.finfo(qo.dtype).min
         # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
         if kv_mask is not None:
-            sim = sim.masked_fill(~kv_mask[:, None, None, :], NEG_INF)
+            sim = sim.masked_fill(~kv_mask[:, None, None, :], neg_inf)
         if attn_mask is not None:
-            sim = sim.masked_fill(~attn_mask[:, None, :, :], NEG_INF)
+            sim = sim.masked_fill(~attn_mask[:, None, :, :], neg_inf)
 
         # optional: add soft time bias too (independent of hard mask)
         # if (t_q is not None) and (t_kv is not None):
@@ -108,7 +108,7 @@ class MaskedCrossAttention(nn.Module):
 
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
-        attn = attn * row_has_key
+        attn *= row_has_key
 
         # Zero invalid query steps defensively
         if q_mask is not None:

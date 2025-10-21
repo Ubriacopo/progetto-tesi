@@ -34,7 +34,7 @@ class NEEGAviFactory:
                 ModalityStream(
                     Audio.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                    #   adapter=PMAAudioAdapter(project_out_size=target_size),
+                    # adapter=PMAAudioAdapter(project_out_size=target_size),
                     # adapter=AudioAdapter(perceiver_resampler_config, project_out_size=384),
                     adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size)
                 ),

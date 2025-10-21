@@ -1,7 +1,6 @@
 from typing import Literal
 
 import lightning as L
-import torch.nn.functional as F
 import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
 from torchmetrics.functional import concordance_corrcoef
@@ -10,17 +9,6 @@ from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySup
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss
 from main.utils.data import MaskedValue
-
-
-def sym_infonce(za: torch.Tensor, zb: torch.Tensor, tau=0.7):  # start higher tau
-    za = F.normalize(za, dim=-1)
-    zb = F.normalize(zb, dim=-1)
-    # center to fight batch-wise shared direction
-    za = F.normalize(za - za.mean(0, keepdim=True), dim=-1)
-    zb = F.normalize(zb - zb.mean(0, keepdim=True), dim=-1)
-    logits = (za @ zb.T).to(torch.float32) / tau
-    t = torch.arange(za.size(0), device=za.device)
-    return 0.5 * (F.cross_entropy(logits, t) + F.cross_entropy(logits.T, t))
 
 
 class EegAviKdVateMaskedModule(L.LightningModule):
@@ -56,11 +44,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         # todo warmup lr
-        return torch.optim.Adam([
+        return torch.optim.Adam(weight_decay=0.01, params=[
             {"params": self.student.parameters(), "lr": self.lr},
             {"params": self.siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0},
             {"params": self.aud_siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
-        ], weight_decay=0.01)
+        ])
 
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) \
             -> float | torch.Tensor:

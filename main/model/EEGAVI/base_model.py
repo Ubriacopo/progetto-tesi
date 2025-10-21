@@ -11,6 +11,7 @@ from main.model.EEGAVI.utils import remap_with_overlap
 from main.model.layer.attention.x_attention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.model.layer.base import ModalContextEncoder
 from main.model.layer.modality_stream import ModalityStream
+from main.model.neegavi.blocks import MaskedPooling
 from main.utils.data import MaskedValue, KdMaskedValue
 
 
@@ -24,15 +25,6 @@ class EegBaseModelOutputs:
 @dataclasses.dataclass
 class WeaklySupervisedEegBaseModelOutputs(EegBaseModelOutputs):
     pred: torch.Tensor
-
-
-class FusionPooling(nn.Module):
-    # noinspection PyMethodMayBeStatic
-    def forward(self, z: torch.Tensor, mask=None) -> torch.Tensor:
-        norm_factor = mask.float().sum(dim=-1, keepdim=True)
-        norm_factor = norm_factor.clamp_min(1e-6)
-        z = (z * mask.unsqueeze(-1)).sum(dim=-2) / norm_factor
-        return z
 
 
 class EegBaseModel(nn.Module):
@@ -85,7 +77,7 @@ class EegBaseModel(nn.Module):
 
     # noinspection PyMethodMayBeStatic
     def build_fusion_pooling(self):
-        return FusionPooling()
+        return MaskedPooling()
 
     def process_pivot(self, x: MaskedValue, use_kd: bool) -> MaskedValue | KdMaskedValue:
         return self.pivot(x["data"], mask=x.get("mask", None), use_kd=use_kd)
