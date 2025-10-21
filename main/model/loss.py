@@ -4,6 +4,23 @@ from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with
 import torch.nn.functional as F
 
 
+def lightweight_whitening(z: torch.Tensor):
+    """
+    common component removal / mean-centering (lightweight version of whitening that works great for small-batch contrastive training).
+    Remember: this makes the loss batch-dependent (the center is computed over the current batch).
+    Usually fine in practice. (no good for multi GPUs)
+
+    As seen in SimCLR / MoCo-v3 / BYOL-A and formulated in Whitening Contrastive Learning (WCL, CVPR 2021)
+    TODO: Read paper
+
+    :param z: Tensor to normalize
+    :return: The normalized z centered on mean
+    """
+    z = F.normalize(z, dim=-1)
+    z = F.normalize(z - z.mean(0, keepdim=True), dim=-1)  # optional but stabilizes small-batch
+    return z
+
+
 def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
     """
     We will use this one.
@@ -62,31 +79,14 @@ class SiglipLoss(nn.Module):
         self.verbose = verbose
         self.stop_grad_target: bool = stop_grad_target
 
-    @staticmethod
-    def prep(z: torch.Tensor):
-        """
-        common component removal / mean-centering (lightweight version of whitening that works great for small-batch contrastive training).
-        Remember: this makes the loss batch-dependent (the center is computed over the current batch).
-        Usually fine in practice. (no good for multi GPUs)
-
-        As seen in SimCLR / MoCo-v3 / BYOL-A and formulated in Whitening Contrastive Learning (WCL, CVPR 2021)
-        TODO: Read paper
-
-        :param z:
-        :return:
-        """
-        z = F.normalize(z, dim=-1)
-        z = F.normalize(z - z.mean(0, keepdim=True), dim=-1)  # optional but stabilizes small-batch
-        return z
-
     def forward(self, za: torch.Tensor, zb: torch.Tensor, ignore_mask=None):
         # Normalization
-        za = self.prep(za)
+        za = lightweight_whitening(za)
         if self.stop_grad_target:
             self.verbose and print("Head has been detached")
             zb = zb.detach()
 
-        zb = self.prep(zb)
+        zb = lightweight_whitening(zb)
 
         b = self.bias
         T = self.logt.exp()
@@ -109,7 +109,8 @@ class SiglipLoss(nn.Module):
         return loss
 
 
-def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .2) -> tuple[Tensor, int]:
+def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .07) -> tuple[
+    Tensor, int]:
     idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
     if idx.numel() <= 1:
         return torch.tensor(.0, device=za.device), 0
@@ -120,6 +121,53 @@ def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
     # Return the INFO NCE loss + valid number of rows for this loss calc. As loss is compared with others we have to reduce it
     # to a valid range [0,1]. This allows the loss to be better controlled while training.
     return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device)), idx.numel()
+
+
+def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -> tuple[Tensor, int]:
+    idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
+    if idx.numel() == 0:
+        return torch.tensor(0.0, device=za.device), 0
+
+    a = F.normalize(za[idx], p=2, dim=-1)
+    b = F.normalize(zb[idx].detach(), p=2, dim=-1)
+
+    # Cosine similarity loss (optimizes direction, not magnitude)
+    loss = 1 - F.cosine_similarity(a, b, dim=-1).mean()
+
+    logits = (a @ b.T).float()  # [n,n]
+    top1 = logits.argmax(1)  # best teacher for each student
+    diag_acc = (top1 == torch.arange(logits.size(0), device=logits.device)).float().mean()
+    print("\nkd_top1", diag_acc)  # should climb → 1.0 on overfit
+    perm = logits.argmax(1)  # [n]
+    print("perm (first 10):", perm[:10])
+
+    return loss, idx.numel()
+
+def kd_info_nce_by_ids(za, ids_s, zb, ids_t, tau=0.07):
+    pos_t = {int(k): j for j,k in enumerate(ids_t)}
+    ia, ib = [], []
+    for i,k in enumerate(ids_s):
+        j = pos_t.get(int(k))
+        if j is not None:
+            ia.append(i); ib.append(j)
+    ia = torch.tensor(ia, device=za.device); ib = torch.tensor(ib, device=za.device)
+    a = F.normalize(za[ia], dim=-1)
+    b = F.normalize(zb[ib].detach(), dim=-1)
+    logits = (a @ b.T).float() / tau
+    targets = torch.arange(logits.size(0), device=za.device)
+    return F.cross_entropy(logits, targets, reduction="mean"), logits
+
+
+def masked_mse_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -> tuple[Tensor, int]:
+    idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
+    if idx.numel() == 0:
+        return torch.tensor(0.0, device=za.device), 0
+
+    a = F.normalize(za[idx], p=2, dim=-1)
+    b = F.normalize(zb[idx].detach(), p=2, dim=-1)
+
+    loss = F.mse_loss(a, b)
+    return loss, idx.numel()
 
 
 def masked_cosine_similarity(za: Tensor, zb: Tensor, present: Tensor):

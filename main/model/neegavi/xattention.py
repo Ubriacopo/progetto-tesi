@@ -96,19 +96,13 @@ class MaskedCrossAttention(nn.Module):
         if attn_mask is not None:
             sim = sim.masked_fill(~attn_mask[:, None, :, :], neg_inf)
 
-        # optional: add soft time bias too (independent of hard mask)
-        # if (t_q is not None) and (t_kv is not None):
-        #    tb = _time_bias(t_q, t_kv, alpha=self.alpha, dmax=self.dmax)  # [B,Tq,Tk]
-        #    # (optional) zero tb on text spans: tb[:, :, s:e] = 0
-        #    sim = sim + tb.unsqueeze(1)
-
         # Guard rows that are fully -inf (all keys masked)
         row_has_key = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
         sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
 
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
-        attn *= row_has_key
+        attn = attn * row_has_key
 
         # Zero invalid query steps defensively
         if q_mask is not None:

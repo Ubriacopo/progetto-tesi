@@ -8,7 +8,7 @@ from torchmetrics.functional import concordance_corrcoef
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss
+from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss, masked_mse_kd, masked_cosine_kd
 from main.utils.data import MaskedValue
 
 
@@ -30,7 +30,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.student = student
         self.teacher = teacher
 
-        # TODO Find defaults (questi sono per test a b=1)
         self.verbose = True
         self.siglip_loss = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
         self.aud_siglip_loss = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
@@ -51,29 +50,30 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             {"params": self.aud_siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
         ])
 
-    def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) \
-            -> float | torch.Tensor:
-        numerator, denominator = .0, 0
+
+    def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs):
+        total_loss = 0.0
+        total_samples = 0
         key: Literal['vid', 'txt', 'aud']
         for key in teacher_out.keys():
             if key not in student_out:
-                continue  # Keys do never match so no kd on this.
-            loss_k, n_rows = masked_info_nce_2d(
-                za=student_out[key]["data"], za_mask=student_out[key]["mask"],
-                zb=teacher_out[key]["data"], zb_mask=teacher_out[key]["mask"],
-                tau=self.kd_temperature
+                continue
+
+            loss_k, n_rows = masked_cosine_kd(
+                za=student_out[key]["data"],
+                za_mask=student_out[key]["mask"],
+                zb=teacher_out[key]["data"],
+                zb_mask=teacher_out[key]["mask"],
+                # tau=self.kd_temperature
             )
 
-            loss_k /= torch.clamp(torch.log(torch.tensor(n_rows, device=loss_k.device, dtype=loss_k.dtype)), min=1e-6)
-            # todo possibile problema potrebbe essere dovuto a batch size piccola:
-            # Option 1: Gradient Accumulation (Recommended) Simulate larger batches without memory increase:
-            #       Memory Bank alternativa piu robusta (Al momento siamo in un punto "good enough" per batch che abbiamo)
-            #       Alternativa ancora sarebbe quella di usare sigliploss direttamente che dipende meno da bathc size?
-            numerator += loss_k * n_rows  # Weighed by number of valid rows
-            denominator += n_rows  # Track total number of valid rows
+            if n_rows > 0:
+                total_loss += loss_k * n_rows  # Weighted by valid samples
+                total_samples += n_rows
 
-        loss = numerator / max(denominator, 1)
-        self.log("kd_loss", loss, on_epoch=True)
+        # Simple average
+        loss = total_loss / max(total_samples, 1)
+        self.log("kd_loss", loss, on_epoch=True, on_step=True, prog_bar=True)
         return loss * self.alpha
 
     # todo sistemare
@@ -100,9 +100,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # In emotion regression (valence, arousal, dominance), this is the standard metric and loss used in benchmarks. TODO verify
         # Correlation and agreement rather than absolute distance
         tol = 1e-8
+
+        pred = (pred - pred.mean(dim=0)) / (pred.std(dim=0) + 1e-8)
+        target = (target - target.mean(dim=0)) / (target.std(dim=0) + 1e-8)
+
         target_std = target.std(dim=0)
         ccc = concordance_corrcoef(pred[:, target_std > tol], target[:, target_std > tol]).mean()
-        self.log("unweighted_supervised_loss", ccc, on_epoch=True)
+        self.log("supervised", ccc, on_epoch=True, prog_bar=True)
         return (1 - ccc) * self.gamma
 
     def training_step(self, batch, batch_idx):
@@ -111,9 +115,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
 
         loss = (
-                # self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
-                self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
-                # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
+            self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
+            # self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
+            # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
         )
 
         # Optional term

@@ -35,7 +35,7 @@ class EegAdapter(nn.Module):
 
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> MaskedValue:
         if mask is not None:
-            x *= mask[..., None].to(x.dtype)  # zero masked channels first
+            x = x * mask[..., None].to(x.dtype)  # zero masked channels first
         x = rearrange(x, "b T c L -> b T (c L)")
         x = self.ff(x)
         if mask is not None:

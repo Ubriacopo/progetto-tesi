@@ -8,7 +8,9 @@ class KDHead(nn.Module):
     def __init__(self, input_size: int, target_shape: Tuple[int, ...], transform: nn.Module = None,
                  normalize: bool = False, return_masks: bool = True):
         super(KDHead, self).__init__()
+
         self.transform = nn.Linear(input_size, target_shape[-1]) if transform is None else transform
+
         self.target_shape = target_shape
         self.normalize: bool = normalize
         self.return_masks: bool = return_masks

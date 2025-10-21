@@ -50,7 +50,7 @@ def main(cfg: KdConfig):
         cfg.teacher_weights_path = cfg.base_path + cfg.teacher_weights_path
 
     torch.manual_seed(SEED)  # Reproducibility
-    student = NEEGAviFactory.weakly_supervised_blocks(
+    student = NEEGAviFactory.weak_supervised_interleaved(
         output_size=384, base_model_target_size=384, supports_latent_size=384
     )
     teacher = MaskedContrastiveModel(hidden_channels=200, out_channels=100)
