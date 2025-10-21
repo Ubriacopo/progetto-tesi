@@ -139,8 +139,11 @@ def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -
     diag_acc = (top1 == torch.arange(logits.size(0), device=logits.device)).float().mean()
     print("\nkd_top1", diag_acc)  # should climb → 1.0 on overfit
     perm = logits.argmax(1)  # [n]
-    print("perm (first 10):", perm[:10])
+    print("perm (first 10):", perm)
 
+    logits_id = (a.detach() @ a.T.detach()).float()
+    diag_acc = (logits_id.argmax(1) == torch.arange(a.size(0), device=a.device)).float().mean()
+    assert diag_acc == 1.0, "KD pipeline reorders/duplicates inside student path"
     return loss, idx.numel()
 
 

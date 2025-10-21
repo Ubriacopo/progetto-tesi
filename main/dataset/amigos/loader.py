@@ -59,7 +59,7 @@ class AmigosPointsLoader(DataPointsLoader):
             info = mne.create_info(ch_names=AmigosConfig.CH_NAMES, ch_types=AmigosConfig.CH_TYPES, sfreq=fs)
             raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
 
-            metadata = {"nei": int(person + "010" + video_id), "dataset_id": 0}
+            metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
 
             # Take from Audio
             yield FlexibleDatasetPoint(

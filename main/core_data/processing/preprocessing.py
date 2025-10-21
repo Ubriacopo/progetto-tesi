@@ -8,7 +8,7 @@ from typing import Optional, TypeVar, Generic
 import numpy as np
 import pandas as pd
 import torch
-from tensordict import TensorDict, tensordict
+from tensordict import TensorDict, tensordict, stack
 
 from main.core_data.data_point import FlexibleDatasetPoint, FlexibleDatasetTransformWrapper
 from main.core_data.media.eeg import EEG
@@ -198,7 +198,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         return y
 
     def export(self, x: list[FlexibleDatasetPoint], output_path: str) -> None:
-        objects = [TensorDict(s.to_dict()) if hasattr(s, "to_dict") else s for s in x]
-        tensor_dict = tensordict.stack(objects, dim=0)
+        objects = [TensorDict(s.to_dict()) if hasattr(s, "to_dict") else TensorDict(s) for s in x]
+        tensor_dict = stack(objects, dim=0)
         Path(output_path).mkdir(parents=True, exist_ok=True)
         tensor_dict.memmap(output_path)
