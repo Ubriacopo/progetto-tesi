@@ -5,6 +5,7 @@ import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
 from torchmetrics.functional import concordance_corrcoef
 
+from main.core_data.media.assessment.assessment import Assessment
 from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss
@@ -110,9 +111,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
 
         loss = (
-            # self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
-            self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
-            # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
+                # self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
+                self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
+                # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
         )
 
         # Optional term

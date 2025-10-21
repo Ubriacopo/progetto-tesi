@@ -15,6 +15,6 @@ class MaskedValue(TypedDict):
     data: torch.Tensor
     mask: Optional[torch.Tensor]
 
-
 class KdMaskedValue(MaskedValue, total=False):
     kd: MaskedValue | torch.Tensor
+    t_mod: MaskedValue | torch.Tensor

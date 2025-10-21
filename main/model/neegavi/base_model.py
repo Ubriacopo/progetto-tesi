@@ -7,15 +7,133 @@ from einops import repeat, rearrange
 from torch import nn
 
 from main.model.EEGAVI.base_model import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
-from main.model.neegavi.blocks import MaskedPooling
+from main.model.neegavi.blocks import MaskedPooling, TimedMaskedModalityStream, ModalityStream
 from main.model.layer.base import ModalContextEncoder
-from main.model.layer.modality_stream import ModalityStream
 from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.utils.data import MaskedValue, KdMaskedValue
+
 
 class Model(nn.Module):
     pass
 
+
+class TemporalEegAviSimpleModel(nn.Module):
+    def __init__(self,
+                 output_size: int, pivot: TimedMaskedModalityStream, supports: list[TimedMaskedModalityStream],
+                 xattn_blocks: int | list[GatedXAttentionCustomArgs],
+                 use_modality_encoder: bool = True, drop_p: float = 0.0,
+                 fusion_pooling: nn.Module = MaskedPooling()):
+        super().__init__()
+
+        self.output_size = output_size
+        self.supports: nn.ModuleList[TimedMaskedModalityStream] = nn.ModuleList(supports)
+        self.latent_output_size = supports[0].output_size
+        if use_modality_encoder:
+            # The modality context encoder is useful only for supports that are later merged.
+            modality_mappings = {e.get_code(): i for i, e in enumerate(supports)}
+            self.modality_encoder = ModalContextEncoder(supports[0].output_size, modality_mappings)
+
+            support: TimedMaskedModalityStream
+            for support in self.supports:
+                support.init_modal_context_encoder(modal_context_encoder=self.modality_encoder)
+
+        self.gatedXAttn_layers = nn.ModuleList(self.build_xattn_blocks(xattn_blocks))
+
+        self.drop_p: float = drop_p
+
+        self.allow_modality: Literal['window', 'causal'] = 'window'
+        self.window_seconds = 2
+
+        self.pivot: TimedMaskedModalityStream = pivot
+        self.fusion_pooling: Optional[nn.Module] = fusion_pooling
+
+    def build_xattn_blocks(self, xattn_blocks: int | list[GatedXAttentionCustomArgs]) -> list[nn.Module]:
+        """
+        For how GatedXAttention works the dim and dim_latent are fixed (they do not change).
+        :param xattn_blocks:
+        :return:
+        """
+        modules: list[nn.Module] = []
+        if isinstance(xattn_blocks, list):
+            for config in xattn_blocks:
+                xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size, *asdict(config))
+                modules.append(xattn_block)
+
+        elif isinstance(xattn_blocks, int):
+            for _ in range(xattn_blocks):
+                xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size)
+                modules.append(xattn_block)
+
+        return modules
+
+    def select_keep_modality_rows(self, batch_size: int, device):
+        num_modalities = len(self.supports)
+        if (not self.training) or self.drop_p <= 0:
+            return torch.ones(batch_size, num_modalities, device=device)
+        # TODO: Da fare in futuro (robustezza contro mod mancante)
+        # keep = torch.bernoulli(torch.full((b, number_modalities), 1 - self.drop_p, device=device)).bool()
+        return torch.ones(batch_size, num_modalities, device=device)
+
+    def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
+        tq = t_q.unsqueeze(-1)  # [B, Tq, 1]
+        tk = t_kv.unsqueeze(1)  # [B, 1, Tk]
+
+        if self.allow_modality == "window":
+            return (tk - tq).abs() <= self.window_seconds
+        if self.allow_modality == "causal":
+            return tk <= tq
+        raise ValueError(f"Unknown mode: {self.allow_modality}")
+
+    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
+        kd_outputs, multimodal_outs = {}, {}
+        # Pivot computation (in gatedXattn -> q)
+        pivot_x = x[self.pivot.get_code()]
+
+        device = pivot_x["data"].device
+        b = pivot_x["data"].shape[0]  # Batch size
+
+        pivot_output = self.pivot.forward(pivot_x["data"], mask=pivot_x.get("mask", None), use_kd=use_kd)
+        if "kd" in pivot_output:
+            kd_outputs[self.pivot.get_code()] = pivot_output.pop("kd")
+        t_pivot = pivot_output.pop("t_mod", None)
+        multimodal_outs[self.pivot.get_code()] = pivot_output
+
+        keep = self.select_keep_modality_rows(b, device)
+
+        # Supporting modalities computation (in gatedXattn -> kv)
+        supports, masks, t_mods = [], [], []
+        modality: TimedMaskedModalityStream
+        for idx, modality in enumerate(self.supports):
+            filtered_idx = keep[:, idx].nonzero(as_tuple=True)[0]
+
+            modality_input: MaskedValue = x[modality.get_code()]
+            data, mask = modality_input["data"], modality_input.get("mask", None)
+            modality_out = modality.forward(data, mask=mask, use_kd=use_kd, idx=filtered_idx, b=b)
+
+            if "kd" in modality_out:
+                kd_outputs[modality.get_code()] = modality_out.pop("kd")
+            multimodal_outs[modality.get_code()]: KdMaskedValue = modality_out
+
+            supports.append(modality_out["data"])
+            masks.append(modality_out["mask"])
+            t_mods.append(modality_out["t_mod"])
+
+        support = torch.cat(supports, dim=1)
+        masks = torch.cat(masks, dim=1)
+        t_mod = torch.cat(t_mods, dim=1)
+
+        # Run gatedXAttn
+        allow = self.build_allow_mask(t_pivot, t_mod)
+        z: torch.Tensor = pivot_output["data"]
+        for gated_x_attn in self.gatedXAttn_layers:
+            z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_output["mask"], kv_mask=masks)
+
+        # Optional dimensionality reduction
+        if self.fusion_pooling is not None:
+            z = self.fusion_pooling(z, mask=pivot_output["mask"])
+
+        return_object = EegBaseModelOutputs(embeddings=z, kd_outs=kd_outputs, multimodal_outs=multimodal_outs)
+        return return_object if not return_dict else asdict(return_object)
 
 
 class NEEGAviModel(nn.Module):
@@ -175,7 +293,7 @@ class NEEGAviModel(nn.Module):
 
 
 class WeaklySupervisedNEEEGBaseModel(nn.Module):
-    def __init__(self, eeg_base_model: NEEGAviModel, hidden_size: int, output_size: int):
+    def __init__(self, eeg_base_model: NEEGAviModel | TemporalEegAviSimpleModel, hidden_size: int, output_size: int):
         super(WeaklySupervisedNEEEGBaseModel, self).__init__()
         self.base_model = eeg_base_model
         self.prediction_head = nn.Sequential(

@@ -3,7 +3,7 @@ from torch import nn
 from torchvision.transforms import v2
 
 from main.model.layer.ISAB import ISAB, PMA
-from main.model.layer.modality_stream import ModalityStream
+from main.model.neegavi.blocks import ModalityStream
 from main.model.EEGAVI.EEGAVI import EEGAVI
 
 

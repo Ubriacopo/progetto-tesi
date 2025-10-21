@@ -2,16 +2,55 @@ from typing import Tuple
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
-from main.core_data.media.text import Text
-from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig, EegAdapter, \
-    TextAdapter
+from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig, EegAdapter
 from main.model.layer.kd import KDHead
-from main.model.layer.modality_stream import ModalityStream
-from main.model.EEGAVI.interleaved_EEGAVI.adapters import AudioAdapter
-from main.model.neegavi.base_model import NEEGAviModel, WeaklySupervisedNEEEGBaseModel
 from main.model.neegavi.adapters import AudioAdapter as SimpleAudioAdapter
+from main.model.neegavi.base_model import NEEGAviModel, WeaklySupervisedNEEEGBaseModel, TemporalEegAviSimpleModel
+from main.model.neegavi.blocks import ModalityStream, TimedMaskedModalityStream
+
 
 class NEEGAviFactory:
+    @staticmethod
+    def interleaved_blocks(target_size: int, supports_latent_size: int, channels: int = 32,
+                           teacher_out_shape: Tuple[int, ...] = (1, 100),
+                           # Further settings:
+                           use_modality_encoder: bool = True, xattn_blocks: int = 2
+                           ):
+        return TemporalEegAviSimpleModel(
+            output_size=target_size,
+            pivot=TimedMaskedModalityStream(
+                EEG.modality_code(), target_size,
+                adapter=EegAdapter(channels, latent_input_size=200, output_size=target_size),
+            ),
+            supports=[
+                TimedMaskedModalityStream(
+                    Audio.modality_code(), target_size,
+                    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                    adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size),
+                    time_step_length=0.96  # Audio sampled like this
+                )
+            ],
+
+            use_modality_encoder=use_modality_encoder,
+            xattn_blocks=xattn_blocks,
+        )
+
+    @staticmethod
+    def weakly_supervised_blocks(output_size: int,
+                                 base_model_target_size: int, supports_latent_size: int,
+                                 channels: int = 32,
+                                 teacher_out_shape: Tuple[int, ...] = (1, 100),
+                                 # Further settings:
+                                 use_modality_encoder: bool = True,
+                                 remap_timesteps: int = 32,
+                                 xattn_blocks: int = 2):
+        return WeaklySupervisedNEEEGBaseModel(
+            eeg_base_model=NEEGAviFactory.interleaved_blocks(base_model_target_size, supports_latent_size, channels,
+                                                             teacher_out_shape, use_modality_encoder, xattn_blocks),
+            hidden_size=output_size * 2,
+            output_size=output_size,
+        )
+
     @staticmethod
     def interleaved(target_size: int, supports_latent_size: int, channels: int = 32,
                     teacher_out_shape: Tuple[int, ...] = (1, 100),
@@ -38,12 +77,12 @@ class NEEGAviFactory:
                     # adapter=AudioAdapter(perceiver_resampler_config, project_out_size=384),
                     adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size)
                 ),
-                #ModalityStream(
+                # ModalityStream(
                 #    Text.modality_code(), target_size,
                 #    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
                 #    # adapter=PMAAudioAdapter(project_out_size=target_size),
                 #   adapter=TextAdapter(p=64, perceiver_config=perceiver_resampler_config),
-                #)
+                # )
             ],
 
             use_modality_encoder=use_modality_encoder,

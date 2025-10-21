@@ -11,7 +11,7 @@ from main.model.EEGAVI.interleaved_EEGAVI.adapters import VideoAdapter, Perceive
     TextAdapter, \
     EegAdapter
 from main.model.layer.kd import KDHead
-from main.model.layer.modality_stream import ModalityStream
+from main.model.neegavi.blocks import ModalityStream
 
 
 # todo factory?

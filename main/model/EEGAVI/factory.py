@@ -8,7 +8,7 @@ from main.model.EEGAVI.base_model import EegBaseModel, WeaklySupervisedEegBaseMo
 from main.model.EEGAVI.interleaved_EEGAVI.adapters import EegAdapter, AudioAdapter, PerceiverResamplerConfig, \
     PMAAudioAdapter, TextAdapter
 from main.model.layer.kd import KDHead
-from main.model.layer.modality_stream import ModalityStream
+from main.model.neegavi.blocks import ModalityStream
 
 
 class EegBaseModelFactory:
