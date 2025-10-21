@@ -93,7 +93,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             base_loss += l
 
         return base_loss
-        # return base_loss / len(modality_outputs)
 
     def compute_supervised_loss(self, pred: torch.Tensor, target: torch.Tensor):
         # Compute concordance correlation coefficient that measures the agreement between two variables.

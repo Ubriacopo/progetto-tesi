@@ -124,7 +124,7 @@ def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
 
 
 def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -> tuple[Tensor, int]:
-    idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
+    idx = (za_mask.bool().squeeze() & zb_mask.bool().squeeze()).nonzero(as_tuple=True)[0]
     if idx.numel() == 0:
         return torch.tensor(0.0, device=za.device), 0
 
@@ -134,7 +134,7 @@ def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -
     # Cosine similarity loss (optimizes direction, not magnitude)
     loss = 1 - F.cosine_similarity(a, b, dim=-1).mean()
 
-    logits = (a @ b.T).float()  # [n,n]
+    logits = (a.detach() @ b.T.detach()).float()  # [n,n]
     top1 = logits.argmax(1)  # best teacher for each student
     diag_acc = (top1 == torch.arange(logits.size(0), device=logits.device)).float().mean()
     print("\nkd_top1", diag_acc)  # should climb → 1.0 on overfit
@@ -143,14 +143,17 @@ def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -
 
     return loss, idx.numel()
 
+
 def kd_info_nce_by_ids(za, ids_s, zb, ids_t, tau=0.07):
-    pos_t = {int(k): j for j,k in enumerate(ids_t)}
+    pos_t = {int(k): j for j, k in enumerate(ids_t)}
     ia, ib = [], []
-    for i,k in enumerate(ids_s):
+    for i, k in enumerate(ids_s):
         j = pos_t.get(int(k))
         if j is not None:
-            ia.append(i); ib.append(j)
-    ia = torch.tensor(ia, device=za.device); ib = torch.tensor(ib, device=za.device)
+            ia.append(i);
+            ib.append(j)
+    ia = torch.tensor(ia, device=za.device);
+    ib = torch.tensor(ib, device=za.device)
     a = F.normalize(za[ia], dim=-1)
     b = F.normalize(zb[ib].detach(), dim=-1)
     logits = (a @ b.T).float() / tau
