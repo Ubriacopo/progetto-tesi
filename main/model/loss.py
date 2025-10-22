@@ -122,7 +122,7 @@ def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
     # to a valid range [0,1]. This allows the loss to be better controlled while training.
     return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device)), idx.numel()
 
-
+# TODO Probabilemnte erore di indexing>
 def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -> tuple[Tensor, int]:
     idx = (za_mask.bool().squeeze() & zb_mask.bool().squeeze()).nonzero(as_tuple=True)[0]
     if idx.numel() == 0:
@@ -130,6 +130,40 @@ def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -
 
     a = F.normalize(za[idx], p=2, dim=-1)
     b = F.normalize(zb[idx].detach(), p=2, dim=-1)
+
+    # If a var across rows ≈ 0 (and/or max same-side sim (a)≈1), your student collapsed ⇒ fix training/initialization/mask (see §3).
+    # If both sides have healthy variance, but cos diag mean ≈ off mean and kd_top1 ≈ 1/24, you’re misaligned (see §2).
+    with torch.no_grad():
+        # A) shape & valid count
+        print("a,b shapes:", a.shape, b.shape)
+
+        # B) norms (should be ~1 after F.normalize)
+        print("||a|| mean:", a.norm(dim=-1).mean().item(), "std:", a.norm(dim=-1).std().item())
+        print("||b|| mean:", b.norm(dim=-1).mean().item(), "std:", b.norm(dim=-1).std().item())
+
+        # C) per-dimension variance across rows (detect collapse)
+        print("a var across rows (mean over dims):", a.var(dim=0).mean().item())
+        print("b var across rows (mean over dims):", b.var(dim=0).mean().item())
+
+        # D) cosine matrix diag vs off-diag
+        C = a @ b.T  # [n,n]
+        diag = C.diag().mean().item()
+        off = (C.sum() - C.diag().sum()) / (C.numel() - C.size(0))
+        print("cos diag mean:", diag, "off mean:", off.item())
+
+        # E) are rows identical-ish? (max pairwise sim among different rows)
+        Ca = (a @ a.T) - torch.eye(a.size(0), device=a.device)
+        Cb = (b @ b.T) - torch.eye(b.size(0), device=b.device)
+        print("max same-side sim (a):", Ca.max().item(), " (b):", Cb.max().item())
+
+
+
+        # Zero/near-zero vectors before normalization → after F.normalize they become (almost) zero. Count them
+        # If high: check your pooling path. Are you averaging with almost empty masks? Guard with clamp_min(eps)
+        # (you already do) and drop rows with den==0 rather than filling with zeros
+        pre = za[idx]  # before F.normalize
+        bad = (pre.norm(dim=-1) < 1e-8).float().mean().item()
+        print("fraction near-zero student rows:", bad)
 
     # Cosine similarity loss (optimizes direction, not magnitude)
     loss = 1 - F.cosine_similarity(a, b, dim=-1).mean()
@@ -145,6 +179,16 @@ def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -
     diag_acc = (logits_id.argmax(1) == torch.arange(a.size(0), device=a.device)).float().mean()
     assert diag_acc == 1.0, "KD pipeline reorders/duplicates inside student path"
     return loss, idx.numel()
+
+# TODO Prova a vedere se con questo ok
+# kd_top1 ≈ 1/24 + constant perm ⇒ either pairs misaligned or student collapsed
+def kd_cosine(a, b, valid=None):
+    # a,b: [N,D], valid: [N] bool or None (already aligned)
+    a = F.normalize(a, dim=-1)
+    b = F.normalize(b, dim=-1)
+    if valid is not None:
+        a = a[valid]; b = b[valid]
+    return (1 - (a * b).sum(-1)).mean()
 
 
 def kd_info_nce_by_ids(za, ids_s, zb, ids_t, tau=0.07):

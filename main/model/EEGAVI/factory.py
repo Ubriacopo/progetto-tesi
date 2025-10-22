@@ -6,8 +6,8 @@ from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.model.EEGAVI.base_model import EegBaseModel, WeaklySupervisedEegBaseModel
 from main.model.EEGAVI.interleaved_EEGAVI.adapters import EegAdapter, AudioAdapter, PerceiverResamplerConfig, \
-    PMAAudioAdapter, TextAdapter
-from main.model.layer.kd import KDHead
+    TextAdapter
+from main.model.neegavi.kd import KDHead
 from main.model.neegavi.blocks import ModalityStream
 
 

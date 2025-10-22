@@ -7,8 +7,8 @@ from einops import repeat, rearrange
 from torch import nn
 
 from main.model.EEGAVI.base_model import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
-from main.model.layer.base import ModalContextEncoder
-from main.model.neegavi.blocks import MaskedPooling, ModalityStream
+from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder
+from main.model.neegavi.pooling import MaskedPooling
 from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.utils.data import MaskedValue, KdMaskedValue
 

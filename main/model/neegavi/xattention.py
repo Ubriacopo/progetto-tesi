@@ -7,7 +7,7 @@ from einops import rearrange
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from main.model.layer.base import SimpleFeedForward
+from main.model.neegavi.blocks import SimpleFeedForward
 
 
 @dataclasses.dataclass

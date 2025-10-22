@@ -1,16 +1,9 @@
-from torch.utils.data import DataLoader
-
-from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
 from main.core_data.media.audio import Audio
-from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
-from main.core_data.media.text import Text
-from main.core_data.media.video import Video
 from main.model.EEGAVI.EEGAVI import EEGAVI, WeaklySupervisedEEGAVI
-from main.model.EEGAVI.interleaved_EEGAVI.adapters import VideoAdapter, PerceiverResamplerConfig, AudioAdapter, \
-    TextAdapter, \
+from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig, AudioAdapter, \
     EegAdapter
-from main.model.layer.kd import KDHead
+from main.model.neegavi.kd import KDHead
 from main.model.neegavi.blocks import ModalityStream
 
 

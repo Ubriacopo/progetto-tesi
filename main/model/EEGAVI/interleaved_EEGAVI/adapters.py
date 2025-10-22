@@ -7,7 +7,7 @@ from torch import nn
 
 from main.model.EEGAVI.utils import batch_stats_generic
 from main.model.layer.ISAB import PMA
-from main.model.layer.base import TemporalEncoder
+from main.model.neegavi.blocks import TemporalEncoder
 from main.model.neegavi.perceiver import PerceiverResampler
 from main.utils.data import MaskedValue
 

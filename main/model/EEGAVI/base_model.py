@@ -9,8 +9,8 @@ from torch import nn
 
 from main.model.EEGAVI.utils import remap_with_overlap
 from main.model.layer.attention.x_attention import GatedXAttentionCustomArgs, GatedXAttentionBlock
-from main.model.layer.base import ModalContextEncoder
-from main.model.neegavi.blocks import MaskedPooling, ModalityStream
+from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder
+from main.model.neegavi.pooling import MaskedPooling
 from main.utils.data import MaskedValue, KdMaskedValue
 
 
