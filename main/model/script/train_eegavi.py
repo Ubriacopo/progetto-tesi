@@ -8,6 +8,11 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchview import draw_graph
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.text import Text
+from main.core_data.media.video import Video
 from main.model.EEGAVI.factory import EegBaseModelFactory
 from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI, \
     get_interleaved_weakly_supervised
@@ -67,6 +72,13 @@ def main(cfg: KdConfig):
         ecg_correction_weight=cfg.ecg_correction_weight,
         lr=cfg.lr,
         kd_temperature=cfg.kd_temperature,
+        fusion_metrics=[
+            Audio.modality_code(),
+            Video.modality_code(),
+            Text.modality_code(),
+            EEG.modality_code(),
+            ECG.modality_code()
+        ],
     )
 
     student_dataset = ConcatDataset([

@@ -4,7 +4,7 @@ from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
 from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig, EegAdapter
 from main.model.neegavi.kd import KDHead
-from main.model.neegavi.adapters import SimpleFeedForwardAdapter as SimpleAudioAdapter
+from main.model.neegavi.adapters import SimpleFeedForwardAdapter as SimpleAudioAdapter, PerceiverResamplerAdapter
 from main.model.neegavi.base_model import EegInterAviModel, WeaklySupervisedNEEEGBaseModel
 from main.model.neegavi.blocks import ModalityStream
 
@@ -16,10 +16,11 @@ class EegInterAviFactory:
                     # Further settings:
                     use_modality_encoder: bool = True, xattn_blocks: int = 2
                     ):
-        # TODO Is this problem? Config of PerceiverResampler?
+        # TODO Is this problem? Config of PerceiverResampler? TODO mi manca memoria?
         perceiver_resampler_config = PerceiverResamplerConfig(
-            dim=768, depth=2, dim_head=64, heads=6, num_latents=16, max_num_time_steps=34  # dipenda da modality
+            dim=768, depth=2, dim_head=64, heads=12, num_latents=64, max_num_time_steps=34  # dipenda da modality
         )
+
         return EegInterAviModel(
             output_size=target_size,
             pivot=ModalityStream(
@@ -38,8 +39,8 @@ class EegInterAviFactory:
                                    # )
                                    ),
                     # adapter=PMAAudioAdapter(project_out_size=target_size),
-                    # adapter=AudioAdapter(perceiver_resampler_config, project_out_size=384),
-                    adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size),
+                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384),
+                    # adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size),
                     time_step_length=0.96
                 ),
                 # ModalityStream(

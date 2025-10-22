@@ -20,7 +20,6 @@ class PerceiverResamplerConfig:
     heads: int = 8
     num_latents: int = 64
     max_num_time_steps: int = None
-    max_num_frames: int = None
     ff_mult: int = 4
 
 

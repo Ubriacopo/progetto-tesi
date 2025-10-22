@@ -1,6 +1,6 @@
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 use_base_path: True
-batch_size: 24
+batch_size: 16
 teacher_weights_path: main/dependencies/VATE/best_model_contrastive.pt
 student_dataset_path: [
   "data/amigos/p-interleaved-d/spec.csv",

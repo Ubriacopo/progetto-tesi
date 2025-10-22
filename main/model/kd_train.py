@@ -3,12 +3,13 @@ from typing import Literal
 import lightning as L
 import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
+from torch import ModuleDict, nn
 from torchmetrics.functional import concordance_corrcoef
 
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss, masked_mse_kd, masked_cosine_kd
+from main.model.loss import masked_cosine_similarity, SiglipLoss, masked_cosine_kd
 from main.utils.data import MaskedValue
 
 
@@ -20,6 +21,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def __init__(self,
                  student: WeaklySupervisedEegBaseModel,
                  teacher: MaskedContrastiveModel,
+
+                 fusion_metrics: list[str],
+
                  kd_loss_weight: float,
                  fusion_loss_weight: float,
                  weakly_supervised_weight: float,
@@ -31,8 +35,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.teacher = teacher
 
         self.verbose = True
-        self.siglip_loss = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
-        self.aud_siglip_loss = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
+
+        siglip_losses = {}
+        for fusion_metric in fusion_metrics:
+            siglip_losses[fusion_metric] = SiglipLoss(
+                init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose
+            )
+
+        self.siglip_losses: ModuleDict = nn.ModuleDict(siglip_losses)
 
         # Weight terms for loss parts
         self.alpha: float = kd_loss_weight
@@ -44,12 +54,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         # todo warmup lr
-        return torch.optim.Adam(weight_decay=0.01, params=[
-            {"params": self.student.parameters(), "lr": self.lr},
-            {"params": self.siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0},
-            {"params": self.aud_siglip_loss.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
-        ])
+        siglip_optim_configs = [
+            {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+            for i in self.siglip_losses.values()
+        ]
 
+        return torch.optim.Adam(weight_decay=0.01, params=siglip_optim_configs + [
+            {"params": self.student.parameters(), "lr": self.lr}
+        ])
 
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs):
         total_loss = 0.0
@@ -76,20 +88,18 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log("kd_loss", loss, on_epoch=True, on_step=True, prog_bar=True)
         return loss * self.alpha
 
-    # todo sistemare
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
         base_loss = torch.tensor(0.0, device=fused_output.device)
         for key, value in modality_outputs.items():
-            print(f"\nFor key {key}:")
+            self.verbose and print(f"\nFor key {key}:")
             # before is 3D. We mean over valid masked rows
             y_before = value["data"]
             mask_before = value["mask"].unsqueeze(-1)
             y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
-            if key == "aud":
-                l = self.aud_siglip_loss(fused_output, y_before)
-            else:
-                l = self.siglip_loss(fused_output, y_before)
+
+            l = self.siglip_losses[key](fused_output, y_before)
             self.log("siglip_" + key, l, on_step=True, on_epoch=True, prog_bar=True)
+
             base_loss += l
 
         return base_loss
@@ -114,9 +124,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
 
         loss = (
-            self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
-            # self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
-            # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
+                # self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
+                self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
+                # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
         )
 
         # Optional term
