@@ -33,7 +33,7 @@ class MaskedContrastiveModel(nn.Module):
         logit_scale_init_value = 2.6592
         self.logit_scale = nn.Parameter(torch.tensor(logit_scale_init_value))
 
-    def forward(self, vid: MaskedValue, aud: MaskedValue, txt: MaskedValue) \
+    def forward(self, vid: MaskedValue, aud: MaskedValue, txt: MaskedValue, **kwargs) \
             -> MaskedContrastiveModelOutputs:
         vid_data, vid_mask = vid["data"], vid["mask"]
         vid_data = self.embedding_video(vid_data)

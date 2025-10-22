@@ -2,6 +2,7 @@ import dataclasses
 
 import hydra
 import lightning as L
+import tensordict
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 from torchview import draw_graph
@@ -79,7 +80,9 @@ def main(cfg: KdConfig):
     ])
 
     dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
-    train_dataloader = DataLoader(dataset_wrapper, batch_size=cfg.batch_size, shuffle=True)
+    train_dataloader = DataLoader(
+        dataset_wrapper, batch_size=cfg.batch_size, shuffle=True, collate_fn=lambda x: tensordict.stack(x)
+    )
     # Plot trained model structure and store to file
     # model_graph = draw_graph(
     #    student.eeg_avi,

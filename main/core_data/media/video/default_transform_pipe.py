@@ -9,7 +9,8 @@ from main.core_data.media.video import Video
 from main.core_data.media.video import VidTargetConfig
 from main.core_data.media.video.transforms import SubclipVideo, VideoToTensor, ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
-    UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling
+    UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, \
+    RecencyBiasedCausalResampling
 
 
 def vid_vivit_interleaved_transform_pipe(target_config: VidTargetConfig, fps: int, max_length: int) \
@@ -22,7 +23,10 @@ def vid_vivit_interleaved_transform_pipe(target_config: VidTargetConfig, fps: in
         VideoSequenceResampling(
             original_fps=fps,
             sequence_duration_seconds=target_config.i_max_length,
-            frames_resampler=RegularFrameResampling(target_config.max_frames, drop_mask=True)
+            # frames_resampler=RegularFrameResampling(target_config.max_frames, drop_mask=True)
+            frames_resampler=RecencyBiasedCausalResampling(
+                max_length=target_config.i_max_length, fps=fps, window_seconds=3, drop_mask=True
+            ),
         ),
         ViVitEmbedderTransform(map_to="cpu"),
         ViVitPyramidPatchPooling(),

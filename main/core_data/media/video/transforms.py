@@ -72,7 +72,7 @@ class VideoSequenceResampling(nn.Module):
 
 class RegularFrameResampling(nn.Module):
     def __init__(self, max_length: int, device="cpu",
-                 padding: Literal['zero', 'last', 'none'] = 'zero', drop_mask: bool = True):
+                 padding: Literal['zero', 'last', 'none'] = 'last', drop_mask: bool = True):
         super().__init__()
         self.max_length: int = max_length
         self.device = device
@@ -117,6 +117,73 @@ class RegularFrameResampling(nn.Module):
             return (x, None) if not self.drop_mask else x
 
         raise NotImplementedError("Given padding modality is invalid and input requires one.")
+
+
+class RecencyBiasedCausalResampling(nn.Module):
+    """
+    Select exactly `max_length` past frames (≤ t) from the last `window_seconds`,
+    biased toward recent frames. Deterministic via quantiles of an exponential CDF.
+    """
+    def __init__(self, max_length: int, fps: int, window_seconds: float,
+                 alpha: float = 0.7, padding: Literal['zero', 'last', 'none'] = 'last',
+                 device: str = "cpu", drop_mask: bool = True):
+        super().__init__()
+        self.max_length = max_length
+        self.fps = fps
+        self.window_seconds = window_seconds
+        self.alpha = alpha          # larger → stronger recent bias
+        self.padding = padding
+        self.device = device
+        self.drop_mask = drop_mask
+
+    def _recency_indices(self, T: int) -> torch.Tensor:
+        # Use only the last N frames (causal window)
+        N = min(T, int(round(self.window_seconds * self.fps)))
+        start = T - N  # inclusive
+        # distances from "now" (0 = most recent)
+        d = torch.arange(N-1, -1, -1, device=self.device, dtype=torch.float32)  # [N]
+        # exponential recency weights
+        w = torch.exp(-self.alpha * (d / max(self.fps, 1)))
+        cdf = torch.cumsum(w, dim=0); cdf = cdf / cdf[-1]
+        # deterministic quantile picks (denser near recent frames)
+        q = (torch.arange(self.max_length, device=self.device, dtype=torch.float32) + 0.5) / self.max_length
+        idx_rel = torch.searchsorted(cdf, q).clamp(max=N-1)          # [max_length], 0..N-1
+        idx_abs = start + (N-1 - idx_rel)
+        idx_abs = start + idx_rel  # map back to absolute, ascending
+        # ensure strictly non-decreasing & length = max_length
+        return idx_abs.to(torch.long)
+
+    @timed()
+    def forward(self, x: torch.Tensor):
+        """
+        x: [T, C, H, W] where x[-1] is the most recent frame at time t.
+        Returns: [max_length, C, H, W] (and optional mask if drop_mask=False).
+        """
+        T, C, H, W = x.shape
+
+        if T >= self.max_length:
+            idx = self._recency_indices(T)
+            out = x.index_select(0, idx)
+            if self.drop_mask: return out
+            mask = torch.ones(self.max_length, dtype=torch.bool, device=x.device)
+            return out, mask
+
+        # T < max_length → pad on the right (future) with zeros or last frame (still causal)
+        if self.padding == "zero":
+            pad = torch.zeros(self.max_length - T, C, H, W, device=x.device, dtype=x.dtype)
+        elif self.padding == "last":
+            pad = x[-1:].expand(self.max_length - T, -1, -1, -1).contiguous()
+        elif self.padding == "none":
+            if self.drop_mask: return x
+            return x, None
+        else:
+            raise NotImplementedError("Invalid padding mode.")
+
+        out = torch.cat([x, pad], dim=0)
+        if self.drop_mask: return out
+        mask = torch.zeros(self.max_length, dtype=torch.bool, device=x.device); mask[:T] = True
+        return out, mask
+
 
 
 class ViVitImageProcessorTransform(nn.Module):

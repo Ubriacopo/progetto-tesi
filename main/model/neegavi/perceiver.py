@@ -5,7 +5,7 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from main.model.layer.perceiver_simple import feed_forward_layer
+from main.model.neegavi.blocks import SimpleFeedForward
 
 
 class PerceiverAttention(nn.Module):
@@ -78,7 +78,7 @@ class PerceiverResampler(nn.Module):
         self.blocks = nn.ModuleList([
             nn.ModuleList([
                 PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
-                feed_forward_layer(dim=dim, mult=ff_mult),
+                SimpleFeedForward(dim=dim, mult=ff_mult),
             ]) for _ in range(depth)
         ])
 
