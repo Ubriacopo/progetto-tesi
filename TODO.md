@@ -21,3 +21,6 @@ import shutil
 with open("./resources/AMIGOS/processed-interleaved/P01_31.pt", "rb") as f_in, gzip.open("./resources/AMIGOS/processed-interleaved/P01_31.pt.gz", "wb") as f_out:
     shutil.copyfileobj(f_in, f_out)
 ```
+
+
+- Passare da segmenti di 32s a 16s per motivi di spazio

@@ -68,9 +68,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         total_samples = 0
         key: Literal['vid', 'txt', 'aud']
         for key in teacher_out.keys():
+
             if key not in student_out:
                 continue
-
             loss_k, n_rows = masked_cosine_kd(
                 za=student_out[key]["data"],
                 za_mask=student_out[key]["mask"],
