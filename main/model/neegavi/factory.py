@@ -47,7 +47,7 @@ class EegInterAviFactory:
                     Text.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
                     # adapter=PMAAudioAdapter(project_out_size=target_size),
-                    adapter=TemporalEncoderAdapter(p=64, dim=768,),
+                    adapter=TemporalEncoderAdapter(p=64, dim=384,),
                 )
             ],
 
@@ -110,7 +110,7 @@ class EegInterAviFactory:
                                     xattn_blocks: int = 2
                                     ):
         return WeaklySupervisedNEEEGBaseModel(
-            EegInterAviFactory.interleaved(base_model_target_size, supports_latent_size, channels,
+            EegInterAviFactory.default(base_model_target_size, supports_latent_size, channels,
                                            teacher_out_shape, use_modality_encoder, xattn_blocks),
             hidden_size=100, output_size=4,
         )

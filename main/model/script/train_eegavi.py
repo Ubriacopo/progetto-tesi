@@ -4,6 +4,7 @@ import hydra
 import lightning as L
 import tensordict
 import torch
+import torchinfo
 from torch.utils.data import DataLoader, ConcatDataset
 from torchview import draw_graph
 
@@ -63,6 +64,7 @@ def main(cfg: KdConfig):
 
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
+
     module = EegAviKdVateMaskedSemiSupervisedModule(
         student=student,
         teacher=teacher,
@@ -95,6 +97,7 @@ def main(cfg: KdConfig):
     train_dataloader = DataLoader(
         dataset_wrapper, batch_size=cfg.batch_size, shuffle=True, collate_fn=lambda x: tensordict.stack(x)
     )
+
     # Plot trained model structure and store to file
     # model_graph = draw_graph(
     #    student.eeg_avi,
@@ -107,6 +110,10 @@ def main(cfg: KdConfig):
     #    hide_module_functions=True
     # )
 
+    for n, p in student.named_parameters():
+        print(n, p.requires_grad, p.grad is None)
+
+    torchinfo.summary(module)
     trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24, overfit_batches=1)
     trainer.fit(module, train_dataloader)
 

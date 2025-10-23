@@ -4,13 +4,14 @@ import lightning as L
 import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
 from torch import ModuleDict, nn
-from torchmetrics.functional import concordance_corrcoef
+from torchmetrics.functional import concordance_corrcoef, pearson_corrcoef
 
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import masked_cosine_similarity, SiglipLoss, masked_cosine_kd
+from main.model.loss import masked_cosine_similarity, SiglipLoss, masked_cosine_kd, masked_info_nce_2d, InfoNCE
 from main.utils.data import MaskedValue
+import torch.nn.functional as F
 
 
 class EegAviKdVateMaskedModule(L.LightningModule):
@@ -34,7 +35,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.student = student
         self.teacher = teacher
 
-        self.verbose = True
+        self.verbose = False
 
         siglip_losses = {}
         for fusion_metric in fusion_metrics:
@@ -66,12 +67,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs):
         total_loss = 0.0
         total_samples = 0
+
         key: Literal['vid', 'txt', 'aud']
         for key in teacher_out.keys():
-
             if key not in student_out:
                 continue
-            loss_k, n_rows = masked_cosine_kd(
+
+            l = InfoNCE()(student_out[key]["data"], teacher_out[key]['data'])
+            self.log(f"kd_loss_{key}", l, on_epoch=True, on_step=False, prog_bar=True)
+            loss_k, n_rows = masked_info_nce_2d(
                 za=student_out[key]["data"],
                 za_mask=student_out[key]["mask"],
                 zb=teacher_out[key]["data"],
@@ -79,13 +83,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 # tau=self.kd_temperature
             )
 
+
+
             if n_rows > 0:
-                total_loss += loss_k * n_rows  # Weighted by valid samples
+                # Weighted by valid samples
+                total_loss += loss_k * n_rows
                 total_samples += n_rows
 
         # Simple average
         loss = total_loss / max(total_samples, 1)
-        self.log("kd_loss", loss, on_epoch=True, on_step=True, prog_bar=True)
+        self.log("kd_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
         return loss * self.alpha
 
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
@@ -98,7 +105,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
 
             l = self.siglip_losses[key](fused_output, y_before)
-            self.log("siglip_" + key, l, on_step=True, on_epoch=True, prog_bar=True)
+            self.log("siglip_" + key, l, on_epoch=True, on_step=False, prog_bar=True)
 
             base_loss += l
 
@@ -110,13 +117,26 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Correlation and agreement rather than absolute distance
         tol = 1e-8
 
-        pred = (pred - pred.mean(dim=0)) / (pred.std(dim=0) + 1e-8)
-        target = (target - target.mean(dim=0)) / (target.std(dim=0) + 1e-8)
+        t_std = target.std(dim=0, unbiased=False)
+        p_std = pred.std(dim=0, unbiased=False)
 
-        target_std = target.std(dim=0)
-        ccc = concordance_corrcoef(pred[:, target_std > tol], target[:, target_std > tol]).mean()
-        self.log("supervised", ccc, on_epoch=True, prog_bar=True)
-        return (1 - ccc) * self.gamma
+        mask = (t_std > tol) & (p_std > tol)
+
+        if mask.any():
+            if self.current_epoch < 2:
+                # Pearson (correlation) is easier to optimize — no scale/bias terms, so gradients stabilize early.
+                coefficient = pearson_corrcoef(pred[:, mask], target[:, mask]).mean()
+            else:
+                # CCC can be unstable at the start, when predictions and targets differ wildly in scale.
+                coefficient = concordance_corrcoef(pred[:, mask], target[:, mask]).mean()
+
+            self.log("supervised (1 is good)", coefficient, on_epoch=True, on_step=False, prog_bar=True)
+            return (1 - coefficient) * self.gamma
+        else:
+            # Fall back to MSE to still learn something.
+            loss = F.mse_loss(pred, target)
+            self.log("supervised", pred.new_tensor(0.0), on_epoch=True, on_step=False, prog_bar=True)
+            return loss
 
     def training_step(self, batch, batch_idx):
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
@@ -124,9 +144,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
 
         loss = (
-                # self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
-                self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
-                # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
+                self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
+                #+ self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
+                #+ self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
         )
 
         # Optional term

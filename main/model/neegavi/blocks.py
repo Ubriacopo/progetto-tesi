@@ -82,11 +82,11 @@ class ModalContextEncoder(nn.Module):
 
 
 class TemporalEncoder(nn.Module):
-    def __init__(self, dim=384, layers=1, heads=8, dropout=0.0):
+    def __init__(self, dim=384, timesteps: int = 32, layers=1, heads=8, dropout=0.0):
         super().__init__()
         enc = nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dropout=dropout, batch_first=True)
-        self.enc = nn.TransformerEncoder(enc, num_layers=layers)
-        self.pos = nn.Parameter(torch.randn(1, 512, dim))  # or sinusoidal
+        self.enc = nn.TransformerEncoder(encoder_layer=enc, num_layers=layers)
+        self.pos = nn.Parameter(torch.randn(1, timesteps, dim))  # or sinusoidal
 
     def forward(self, x, mask=None):  # x: (B,T,D), mask: (B,T) bool True=valid
         T = x.size(1)

@@ -92,9 +92,12 @@ class MaskedCrossAttention(nn.Module):
         neg_inf = torch.finfo(qo.dtype).min
         # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
         if kv_mask is not None:
-            sim = sim.masked_fill(~kv_mask[:, None, None, :], neg_inf)
+            mask = ~kv_mask[:, None, None, :]  # shape [B,1,1,S], bool
+            sim.masked_fill_(mask, torch.finfo(sim.dtype).min)
         if attn_mask is not None:
-            sim = sim.masked_fill(~attn_mask[:, None, :, :], neg_inf)
+            # sim = sim.masked_fill(~attn_mask[:, None, :, :], neg_inf)
+            mask = ~attn_mask[:, None, :, :]  # shape [B,1,1,S], bool
+            sim.masked_fill_(mask, torch.finfo(sim.dtype).min)
 
         # Guard rows that are fully -inf (all keys masked)
         row_has_key = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
