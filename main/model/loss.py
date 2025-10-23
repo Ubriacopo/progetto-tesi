@@ -140,7 +140,7 @@ class InfoNCE(nn.Module):
         >>> output = loss(query, positive_key, negative_keys)
     """
 
-    def __init__(self, temperature=0.1, reduction='mean', negative_mode='unpaired'):
+    def __init__(self, temperature=0.05, reduction='mean', negative_mode='unpaired'):
         super().__init__()
         self.temperature = temperature
         self.reduction = reduction

@@ -1,6 +1,6 @@
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 use_base_path: True
-batch_size: 8
+batch_size: 12
 teacher_weights_path: main/dependencies/VATE/best_model_contrastive.pt
 student_dataset_path: [
   "data/amigos/p-interleaved-d/spec.csv",
@@ -11,7 +11,7 @@ teacher_dataset_path: [
   # "data/deap/vate/spec.csv"
 ]
 # Training infos
-lr: 1e-4
+lr: 1e-3
 kd_loss_weight: 1.0
 fusion_loss_weight: 1.0
 weakly_supervised_weight: 0.5
