@@ -86,6 +86,7 @@ class EcgSequenceResampling(nn.Module):
 
         y: Optional[torch.Tensor] = None
         for i in range(segments):
+            # TODO use context of previous time steps?
             x_i = x.data[i * self.sequence_length:(i + 1) * self.sequence_length]
             res = self.resampler(x_i)
             if self.channels_first:

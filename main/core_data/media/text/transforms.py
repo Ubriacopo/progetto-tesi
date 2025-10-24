@@ -252,12 +252,13 @@ class RestoreTextExtract(nn.Module):
 
 class SubclipTextExtract(nn.Module):
 
-    def __init__(self, interleaved: bool = False, i_max_length: int = None):
+    def __init__(self, interleaved: bool = False, i_max_length: int = None, context_seconds: int = 3):
         super(SubclipTextExtract, self).__init__()
         if interleaved and i_max_length is None:
             raise ValueError("If using interleaved i_max_length has to be specified")
         self.interleaved: bool = interleaved
         self.i_max_length: int = i_max_length
+        self.context_seconds: int = context_seconds
 
     @staticmethod
     def chunk_extract(chunk, start, stop):
@@ -266,7 +267,6 @@ class SubclipTextExtract(nn.Module):
         stop_valid = ch_stop <= stop if ch_stop is not None else start <= ch_start <= stop
         return chunk["text"] if start_valid and stop_valid else ""
 
-    # noinspection PyMethodMayBeStatic
     def forward(self, x: Text) -> list[str]:
         start, stop = x.interval
 
@@ -278,6 +278,11 @@ class SubclipTextExtract(nn.Module):
             for i in range(segments):
                 txt = ""
                 i_start, i_stop = i * self.i_max_length + start, (i + 1) * self.i_max_length + start
+                # TODO Verifica che sia corretto.
+                # This idea makes sense: In the current second I might hear a few words but their meaning
+                # stems from previous words also not only a 1s interval.
+                i_start = max(i_start - self.context_seconds, 0)  # Add the context behind.
+
                 if i_stop > stop: i_stop = stop
                 for chunk in x.text_context["chunks"]:
                     txt += self.chunk_extract(chunk, i_start, i_stop)
@@ -288,6 +293,7 @@ class SubclipTextExtract(nn.Module):
         txt = ""
         for chunk in x.text_context["chunks"]:
             txt += self.chunk_extract(chunk, start, stop)
+
         return [txt]
 
 

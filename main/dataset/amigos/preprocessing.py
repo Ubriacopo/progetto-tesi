@@ -59,9 +59,8 @@ def amigos_interleaved_preprocessor(
             vid_vivit_interleaved_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
             eeg_transform_pipe(target_config=eeg_config, eeg_order=AmigosConfig.EEG_CHANNELS,
                                source_fs=AmigosConfig.EEG.fs, max_length=output_max_length),
-            # TODO a 1s come video
+            # TODO a 1s come video + context?
             ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
-            # TODO a 1s come video
             txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
             (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data))),
             (Metadata.modality_code(), MetadataToTensor())
