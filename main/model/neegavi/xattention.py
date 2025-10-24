@@ -37,7 +37,14 @@ class GatedXAttentionBlock(nn.Module):
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
         q = self.attn(q, kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh() + q
         q = self.ff(q) * self.ff_gate.tanh() + q
+        # TODO
+        # NEW: Refiner (self-attn over EEG only)
+        for j in 1..M_refine:
+            q = q + s_attn_j * SelfAttn(PreNorm(q), mask=causal_eeg_mask)
+            q = q + s_ff_j * FF(PreNorm(q))
+
         return q
+
 
 
 class MaskedCrossAttention(nn.Module):
