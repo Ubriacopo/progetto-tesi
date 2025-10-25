@@ -1,18 +1,50 @@
 import logging
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
-from einops import repeat
+from einops import repeat, rearrange
 from torch import nn
 
-from main.model.EEGAVI.interleaved_EEGAVI.adapters import PerceiverResamplerConfig
 from main.model.neegavi.blocks import TemporalEncoder
 from main.model.neegavi.perceiver import PerceiverResampler
 from main.utils.data import MaskedValue
 
 
+@dataclass
+class PerceiverResamplerConfig:
+    dim: int
+    depth: int
+    dim_head: int = 64
+    heads: int = 8
+    num_latents: int = 64
+    max_num_time_steps: int = None
+    ff_mult: int = 4
+
+
 class TimedMaskedAdapter(nn.Module):
     pass
+
+
+class EegAdapter(nn.Module):
+    def __init__(self, channels: int, latent_input_size: int, output_size: int):
+        super().__init__()
+        self.ff = nn.Sequential(
+            nn.Linear(channels * latent_input_size, output_size),
+            nn.GELU(),
+            nn.LayerNorm(output_size),
+        )
+
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> MaskedValue:
+        if mask is not None:
+            x = x * mask[..., None].to(x.dtype)  # zero masked channels first
+        x = rearrange(x, "b T c L -> b T (c L)")
+        x = self.ff(x)
+        if mask is not None:
+            # (b, T) - which time steps have ANY valid channel
+            mask = mask.any(dim=-1) if mask is not None else None
+
+        return {"data": x, "mask": mask}
 
 
 class PerceiverResamplerAdapter(nn.Module):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import Optional
 
 import torch
 from einops import rearrange
@@ -18,7 +19,8 @@ class GatedXAttentionCustomArgs:
 
 
 class GatedXAttentionBlock(nn.Module):
-    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6, ff_mult: int = 4):
+    def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6, ff_mult: int = 4,
+                 with_self_attn: bool = True):
         """
 
         :param dim:
@@ -30,21 +32,30 @@ class GatedXAttentionBlock(nn.Module):
         super().__init__()
         # First call
         self.attn = MaskedCrossAttention(dim=dim, dim_latent=dim_latent, dim_head=dim_head, heads=heads)
-        self.attn_gate = nn.Parameter(torch.tensor([1.]))
+        self.attn_gate = nn.Parameter(torch.tensor([0.]))
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
-        self.ff_gate = nn.Parameter(torch.tensor([1.]))
+        self.ff_gate = nn.Parameter(torch.tensor([0.]))
+
+        self.self_attn: Optional[nn.Module] = None
+        self.self_attn_gate: Optional[nn.Parameter] = None
+        if with_self_attn:
+            self.self_attn_norm = nn.LayerNorm(dim)
+            self.self_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=2, batch_first=True)
+            self.self_attn_gate = nn.Parameter(torch.tensor([1.]))
 
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
-        q = self.attn(q, kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh() + q
-        q = self.ff(q) * self.ff_gate.tanh() + q
-        # TODO
-        # NEW: Refiner (self-attn over EEG only)
-        for j in 1..M_refine:
-            q = q + s_attn_j * SelfAttn(PreNorm(q), mask=causal_eeg_mask)
-            q = q + s_ff_j * FF(PreNorm(q))
+        # todo per chiarezza rimuovi norm at my attn
+        q = q + self.attn(q, kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
+        q = q + self.ff(q) * self.ff_gate.tanh()
+
+        if self.self_attn is not None:
+            # Similar to how Flamingo works just that this self attn is not frozen but learnt.
+            # Also respect the convention of torch of passing mask with True where ignore.
+            norm_q = self.self_attn_norm(q)
+            out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
+            q = q + self.self_attn_gate.tanh() * out
 
         return q
-
 
 
 class MaskedCrossAttention(nn.Module):

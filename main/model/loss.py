@@ -218,7 +218,7 @@ def normalize(*xs):
     return [None if x is None else F.normalize(x, dim=-1) for x in xs]
 
 
-def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .2) \
+def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .05) \
         -> tuple[Tensor, int]:
     idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
     if idx.numel() <= 1:

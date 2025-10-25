@@ -6,9 +6,9 @@ import torch
 from einops import repeat, rearrange
 from torch import nn
 
-from main.model.EEGAVI.base_model import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
 from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder
 from main.model.neegavi.pooling import MaskedPooling
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.utils.data import MaskedValue, KdMaskedValue
 
@@ -77,10 +77,15 @@ class EegInterAviModel(nn.Module):
         num_modalities = len(self.supports)
         if (not self.training) or self.drop_p <= 0:
             return torch.ones(batch_size, num_modalities, device=device)
-        # TODO: Da fare in futuro (robustezza contro mod mancante)
-        # keep = torch.bernoulli(torch.full((b, number_modalities), 1 - self.drop_p, device=device)).bool()
-        return torch.ones(batch_size, num_modalities, device=device)
+        # todo verifica
+        keep = torch.bernoulli(torch.full((batch_size, num_modalities), 1 - self.drop_p, device=device)).bool()
+        dead = ~keep.any(1)
+        if dead.any():
+            # We force at least one modality to always be on.
+            keep[dead, torch.randint(0, num_modalities, (dead.sum(),), device=device)] = True
+        return keep
 
+    # TODO si semplifica -> ogni mod uniformata a stesso timestep di EEG
     def process_modality(self, x: MaskedValue, idx: torch.Tensor, b: int, modality: ModalityStream, use_kd: bool):
         output = {}
         data = x["data"]
@@ -91,8 +96,14 @@ class EegInterAviModel(nn.Module):
         y: MaskedValue | KdMaskedValue = modality(data, mask=mask, use_kd=use_kd)
 
         if "kd" in y:
-            output["kd"] = y.pop("kd")
-            # TODO: Poi dovrai ricostruire shape corrette ma ora stiamo senza idx
+            kd_data = y.pop("kd")
+
+            kd = torch.zeros(b, *kd_data["data"].shape[1:], device=kd_data["data"].device)
+            kd[idx] = kd_data["data"]
+            kd_mask = torch.zeros(b, *kd_data["mask"].shape[1:], device=kd_data["data"].device).bool()
+            kd_mask[idx] = kd_data["mask"]
+
+            output["kd"] = MaskedValue(data=kd, mask=kd_mask)
 
         y: MaskedValue
         z = y["data"]
@@ -107,7 +118,14 @@ class EegInterAviModel(nn.Module):
         z = rearrange(z, "b t m d -> b (t m) d")
         t_mod = repeat(t_mod, "t -> b (t m)", b=b, m=m)
         mask = repeat(mask, "b t -> b (t m)", m=m)
-        return output | {"data": z, "mask": mask, "t_mod": t_mod}
+
+        full_z = z.new_zeros(b, *z.shape[1:])
+        # Restore original indexes elements
+        full_z[idx] = z[idx]
+
+        full_mask = torch.zeros(b, full_z.size(1), dtype=torch.bool, device=full_z.device)
+        full_mask[idx] = True if mask is None else mask[idx]
+        return output | {"data": full_z, "mask": full_mask, "t_mod": t_mod}
 
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         tq = t_q.unsqueeze(-1)  # [B, Tq, 1]

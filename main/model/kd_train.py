@@ -6,15 +6,18 @@ from pytorch_lightning.utilities.types import OptimizerLRScheduler
 from torch import ModuleDict, nn
 from torchmetrics.functional import concordance_corrcoef, pearson_corrcoef
 
-from main.core_data.media.assessment.assessment import Assessment
-from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import masked_cosine_similarity, SiglipLoss, masked_cosine_kd, masked_info_nce_2d, InfoNCE
+from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs
 from main.utils.data import MaskedValue
 import torch.nn.functional as F
 
 
 class EegAviKdVateMaskedModule(L.LightningModule):
+    pass
+
+
+class WeaklySupervisedEegBaseModel:
     pass
 
 
@@ -137,7 +140,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             loss = F.mse_loss(pred, target)
             self.log("supervised", pred.new_tensor(0.0), on_epoch=True, on_step=False, prog_bar=True)
             return loss
-
+    # todo provo dtype16 cosi da avere piu mem?
     def training_step(self, batch, batch_idx):
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         with torch.inference_mode():
@@ -145,7 +148,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         loss = (
                 self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
-                #+ self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
+                # self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
                 #+ self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
         )
 

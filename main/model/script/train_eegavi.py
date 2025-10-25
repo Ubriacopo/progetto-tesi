@@ -6,7 +6,6 @@ import tensordict
 import torch
 import torchinfo
 from torch.utils.data import DataLoader, ConcatDataset
-from torchview import draw_graph
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
 from main.core_data.media.audio import Audio
@@ -14,9 +13,6 @@ from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
-from main.model.EEGAVI.factory import EegBaseModelFactory
-from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI, \
-    get_interleaved_weakly_supervised
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.kd_train import EegAviKdVateMaskedSemiSupervisedModule
