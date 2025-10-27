@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import torch
-from einops.layers.torch import Rearrange
 from torch import nn
 from torchvision.transforms import v2
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.assessment.transform import RemapFieldToRange, SliceAssessments, ToTensorData, \
+from main.core_data.media.assessment.transform import SliceAssessments, ToTensorData, \
     PermuteAssessments
 from main.core_data.media.audio import AudTargetConfig
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
@@ -49,18 +47,20 @@ def amigos_interleaved_preprocessor(
         vid_config: VidTargetConfig,
         txt_config: TxtTargetConfig
 ):
+    config = AmigosConfig()
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "interleaved_preprocessor",
             aud_wav2vec_interleaved_txt_extract_transform_pipe(
-                aud_config, AmigosConfig.Audio.fs, output_max_length
+                aud_config, config.aud_source_config.fs, output_max_length
             ),
-            vid_vivit_interleaved_transform_pipe(vid_config, AmigosConfig.Video.fps, output_max_length),
-            eeg_transform_pipe(target_config=eeg_config, eeg_order=AmigosConfig.EEG_CHANNELS,
-                               source_fs=AmigosConfig.EEG.fs, max_length=output_max_length),
+            vid_vivit_interleaved_transform_pipe(vid_config, config.vid_source_config.fps, output_max_length),
+
+            eeg_transform_pipe(target_config=eeg_config, eeg_order=config.eeg_source_config.EEG_CHANNELS,
+                               source_fs=config.eeg_source_config.fs, max_length=output_max_length),
             # TODO a 1s come video + context?
-            ecg_interleaved_transform_pipe(ecg_config, AmigosConfig.EEG.fs, output_max_length),
+            ecg_interleaved_transform_pipe(ecg_config, config.eeg_source_config.fs, output_max_length),
             txt_from_aud_interleaved_txt_extract_transform_pipe(txt_config, output_max_length),
             (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data))),
             (Metadata.modality_code(), MetadataToTensor())
@@ -78,13 +78,14 @@ def amigos_interleaved_preprocessor(
 @safe_call
 def amigos_vate_basic_preprocessor(output_path: str, extraction_data_folder: str,
                                    vid_config: VidTargetConfig = VidTargetConfig(), ):
+    config = AmigosConfig()
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
             vid_vate_basic_transform_pipe(vid_config),
-            aud_vate_basic_transform_pipe(AmigosConfig.Audio.fs),
+            aud_vate_basic_transform_pipe(config.aud_source_config.fs),
             txt_vate_basic_transform_pipe(),
             (Metadata.modality_code(), MetadataToTensor())
         ),

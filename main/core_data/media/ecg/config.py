@@ -37,6 +37,7 @@ class EcgTargetConfig:
 
 @dataclasses.dataclass
 class EcgSourceConfig:
+    LEAD_NAMES: list[str]
 
     @staticmethod
     @abstractmethod
