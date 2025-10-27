@@ -25,7 +25,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
             original_fps=config.vid_source_config.fps,
             sequence_duration_seconds=config.unit_seconds,
             # frames_resampler=RegularFrameResampling(target_config.max_frames, drop_mask=True)
-            frames_resampler=RegularFrameResampling(max_length=int(config.unit_seconds), drop_mask=True),
+            frames_resampler=RegularFrameResampling(max_length=config.vid_target_config.max_frames, drop_mask=True),
         ),
         ViVitEmbedderTransform(map_to="cpu"),
         ViVitPyramidPatchPooling(),
