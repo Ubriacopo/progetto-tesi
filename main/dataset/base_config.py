@@ -32,3 +32,4 @@ class DatasetConfig:
     ecg_source_config: Optional[EcgSourceConfig] = None
 
     unit_seconds: float = 4  # Should depend on EEG model
+    max_length: int = 32

@@ -7,6 +7,7 @@ from main.core_data.media.text import TxtTargetConfig
 from main.core_data.media.text.transforms import SubclipTextExtract, MiniLMEmbedderTransform, \
     RestoreTextExtract, BertEmbeddings
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
+from main.dataset.base_config import DatasetConfig
 
 
 def shared_txt_transform_pipe(text_config: TxtTargetConfig, txt_extract_base_path: str):
@@ -15,12 +16,12 @@ def shared_txt_transform_pipe(text_config: TxtTargetConfig, txt_extract_base_pat
     )
 
 
-def txt_from_aud_interleaved_txt_extract_transform_pipe(target_txt_config: TxtTargetConfig, max_length: int) \
+def txt_from_aud_interleaved_txt_extract_transform_pipe(config: DatasetConfig) \
         -> tuple[str, nn.Module]:
     return Text.modality_code(), nn.Sequential(
-        SubclipTextExtract(interleaved=True, i_max_length=target_txt_config.i_max_length),
+        SubclipTextExtract(interleaved=True, i_max_length=int(config.unit_seconds)),
         MiniLMEmbedderTransform(),
-        MultimediaPadding(max_length=math.ceil(max_length / target_txt_config.i_max_length))
+        MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds))
     )
 
 

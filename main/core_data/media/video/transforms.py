@@ -47,7 +47,7 @@ class SubclipVideo(nn.Module):
 
 
 class VideoSequenceResampling(nn.Module):
-    def __init__(self, original_fps: int, sequence_duration_seconds: int, frames_resampler: nn.Module):
+    def __init__(self, original_fps: int, sequence_duration_seconds: int | float, frames_resampler: nn.Module):
         super().__init__()
         self.sequence_length = original_fps * sequence_duration_seconds
         self.frames_resampler = frames_resampler
