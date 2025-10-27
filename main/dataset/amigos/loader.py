@@ -56,18 +56,15 @@ class AmigosPointsLoader(DataPointsLoader):
             clip = VideoFileClip(media_path)
 
             # Extract ECG and EEG data + metadata that could be useful
-            eeg_fs = self.config.ecg_source_config.fs
+            eeg_fs = self.config.eeg_source_config.fs
             info = mne.create_info(
-                ch_names=self.config.eeg_source_config.CH_NAMES,
-                ch_types=self.config.eeg_source_config.CH_TYPES,
+                ch_names=self.config.eeg_source_config.get_CH_NAMES(),
+                ch_types=self.config.eeg_source_config.get_CH_TYPES(),
                 sfreq=eeg_fs
             )
+
             raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
-
             metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
-
-            # Take from Audio
-
             yield FlexibleDatasetPoint(
                 experiment_id,
                 EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs, ).as_mod_tuple(),

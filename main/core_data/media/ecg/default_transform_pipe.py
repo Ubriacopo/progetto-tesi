@@ -20,7 +20,7 @@ def ecg_interleaved_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Modul
             resampler=SignalZeroMasking(max_length=config.unit_seconds, fs=config.ecg_target_config.target_fs),
         ),
         EcgFmEmbedderTransform(
-            data_transform_fn=config.ecg_target_config.prepare, endpoint=config.ecg_target_config.fm_endpoint
+            data_transform_fn=config.ecg_source_config.prepare_ecg, endpoint=config.ecg_target_config.fm_endpoint
         ),
         MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds))
     )

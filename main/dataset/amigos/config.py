@@ -51,8 +51,10 @@ class AmigosEcgSourceConfig(EcgSourceConfig):
 
 @dataclasses.dataclass
 class AmigosConfig(DatasetConfig):
-    eeg_source_config = AmigosEegSourceConfig()
-    aud_source_config = AudSourceConfig(fs=44100)
-    vid_source_config = VidSourceConfig(fps=25)
-    ecg_source_config = AmigosEcgSourceConfig(LEAD_NAMES=["II", "III"])
-    txt_source_config = TxtSourceConfig()
+    eeg_source_config: AmigosEegSourceConfig = dataclasses.field(default_factory=AmigosEegSourceConfig)
+    aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100))
+    vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=25))
+    ecg_source_config: AmigosEcgSourceConfig = dataclasses.field(
+        default_factory=lambda: AmigosEcgSourceConfig(LEAD_NAMES=["II", "III"])
+    )
+    txt_source_config: TxtSourceConfig = dataclasses.field(default_factory=TxtSourceConfig)

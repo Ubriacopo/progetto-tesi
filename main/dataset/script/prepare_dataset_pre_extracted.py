@@ -17,7 +17,7 @@ from main.dataset.amigos import preprocessing as amigo_preprocessing
 from main.dataset.deap import loader as deap_loader
 from main.dataset.deap import preprocessing as deap_preprocessing
 
-
+# todo make concrode a ConfigDataset
 @dataclasses.dataclass
 class PrepareDatasetConfigPreExtracted:
     dataset_name: str

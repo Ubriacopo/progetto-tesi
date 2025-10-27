@@ -54,6 +54,7 @@ def amigos_interleaved_preprocessor(
         txt_target_config=txt_config,
         ecg_target_config=ecg_config,
         eeg_target_config=eeg_config,
+        max_length=output_max_length
     )
 
     return TorchExportsSegmentsReadyPreprocessor(
