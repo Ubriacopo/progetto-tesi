@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+from abc import abstractmethod
 from typing import Callable
 
 from hydra.utils import get_object
+
+from main.core_data.media.ecg import ECG
 
 
 @dataclasses.dataclass
@@ -30,3 +33,12 @@ class EcgTargetConfig:
         prepare = get_object(cfg.prepare)
         filtered = {k: v for k, v in cfg.items() if k not in ("prepare", "use")}
         return EcgTargetConfig(prepare=prepare, **filtered)
+
+
+@dataclasses.dataclass
+class EcgSourceConfig:
+
+    @staticmethod
+    @abstractmethod
+    def prepare_ecg(ecg: ECG) -> ECG:
+        pass

@@ -11,11 +11,11 @@ def eeg_transform_pipe(target_config: EegTargetConfig, eeg_order: list[str], sou
         -> tuple[str, nn.Module]:
     return EEG.modality_code(), nn.Sequential(
         SubclipMneRaw(),
-        EEGResample(tfreq=target_config.target_fs, sfreq=source_fs),
+        EEGResample(tfreq=target_config.fs, sfreq=source_fs),
         SignalToTensor(),
         # Because we have fs=200 and CBraMod wants fs as points per patch max_segments=max_length
-        EEGToTimePatches(points_per_patch=target_config.target_fs, max_segments=max_length),
+        EEGToTimePatches(points_per_patch=target_config.fs, max_segments=max_length),
         CanonicalOrderTransform(eeg_order=eeg_order),
-        CBraModEmbedderTransform(weights_path=target_config.cbramod_weights_path),
+        CBraModEmbedderTransform(weights_path=target_config.model_weights_path),
         EegTimePadding(max_length=max_length),
     )
