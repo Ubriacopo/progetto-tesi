@@ -56,7 +56,7 @@ class EegInterAviFactory:
         )
 
     @staticmethod
-    def interleaved(target_size: int, supports_latent_size: int, channels: int = 32,
+    def debug(target_size: int, supports_latent_size: int, channels: int = 32,
                     teacher_out_shape: Tuple[int, ...] = (1, 100),
                     # Further settings:
                     use_modality_encoder: bool = True, xattn_blocks: int = 2

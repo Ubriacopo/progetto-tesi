@@ -67,10 +67,8 @@ time_tok = compact[:, 1:][:, idx]             # [B, K, 768]
 compact = torch.cat([cls, time_tok], dim=1)   # [B, 1+K, 768]
 
 
--Another thing If my modality drop a video the KD for video for that sample has to be discarded?
--Use VateVideoResamplerTransform for EEGAVI also?
+- Another thing If my modality drop a video the KD for video for that sample has to be discarded?
+- Use VateVideoResamplerTransform for EEGAVI also?
 - AL momento io fondo i channels e mi va bene ma sarebbe il caso di non farlo per EEG?
-
-- Also had an idea: The model only learns on past time seconds (let's say a window of 3 timesteps) which will help the model learn better. Now I have an idea: I don't want to show future because that would be cheating. On the other hand (being analysis EEG data of people) people are while watching clips or listening to music predicting the future themselves. For example someone knows already how the sentence might end or has already seen the movie and knows what comes next! Should this bring me to break the only see past constraint as the time relation isn´t as strong as thought?
 - LLaVA-style prefix alternativa (all togheter self attn)
 - Dovrei passare a LaBram?

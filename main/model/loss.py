@@ -43,8 +43,8 @@ def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias:
     B = za.shape[0]
 
     # L2-Normalization
-    za = normalize(za, p=2, dim=-1)
-    zb = normalize(zb, p=2, dim=-1)
+    za = lightweight_whitening(za)
+    zb = lightweight_whitening(zb)
 
     logits = (za @ zb.T) * T + bias.to(za.device)
     labels = 2 * torch.eye(B, device=za.device) - 1
@@ -213,11 +213,6 @@ def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction
 def transpose(x):
     return x.transpose(-2, -1)
 
-
-def normalize(*xs):
-    return [None if x is None else F.normalize(x, dim=-1) for x in xs]
-
-
 def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .05) \
         -> tuple[Tensor, int]:
     idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
@@ -227,107 +222,10 @@ def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor,
     a = F.normalize(za[idx])
     b = F.normalize(zb[idx].detach())
     logits = (a @ b.T) / tau
+
     # Return the INFO NCE loss + valid number of rows for this loss calc. As loss is compared with others we have to reduce it
     # to a valid range [0,1]. This allows the loss to be better controlled while training.
     return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device)), idx.numel()
-
-
-# TODO Probabilemnte erore di indexing>
-def masked_cosine_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, verbose=True) -> tuple[Tensor, int]:
-    idx = (za_mask.bool().squeeze() & zb_mask.bool().squeeze()).nonzero(as_tuple=True)[0]
-    if idx.numel() == 0:
-        return torch.tensor(0.0, device=za.device), 0
-
-    a = F.normalize(za[idx], p=2, dim=-1)
-    b = F.normalize(zb[idx].detach(), p=2, dim=-1)
-
-    # If a var across rows ≈ 0 (and/or max same-side sim (a)≈1), your student collapsed ⇒ fix training/initialization/mask (see §3).
-    # If both sides have healthy variance, but cos diag mean ≈ off mean and kd_top1 ≈ 1/24, you’re misaligned (see §2).
-    with torch.no_grad():
-        # A) shape & valid count
-        verbose and print("a,b shapes:", a.shape, b.shape)
-
-        # B) norms (should be ~1 after F.normalize)
-        verbose and verbose and print("||a|| mean:", a.norm(dim=-1).mean().item(), "std:", a.norm(dim=-1).std().item())
-        verbose and print("||b|| mean:", b.norm(dim=-1).mean().item(), "std:", b.norm(dim=-1).std().item())
-
-        # C) per-dimension variance across rows (detect collapse)
-        verbose and print("a var across rows (mean over dims):", a.var(dim=0).mean().item())
-        verbose and print("b var across rows (mean over dims):", b.var(dim=0).mean().item())
-
-        # D) cosine matrix diag vs off-diag
-        C = a @ b.T  # [n,n]
-        diag = C.diag().mean().item()
-        off = (C.sum() - C.diag().sum()) / (C.numel() - C.size(0))
-        verbose and print("cos diag mean:", diag, "off mean:", off.item())
-
-        # E) are rows identical-ish? (max pairwise sim among different rows)
-        Ca = (a @ a.T) - torch.eye(a.size(0), device=a.device)
-        Cb = (b @ b.T) - torch.eye(b.size(0), device=b.device)
-        verbose and print("max same-side sim (a):", Ca.max().item(), " (b):", Cb.max().item())
-
-        # Zero/near-zero vectors before normalization → after F.normalize they become (almost) zero. Count them
-        # If high: check your pooling path. Are you averaging with almost empty masks? Guard with clamp_min(eps)
-        # (you already do) and drop rows with den==0 rather than filling with zeros
-        pre = za[idx]  # before F.normalize
-        bad = (pre.norm(dim=-1) < 1e-8).float().mean().item()
-        verbose and print("fraction near-zero student rows:", bad)
-
-    # Cosine similarity loss (optimizes direction, not magnitude)
-    loss = 1 - F.cosine_similarity(a, b, dim=-1).mean()
-
-    logits = (a.detach() @ b.T.detach()).float()  # [n,n]
-    top1 = logits.argmax(1)  # best teacher for each student
-    diag_acc = (top1 == torch.arange(logits.size(0), device=logits.device)).float().mean()
-    verbose and print("\nkd_top1", diag_acc)  # should climb → 1.0 on overfit
-    perm = logits.argmax(1)  # [n]
-    verbose and print("perm (first 10):", perm)
-
-    logits_id = (a.detach() @ a.T.detach()).float()
-    diag_acc = (logits_id.argmax(1) == torch.arange(a.size(0), device=a.device)).float().mean()
-    assert diag_acc == 1.0, "KD pipeline reorders/duplicates inside student path"  # todo ha trhowato questo
-    return loss, idx.numel()
-
-
-# TODO Prova a vedere se con questo ok
-# kd_top1 ≈ 1/24 + constant perm ⇒ either pairs misaligned or student collapsed
-def kd_cosine(a, b, valid=None):
-    # a,b: [N,D], valid: [N] bool or None (already aligned)
-    a = F.normalize(a, dim=-1)
-    b = F.normalize(b, dim=-1)
-    if valid is not None:
-        a = a[valid];
-        b = b[valid]
-    return (1 - (a * b).sum(-1)).mean()
-
-
-def kd_info_nce_by_ids(za, ids_s, zb, ids_t, tau=0.07):
-    pos_t = {int(k): j for j, k in enumerate(ids_t)}
-    ia, ib = [], []
-    for i, k in enumerate(ids_s):
-        j = pos_t.get(int(k))
-        if j is not None:
-            ia.append(i);
-            ib.append(j)
-    ia = torch.tensor(ia, device=za.device);
-    ib = torch.tensor(ib, device=za.device)
-    a = F.normalize(za[ia], dim=-1)
-    b = F.normalize(zb[ib].detach(), dim=-1)
-    logits = (a @ b.T).float() / tau
-    targets = torch.arange(logits.size(0), device=za.device)
-    return F.cross_entropy(logits, targets, reduction="mean"), logits
-
-
-def masked_mse_kd(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor) -> tuple[Tensor, int]:
-    idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
-    if idx.numel() == 0:
-        return torch.tensor(0.0, device=za.device), 0
-
-    a = F.normalize(za[idx], p=2, dim=-1)
-    b = F.normalize(zb[idx].detach(), p=2, dim=-1)
-
-    loss = F.mse_loss(a, b)
-    return loss, idx.numel()
 
 
 def masked_cosine_similarity(za: Tensor, zb: Tensor, present: Tensor):
