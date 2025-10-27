@@ -24,3 +24,4 @@ with open("./resources/AMIGOS/processed-interleaved/P01_31.pt", "rb") as f_in, g
 
 
 - Passare da segmenti di 32s a 16s per motivi di spazio
+- Cambiare blocchi da 1s -> 4s (CBRaMod constraint)
