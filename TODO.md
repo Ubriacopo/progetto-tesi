@@ -25,3 +25,15 @@ with open("./resources/AMIGOS/processed-interleaved/P01_31.pt", "rb") as f_in, g
 
 - Passare da segmenti di 32s a 16s per motivi di spazio
 - Cambiare blocchi da 1s -> 4s (CBRaMod constraint)
+
+
+
+
+
+### KD
+- Prova a fare plot di diagonale e somilgianze generali di un batch
+- Costruisci un batch a mano chiaro (augmentation su dati)
+- Problema forse è model bottleneck
+- Forse resampler resta problema
+- Altrimenti potrebbe essere proiezione in spazio di KD
+- Quanto allineati dati

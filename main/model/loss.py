@@ -150,6 +150,9 @@ class InfoNCE(nn.Module):
         return info_nce(query, positive_key, negative_keys, temperature=self.temperature,
                         reduction=self.reduction, negative_mode=self.negative_mode)
 
+def normalize(*xs):
+    return [None if x is None else F.normalize(x, dim=-1) for x in xs]
+
 
 def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired'):
     # Check input dimensionality.
