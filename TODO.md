@@ -37,3 +37,7 @@ with open("./resources/AMIGOS/processed-interleaved/P01_31.pt", "rb") as f_in, g
 - Forse resampler resta problema
 - Altrimenti potrebbe essere proiezione in spazio di KD
 - Quanto allineati dati
+
+## MIGLIORIE
+Tenere idea di contesto testo su itnervalli lunghi.
+Ultimi 20secondi di paralto?
