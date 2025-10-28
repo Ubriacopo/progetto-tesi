@@ -15,7 +15,7 @@ from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
-from main.model.kd_train import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
 from main.model.neegavi.factory import EegInterAviFactory
 
 
@@ -67,7 +67,6 @@ def main(cfg: KdConfig):
         kd_loss_weight=cfg.kd_loss_weight,
         fusion_loss_weight=cfg.fusion_loss_weight,
         weakly_supervised_weight=cfg.weakly_supervised_weight,
-        ecg_correction_weight=cfg.ecg_correction_weight,
         lr=cfg.lr,
         kd_temperature=cfg.kd_temperature,
         fusion_metrics=[
