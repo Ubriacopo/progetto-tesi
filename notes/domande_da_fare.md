@@ -67,6 +67,8 @@ time_tok = compact[:, 1:][:, idx]             # [B, K, 768]
 compact = torch.cat([cls, time_tok], dim=1)   # [B, 1+K, 768]
 
 
--Another thing If my modality drop a video the KD for video for that sample has to be discarded?
--Use VateVideoResamplerTransform for EEGAVI also?
+- Another thing If my modality drop a video the KD for video for that sample has to be discarded?
+- Use VateVideoResamplerTransform for EEGAVI also?
 - AL momento io fondo i channels e mi va bene ma sarebbe il caso di non farlo per EEG?
+- LLaVA-style prefix alternativa (all togheter self attn)
+- Dovrei passare a LaBram?

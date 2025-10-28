@@ -5,7 +5,7 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from main.model.layer.base import SimpleFeedForward
+from main.model.neegavi.blocks import SimpleFeedForward
 
 
 class PerceiverAttention(nn.Module):
@@ -27,7 +27,9 @@ class PerceiverAttention(nn.Module):
         self.norm_latents = nn.LayerNorm(dim)
         # Linear projections to fit the attention shapes
         self.q = nn.Linear(dim, dim_head * heads, bias=False)
-        self.kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
+        self.k = nn.Linear(dim, dim_head * heads, bias=False)
+        self.v = nn.Linear(dim, dim_head * heads, bias=False)
+        # self.kv = nn.Linear(dim, dim_head * heads * 2, bias=False)
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
 
     def forward(self, x: torch.Tensor, latents: torch.Tensor, mask=None):
@@ -46,13 +48,16 @@ class PerceiverAttention(nn.Module):
         assert T == latents.shape[1] and D == latents.shape[-1], \
             f"Mismatch: x(T={T},D={D}) vs latents(T={latents.shape[1]},D={latents.shape[-1]})"
 
-        x, latents = self.norm_media(x), self.norm_latents(latents)
+        x = self.norm_media(x)
+        latents = self.norm_latents(latents)
 
         q = self.q(latents)
         # kv = torch.cat((x, latents), dim=-2)
-        k, v = self.kv(x).chunk(2, dim=-1)
+        kv_input = torch.cat((x, latents), dim=-2)
+        k = self.k(kv_input)
+        v = self.v(kv_input)
 
-        q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b h t n d", h=self.heads)
+        q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b t h n d", h=self.heads)
         q *= self.scale
 
         if mask is None:
@@ -61,10 +66,10 @@ class PerceiverAttention(nn.Module):
         mask = mask.to(dtype=torch.bool)
         keep_x = repeat(mask, "b T -> b T N", N=Nx)
         # keep_z = repeat(mask, "b T -> b T N", N=Nx)
-        # keep_z = repeat(mask, "b T -> b T N", N=Nz)
-        # key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
-        key_keep = keep_x
-        key_keep = key_keep[:, None, :, None, :]  # (b, 1, T, 1, n1 + n2)
+        keep_z = repeat(mask, "b T -> b T N", N=Nz)
+        key_keep = torch.cat([keep_x, keep_z], dim=-1)  # (b,T,n1+n2)
+
+        key_keep = key_keep[:, :, None, None, :]  # (b, 1, T, 1, n1 + n2)
 
         # Attention
         sim = einsum("... i d, ... j d  -> ... i j", q, k)
@@ -77,7 +82,7 @@ class PerceiverAttention(nn.Module):
         attn = sim.softmax(dim=-1) * row_has_key
 
         out = einsum("... i j, ... j d -> ... i d", attn, v)
-        out = rearrange(out, "b h t n d -> b t n (h d)", h=self.heads)
+        out = rearrange(out, "b t h n d -> b t n (h d)", h=self.heads)
         out *= mask[:, :, None, None]
 
         with torch.no_grad():
@@ -90,7 +95,7 @@ class PerceiverAttention(nn.Module):
 
 class PerceiverResampler(nn.Module):
     def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
-                 max_num_media: int = None, max_num_frames: int = None, ff_mult: int = 4):
+                 max_num_time_steps: int = None, max_num_frames: int = None, ff_mult: int = 4):
         """
         The PerceiverResampler comes from the Flamingo definition and enrichest the Perceiver architecture.
         It has a lower computational complexity and allows us to draw information from timed sequences.
@@ -110,7 +115,7 @@ class PerceiverResampler(nn.Module):
         # We learn the latents
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
 
-        #todo prova ad usare questie  fixare
+        # todo prova ad usare questie  fixare
 
         # todo
         # Set Transformer PMA (Pooling by Multihead Attention):
@@ -121,13 +126,9 @@ class PerceiverResampler(nn.Module):
         # Perceiver IO (not just Resampler):
         # Keep a latent array (L≈128–256) with cross-attn in and cross-attn out.
         # Add relative time bias and mask-aware logits. It’s heavier but robust for ragged inputs.
-        self.frame_embeddings: Optional[nn.Parameter] = None
-        if max_num_frames is not None:
-            self.frame_embeddings = nn.Parameter(torch.randn(max_num_frames, dim))
-
         self.media_time_embeddings: Optional[nn.Parameter] = None
-        if max_num_media is not None:
-            self.media_time_embeddings = nn.Parameter(torch.randn(max_num_media, 1, dim))
+        if max_num_time_steps is not None:
+            self.media_time_embeddings = nn.Parameter(torch.randn(max_num_time_steps, 1, dim))
 
         # Build perceiver layers.
         self.layers = nn.ModuleList([])
@@ -156,30 +157,21 @@ class PerceiverResampler(nn.Module):
 
         b, T, F, v = x.shape[:4]
 
-        if self.frame_embeddings is not None:
-            # Add the frame embeddings to the input to not lose the temporal alignment information
-            x += repeat(self.frame_embeddings[:F], "F d -> b T F v d", b=b, T=T, v=v)
-
         if x.dim() == 5:
             # Flatten the frame and spatial dimensions that we suppose are in [-3:-2]
             x = rearrange(x, "b T F v d -> b T (F v) d")
 
         if self.media_time_embeddings is not None:
             # Add to the resampled x the time embeddings. Mostly won't be used as T tends to be 1.
-            x += self.media_time_embeddings[:T]
+            time_pos_emb = self.media_time_embeddings[:T].unsqueeze(0).expand(b, -1, -1, -1)
+            if mask is not None:
+                time_pos_emb = time_pos_emb * mask.unsqueeze(-1).unsqueeze(-1)
+            x += time_pos_emb
 
         latents = repeat(self.latents, "n d -> b T n d", b=b, T=T)
         # Transformer Block
         for att, feed_forward in self.layers:
-
             latents = att(x, latents, mask=mask) + latents  # Residual network style.
-            # Remask the latents
-            if mask is not None:
-                latents = latents * mask[:, :, None, None].to(latents.dtype)
-
             latents = feed_forward(latents) + latents  # Residual network style.
-            # Remask the latents
-            if mask is not None:
-                latents = latents * mask[:, :, None, None].to(latents.dtype)
 
         return self.norm(latents)

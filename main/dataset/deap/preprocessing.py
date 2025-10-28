@@ -2,6 +2,8 @@ from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.default_transform_pipe import assessment_transform_pipe
 from main.core_data.media.eeg.config import EegTargetConfig
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
+from main.core_data.media.metadata.metadata import Metadata
+from main.core_data.media.metadata.transforms import MetadataToTensor
 from main.core_data.media.video import VidTargetConfig
 from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
@@ -25,7 +27,8 @@ def deap_interleaved_preprocessor(
                                source_fs=DeapConfig.EEG.fs, max_length=output_max_length),
             # Audio and text do not exist so we don't use them.
             # TODO Check better if it was lost during processing.
-            assessment_transform_pipe()
+            assessment_transform_pipe(),
+            (Metadata.modality_code(), MetadataToTensor())
         ),
         extraction_data_folder=extraction_data_folder
     )
@@ -44,5 +47,6 @@ def deap_vate_preprocessor(
             "deap-vate-processor",
             vid_vivit_interleaved_transform_pipe(vid_config, DeapConfig.Video.fps, output_max_length),
             # Audio and text do not exist so we don't use them. TODO Check better if it was lost during processing.
+            (Metadata.modality_code(), MetadataToTensor())
         )
     )

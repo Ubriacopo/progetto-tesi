@@ -15,21 +15,13 @@ data_point_loader_name: "${dataset}PointsLoader" # This has to be passed
 processor_name: "${dataset}_interleaved_preprocessor"
 # Configs for modalities that run for the processing script.
 vid_config:
-  i_max_length: 3
   max_frames: 32
 
 eeg_config:
-  cbramod_weights_path: main/dependencies/cbramod/pretrained_weights.pth
-  max_segments: 10
+  model_weights_path: main/dependencies/cbramod/pretrained_weights.pth
 
 ecg_config:
   use: True
-  prepare: main.dataset.amigos.config.AmigosConfig.prepare_ecg
-  i_max_length: 10
-
-aud_config:
-  i_max_length: 0.96
 
 txt_config:
-  i_max_length: 4
   extracted_base_path: data/${dataset}/extraction_data/

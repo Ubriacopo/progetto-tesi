@@ -45,7 +45,7 @@ class PMA(nn.Module):
 
     def forward(self, x: torch.Tensor, mask=None) -> torch.Tensor:
         B = x.shape[0]
-        seeds = self.S.repeat(B, 1, 1)
+        seeds = self.S.repeat(B, 1, 1, 1)
         key_padding_mask = ~mask if mask is not None else None
         return self.transformer_block(seeds, x, key_padding_mask=key_padding_mask)
 

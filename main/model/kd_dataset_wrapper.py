@@ -1,5 +1,6 @@
 from typing import Mapping
 
+from tensordict import TensorDict
 from torch.utils.data import Dataset
 
 
@@ -25,8 +26,8 @@ class KdDatasetWrapper(Dataset):
         self.datasets: Mapping[str, Dataset] = datasets
         self.length = first_len
 
-    def __getitem__(self, idx: int) -> dict:
-        return {key: ds[idx] for key, ds in self.datasets.items()}
+    def __getitem__(self, idx: int) -> TensorDict:
+        return TensorDict({key: ds[idx] for key, ds in self.datasets.items()})
 
     def __len__(self):
         return self.length

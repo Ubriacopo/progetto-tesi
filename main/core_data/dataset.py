@@ -2,6 +2,7 @@ from abc import ABC
 from pathlib import Path
 
 import pandas as pd
+import tensordict
 import torch
 from torch import device
 
@@ -33,42 +34,16 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
         self.base_path: str = str(Path(dataset_spec_file).parent)
         self.df = pd.read_csv(dataset_spec_file, index_col=False)
 
+        # TODO In futuro supportare l'opzione
         self.cache_in_ram: bool = cache_in_ram
         self.ram_cache = dict()
-
-    def extract_entry(self, dictionary: dict | torch.Tensor, return_dictionary: dict, index: int) -> dict:
-        """
-        Recursively extract entries from nested dictionaries. (Data is partitioned by type and not by sample).
-
-        :param dictionary:
-        :param return_dictionary:
-        :param index:
-        :return:
-        """
-        for key, value in dictionary.items():
-            # Base case.
-            if isinstance(value, torch.Tensor):
-                return_dictionary[key] = value[index].squeeze().to(self.device)
-            # Decompose other dictionaries when met.
-            if isinstance(value, dict):
-                return_dictionary[key] = self.extract_entry(value, {}, index)
-
-        return return_dictionary
 
     def __getitem__(self, idx: int):
         # Descriptor.
         sample = self.df.iloc[idx].to_dict()
         inner_idx, eid, segment = sample["index"], sample["eid"], sample["segment"]
-        if self.cache_in_ram:
-            # TODO empty cache if saturated. and see if it is good.
-            self.ram_cache[eid] = torch.load(self.base_path + "/" + eid + ".pt", mmap=True, map_location='cpu')
-            o = self.ram_cache[eid]
-        else:
-            o = torch.load(self.base_path + "/" + eid + ".pt", mmap=True, map_location='cpu')
-
-        # for key in o take the tensor at position inner_idx
-        item = self.extract_entry(o, {}, inner_idx)
-        return item
+        o = tensordict.load_memmap(self.base_path + "/" + eid)
+        return o[inner_idx]
 
     def __len__(self):
         return len(self.df)

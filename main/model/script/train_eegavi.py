@@ -2,17 +2,21 @@ import dataclasses
 
 import hydra
 import lightning as L
+import tensordict
 import torch
+import torchinfo
 from torch.utils.data import DataLoader, ConcatDataset
-from torchview import draw_graph
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
-from main.model.EEGAVI.factory import EegBaseModelFactory
-from main.model.EEGAVI.interleaved_EEGAVI.interleaved_model import get_interleaved_EEG_AVI, \
-    get_interleaved_weakly_supervised
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.text import Text
+from main.core_data.media.video import Video
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.kd_train import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.factory import EegInterAviFactory
 
 
 @dataclasses.dataclass
@@ -49,13 +53,14 @@ def main(cfg: KdConfig):
         cfg.teacher_weights_path = cfg.base_path + cfg.teacher_weights_path
 
     torch.manual_seed(SEED)  # Reproducibility
-    student = EegBaseModelFactory.weak_supervised_interleaved(
+    student = EegInterAviFactory.weak_supervised_interleaved(
         output_size=384, base_model_target_size=384, supports_latent_size=384
     )
     teacher = MaskedContrastiveModel(hidden_channels=200, out_channels=100)
 
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
+
     module = EegAviKdVateMaskedSemiSupervisedModule(
         student=student,
         teacher=teacher,
@@ -65,6 +70,13 @@ def main(cfg: KdConfig):
         ecg_correction_weight=cfg.ecg_correction_weight,
         lr=cfg.lr,
         kd_temperature=cfg.kd_temperature,
+        fusion_metrics=[
+            Audio.modality_code(),
+            Video.modality_code(),
+            Text.modality_code(),
+            EEG.modality_code(),
+            ECG.modality_code()
+        ],
     )
 
     student_dataset = ConcatDataset([
@@ -78,7 +90,10 @@ def main(cfg: KdConfig):
     ])
 
     dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
-    train_dataloader = DataLoader(dataset_wrapper, batch_size=cfg.batch_size, shuffle=True)
+    train_dataloader = DataLoader(
+        dataset_wrapper, batch_size=cfg.batch_size, shuffle=True, collate_fn=lambda x: tensordict.stack(x)
+    )
+
     # Plot trained model structure and store to file
     # model_graph = draw_graph(
     #    student.eeg_avi,
@@ -91,6 +106,10 @@ def main(cfg: KdConfig):
     #    hide_module_functions=True
     # )
 
+    for n, p in student.named_parameters():
+        print(n, p.requires_grad, p.grad is None)
+
+    torchinfo.summary(module)
     trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24, overfit_batches=1)
     trainer.fit(module, train_dataloader)
 

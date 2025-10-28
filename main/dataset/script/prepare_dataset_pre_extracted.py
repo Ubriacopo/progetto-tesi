@@ -17,7 +17,7 @@ from main.dataset.amigos import preprocessing as amigo_preprocessing
 from main.dataset.deap import loader as deap_loader
 from main.dataset.deap import preprocessing as deap_preprocessing
 
-
+# todo make concrode a ConfigDataset
 @dataclasses.dataclass
 class PrepareDatasetConfigPreExtracted:
     dataset_name: str
@@ -51,7 +51,7 @@ def main(cfg: PrepareDatasetConfigPreExtracted):
         cfg.data_path = cfg.base_path + cfg.data_path
         cfg.output_path = cfg.base_path + cfg.output_path
         cfg.extraction_data_folder = cfg.base_path + cfg.extraction_data_folder
-        cfg.eeg_config.cbramod_weights_path = cfg.base_path + cfg.eeg_config.cbramod_weights_path
+        cfg.eeg_config.model_weights_path = cfg.base_path + cfg.eeg_config.model_weights_path
         cfg.txt_config.extracted_base_path = cfg.base_path + cfg.txt_config.extracted_base_path
     else:
         logging.warning("No subpaths are used. Ensure that all links are absolute.")

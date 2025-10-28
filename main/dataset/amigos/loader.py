@@ -8,6 +8,7 @@ import pandas as pd
 from moviepy import VideoFileClip
 
 from main.core_data.media.assessment.assessment import Assessment
+from main.core_data.media.metadata.metadata import Metadata
 from main.dataset.amigos.config import AmigosConfig
 from main.dataset.amigos.utils import extract_trial_data, load_participant_data
 from main.core_data.media.audio.audio import Audio
@@ -23,6 +24,7 @@ class AmigosPointsLoader(DataPointsLoader):
     def __init__(self, base_path: str):
         super().__init__()
         self.base_path: str = base_path
+        self.config = AmigosConfig()
 
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "pre_processed_py/")
@@ -54,19 +56,24 @@ class AmigosPointsLoader(DataPointsLoader):
             clip = VideoFileClip(media_path)
 
             # Extract ECG and EEG data + metadata that could be useful
-            fs = AmigosConfig.EEG.fs
-            info = mne.create_info(ch_names=AmigosConfig.CH_NAMES, ch_types=AmigosConfig.CH_TYPES, sfreq=fs)
-            raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
+            eeg_fs = self.config.eeg_source_config.fs
+            info = mne.create_info(
+                ch_names=self.config.eeg_source_config.get_CH_NAMES(),
+                ch_types=self.config.eeg_source_config.get_CH_TYPES(),
+                sfreq=eeg_fs
+            )
 
-            # Take from Audio
+            raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
+            metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
             yield FlexibleDatasetPoint(
                 experiment_id,
-                EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=AmigosConfig.EEG.fs, ).as_mod_tuple(),
-                ECG(eid=experiment_id, data=raw.copy().pick(["ecg"]), fs=AmigosConfig.EEG.fs,
-                    leads=AmigosConfig.LEAD_NAMES, patient_gender=user_metadata["Gender"][0].upper(),
+                EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs, ).as_mod_tuple(),
+                ECG(eid=experiment_id, data=raw.copy().pick(["ecg"]), fs=eeg_fs,
+                    leads=self.config.ecg_source_config.LEAD_NAMES, patient_gender=user_metadata["Gender"][0].upper(),
                     patient_age=user_metadata["Age"][0], ).as_mod_tuple(),
                 Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
                 Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
                 Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
                 Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
+                Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
             )

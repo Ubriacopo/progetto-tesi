@@ -1,18 +1,23 @@
 from typing import Literal
-import torch.nn.functional as F
+
 import lightning as L
 import torch.optim
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
-from torchmetrics.functional import concordance_corrcoef
+from torch import ModuleDict, nn
+from torchmetrics.functional import concordance_corrcoef, pearson_corrcoef
 
-from main.model.EEGAVI.EEGAVI import WeaklySupervisedEEGAVIOutputs
-from main.model.EEGAVI.base_model import WeaklySupervisedEegBaseModel, WeaklySupervisedEegBaseModelOutputs
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import masked_info_nce_2d, masked_cosine_similarity, SiglipLoss
+from main.model.loss import masked_cosine_similarity, SiglipLoss, masked_info_nce_2d, InfoNCE
+from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs
 from main.utils.data import MaskedValue
+import torch.nn.functional as F
 
 
 class EegAviKdVateMaskedModule(L.LightningModule):
+    pass
+
+
+class WeaklySupervisedEegBaseModel:
     pass
 
 
@@ -20,6 +25,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def __init__(self,
                  student: WeaklySupervisedEegBaseModel,
                  teacher: MaskedContrastiveModel,
+
+                 fusion_metrics: list[str],
+
                  kd_loss_weight: float,
                  fusion_loss_weight: float,
                  weakly_supervised_weight: float,
@@ -29,8 +37,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         super().__init__()
         self.student = student
         self.teacher = teacher
-        # TODO Find defaults (questi sono per test a b=1)
-        self.siglip_loss = SiglipLoss(init_tau=0.2, stop_grad_target=True)
+
+        self.verbose = False
+
+        siglip_losses = {}
+        for fusion_metric in fusion_metrics:
+            siglip_losses[fusion_metric] = SiglipLoss(
+                init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose
+            )
+
+        self.siglip_losses: ModuleDict = nn.ModuleDict(siglip_losses)
 
         # Weight terms for loss parts
         self.alpha: float = kd_loss_weight
@@ -42,231 +58,100 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         # todo warmup lr
-        return torch.optim.Adam([
-            {"params": self.student.parameters()},
-            {"params": self.siglip_loss.parameters()}
-        ], lr=self.lr, weight_decay=0
-        )
+        siglip_optim_configs = [
+            {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+            for i in self.siglip_losses.values()
+        ]
 
-    def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) \
-            -> float | torch.Tensor:
-        numerator, denominator = .0, 0
+        return torch.optim.Adam(weight_decay=0.01, params=siglip_optim_configs + [
+            {"params": self.student.parameters(), "lr": self.lr}
+        ])
+
+    def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs):
+        total_loss = 0.0
+        total_samples = 0
+
         key: Literal['vid', 'txt', 'aud']
         for key in teacher_out.keys():
+            if key != 'vid':
+                continue
+
             if key not in student_out:
-                continue  # Keys do never match so no kd on this.
+                continue
+
+            l = InfoNCE()(student_out[key]["data"], teacher_out[key]['data'])
+            self.log(f"kd_loss_{key}", l, on_epoch=True, on_step=False, prog_bar=True)
             loss_k, n_rows = masked_info_nce_2d(
-                za=student_out[key]["data"], za_mask=student_out[key]["mask"],
-                zb=teacher_out[key]["data"], zb_mask=teacher_out[key]["mask"],
-                tau=self.kd_temperature
+                za=student_out[key]["data"],
+                za_mask=student_out[key]["mask"],
+                zb=teacher_out[key]["data"],
+                zb_mask=teacher_out[key]["mask"],
+                # tau=self.kd_temperature
             )
 
-            loss_k /= torch.clamp(torch.log(torch.tensor(n_rows, device=loss_k.device, dtype=loss_k.dtype)), min=1e-6)
-            # todo possibile problema potrebbe essere dovuto a batch size piccola:
-            # Option 1: Gradient Accumulation (Recommended) Simulate larger batches without memory increase:
-            #       Memory Bank alternativa piu robusta (Al momento siamo in un punto "good enough" per batch che abbiamo)
-            #       Alternativa ancora sarebbe quella di usare sigliploss direttamente che dipende meno da bathc size?
-            numerator += loss_k * n_rows  # Weighed by number of valid rows
-            denominator += n_rows  # Track total number of valid rows
+            if n_rows > 0:
+                # Weighted by valid samples
+                total_loss += loss_k * n_rows
+                total_samples += n_rows
 
-        loss = numerator / max(denominator, 1)
-        self.log("kd_loss", loss, on_epoch=True)
+        # Simple average
+        loss = total_loss / max(total_samples, 1)
+        self.log("kd_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
         return loss * self.alpha
 
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
-        device, dtype = fused_output.device, fused_output.dtype
-        num = torch.zeros((), device=device, dtype=dtype)
-        den = torch.zeros((), device=device, dtype=dtype)
-
-        # If fused_output is token-level [B,T,D], pool it to [B,D] with the union mask over modalities (safer).
-        # Otherwise, if it's already [B,D], this is a no-op.
-        def masked_mean_over_t(x, mask_BT):
-            if mask_BT is None:
-                return x.mean(dim=1) if x.dim() == 3 else x
-            if x.dim() == 2:
-                return x
-            w = mask_BT.float().unsqueeze(-1)  # [B,T,1]
-            return (x * w).sum(dim=1) / w.sum(dim=1).clamp_min(1e-6)
-
-        # Build a union time mask across modalities to pool fused_output safely
-        union_mask = None
-        for key, mv in modality_outputs.items():
-            m = mv["mask"]
-            if m is None:
-                union_mask = None
-                break
-            if m.dim() > 2:
-                m = m.any(dim=-1)  # [B,T]
-            union_mask = m if union_mask is None else (union_mask | m)
-
-        fused_vec = masked_mean_over_t(fused_output, union_mask)  # [B,D]
-
-        # todo errore qui? -> Errore era numerico./
-        # Resta nuovo errore: La diagonale e altri sample sono troppo simili.
-        # TODO: Quale causa di questo? Troppo simili i sample?
-        #       O il perceiver resmpler sbagliato?
-        #       Todo forse attention pooling
-        # Per-modality losses
-        debug_pairs = []  # (za_valid, zb_valid) for debug only
+        base_loss = torch.tensor(0.0, device=fused_output.device)
         for key, value in modality_outputs.items():
-            z, mask = value["data"], value["mask"]
+            self.verbose and print(f"\nFor key {key}:")
+            # before is 3D. We mean over valid masked rows
+            y_before = value["data"]
+            mask_before = value["mask"].unsqueeze(-1)
+            y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
 
-            # Reduce patch axis properly
-            if mask is not None and mask.dim() > 2:
-                mask = mask.any(dim=-1)  # [B,T]
-            # If z is [B,T,P,D], mean over patches; do masked mean if you have a patch mask per-timestep
-            if z.dim() > 3:
-                z = z.mean(dim=-2)  # [B,T,D]
+            l = self.siglip_losses[key](fused_output, y_before)
+            self.log("siglip_" + key, l, on_epoch=True, on_step=False, prog_bar=True)
 
-            # Masked mean over time to [B,D]
-            if mask is not None:
-                w = mask.float().unsqueeze(-1)  # [B,T,1]
-                z = (z * w).sum(dim=1) / w.sum(dim=1).clamp_min(1e-6)  # [B,D]
-                valid_rows = mask.any(dim=1)  # [B]
-            else:
-                z = z.mean(dim=1) if z.dim() == 3 else z
-                valid_rows = torch.ones(z.size(0), dtype=torch.bool, device=device)
+            base_loss += l
 
-            # Guard against degenerate rows
-            z_norms = z.norm(dim=-1)
-            valid_rows = valid_rows & (z_norms > 1e-6)
-
-            if valid_rows.sum() == 0:
-                continue
-
-            za = fused_vec[valid_rows]
-            zb = z[valid_rows].detach()
-
-            # Symmetric InfoNCE (balanced); fixed tau for sanity
-            def sym_infonce(za, zb, tau=0.7):  # start higher tau
-                za = F.normalize(za, dim=-1)
-                zb = F.normalize(zb, dim=-1)
-                # center to fight batch-wise shared direction
-                za = F.normalize(za - za.mean(0, keepdim=True), dim=-1)
-                zb = F.normalize(zb - zb.mean(0, keepdim=True), dim=-1)
-                logits = (za @ zb.T).to(torch.float32) / tau
-                t = torch.arange(za.size(0), device=za.device)
-                return 0.5 * (F.cross_entropy(logits, t) + F.cross_entropy(logits.T, t))
-            assert not zb.requires_grad, "Target side is NOT detached"
-
-            # keep for debug
-            debug_pairs.append((za.detach(), F.normalize(z[valid_rows], dim=-1).detach()))
-            if key == "eeg":
-                continue
-
-            loss_m = sym_infonce(za, zb, tau=0.3)
-
-            fused_vec.retain_grad()
-            (loss_m).backward(retain_graph=True)
-
-            print("\nloss_m=", loss_m)
-            n = valid_rows.sum()
-
-            num = num + loss_m * n
-            den = den + n  # <-- NOT n**2
-
-            with torch.no_grad():
-                za_n = F.normalize(za.to(torch.float32), dim=-1)
-                zb_n = F.normalize(zb.to(torch.float32), dim=-1)
-                S = za_n @ zb_n.T  # [n,n], now guaranteed in [-1, 1]
-                diag = S.diag().mean().item()
-                off = (S.sum() - S.diag().sum()) / (S.numel() - S.size(0))
-                print(
-                    f"diag={diag:.4f}, off={off:.4f}, gap={diag - off:.4f}, S_min={S.min().item():.4f}, S_max={S.max().item():.4f}")
-                # sanity on norms
-                print("||za|| mean:", za_n.norm(dim=-1).mean().item(), "||zb|| mean:", zb_n.norm(dim=-1).mean().item())
-
-        # Optional: EEG–Audio geometry debug (only if you indeed have exactly 2 modalities here)
-        if len(debug_pairs) >= 2:
-            with torch.no_grad():
-                # take first two for illustration
-                za_eeg, z_eeg = debug_pairs[0]
-                za_aud, z_aud = debug_pairs[1]
-                # compute on the intersection of valid rows if you want stricter alignment; here we assume matched rows
-                c = (z_eeg * z_aud).sum(dim=-1)
-                bound = ((1 + c).clamp_min(0) / 2).sqrt()
-                # fused cosines (use the same valid rows subset for each)
-                cos_f_eeg = (F.normalize(fused_vec, dim=-1)[: z_eeg.size(0)] * z_eeg).sum(
-                    dim=-1)  # simplistic alignment
-                cos_f_aud = (F.normalize(fused_vec, dim=-1)[: z_aud.size(0)] * z_aud).sum(dim=-1)
-                print("mean c:", float(c.mean()))
-                print("mean bound:", float(bound.mean()))
-                print("mean cos(f,EEG):", float(cos_f_eeg.mean()),
-                      "\nmean cos(f,Audio):", float(cos_f_aud.mean()))
-
-        loss = num / den.clamp_min(1e-6)
-        self.log("unweighted_fusion_loss", loss, on_epoch=True)
-        return loss * self.beta
-
-    def a_compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]):
-        numerator = torch.zeros((), device=fused_output.device, dtype=fused_output.dtype)
-        denominator = torch.zeros((), device=fused_output.device, dtype=fused_output.dtype)
-        # TODO: Broken fusion module somehow.
-
-        zs = []
-        for key, value in modality_outputs.items():
-            z, mask = value["data"], value["mask"]
-
-            if mask.dim() == 3:
-                mask = mask.any(dim=-1)
-                # Usually stud_out_multimodal out: (b, T, P, D) (Differs for EEG)
-            # Patch mean: (Has no mask patches are always max rank).
-            if z.dim() > 3:
-                # We have patch tokens so we mean over them
-                z = z.mean(dim=-2)
-
-            w = mask.float().sum(dim=-1, keepdim=True).clamp_min(1e-6)  # Normalization factor
-            z = (z * mask.float().unsqueeze(-1)).sum(dim=-2) / w
-
-            z_norms = z.norm(dim=-1)
-            valid = (mask.any(dim=1)) & (z_norms > 1e-6)
-            if valid.sum() == 0:
-                continue
-
-            n = valid.sum()
-            zs.append(torch.nn.functional.normalize(z, dim=-1))
-            if key == 'eeg':
-                continue
-
-            z = z.detach()
-            modality_loss = self.siglip_loss(fused_output[valid], z[valid])
-
-            numerator += modality_loss * n  #
-            denominator += n ** 2  # Count the samples that have to do with loss calc
-
-        c = (zs[0] * zs[1]).sum(-1)  # EEG–Audio agreement per sample
-        bound = ((1 + c).clamp_min(0) / 2).sqrt()  # best achievable cosine to each (theory)
-        fo = torch.nn.functional.normalize(fused_output, dim=-1)
-        cos_f_eeg = (fo * zs[0]).sum(-1)
-        cos_f_aud = (fo * zs[1]).sum(-1)
-
-        print("mean c:", c.mean().item())
-        print("mean bound:", bound.mean().item())
-        print("mean cos(f,EEG):", cos_f_eeg.mean().item(), "\nmean cos(f,Audio):", cos_f_aud.mean().item())
-
-        loss = numerator / denominator.clamp(min=1e-6)
-        self.log("unweighted_fusion_loss", loss, on_epoch=True)
-        return loss * self.beta
+        return base_loss
 
     def compute_supervised_loss(self, pred: torch.Tensor, target: torch.Tensor):
         # Compute concordance correlation coefficient that measures the agreement between two variables.
         # In emotion regression (valence, arousal, dominance), this is the standard metric and loss used in benchmarks. TODO verify
         # Correlation and agreement rather than absolute distance
         tol = 1e-8
-        target_std = target.std(dim=0)
-        ccc = concordance_corrcoef(pred[:, target_std > tol], target[:, target_std > tol]).mean()
-        self.log("unweighted_supervised_loss", ccc, on_epoch=True)
-        return (1 - ccc) * self.gamma
 
+        t_std = target.std(dim=0, unbiased=False)
+        p_std = pred.std(dim=0, unbiased=False)
+
+        mask = (t_std > tol) & (p_std > tol)
+
+        if mask.any():
+            if self.current_epoch < 2:
+                # Pearson (correlation) is easier to optimize — no scale/bias terms, so gradients stabilize early.
+                coefficient = pearson_corrcoef(pred[:, mask], target[:, mask]).mean()
+            else:
+                # CCC can be unstable at the start, when predictions and targets differ wildly in scale.
+                coefficient = concordance_corrcoef(pred[:, mask], target[:, mask]).mean()
+
+            self.log("supervised (1 is good)", coefficient, on_epoch=True, on_step=False, prog_bar=True)
+            return (1 - coefficient) * self.gamma
+        else:
+            # Fall back to MSE to still learn something.
+            loss = F.mse_loss(pred, target)
+            self.log("supervised", pred.new_tensor(0.0), on_epoch=True, on_step=False, prog_bar=True)
+            return loss
+
+    # todo provo dtype16 cosi da avere piu mem?
     def training_step(self, batch, batch_idx):
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
 
         loss = (
-            # self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
-            self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
-            # self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
+            self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out)
+            # self.compute_fusion_loss(fused_output=stud_out.embeddings, modality_outputs=stud_out.multimodal_outs)
+            # + self.compute_supervised_loss(pred=stud_out.pred, target=batch["student"][Assessment.modality_code()])
         )
 
         # Optional term
@@ -278,6 +163,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 present=stud_out.multimodal_outs["eeg"]["mask"] & stud_out.multimodal_outs["ecg"]["mask"].any(dim=-1)
             )
 
-        self.log("train_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
 
         return loss

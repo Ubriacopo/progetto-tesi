@@ -1,3 +1,4 @@
+braindecode
 hydra-core~=1.3.2
 mediapipe~=0.10.21
 pytorch-lightning~=2.5.5
@@ -5,7 +6,7 @@ sentence-transformers~=5.1.1
 torchcodec~=0.5
 zipfile-inflate64
 einops-exts
-torchview
+torchview~=0.2.7
 mne~=1.10.1
 tokenizers
 safetensors
@@ -41,3 +42,4 @@ lightning~=2.5.5
 torchmetrics~=1.8.2
 jedi~=0.19.2
 CBraMod~=0.0.1
+tensordict~=0.10.0
