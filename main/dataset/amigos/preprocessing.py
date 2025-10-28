@@ -82,14 +82,14 @@ def amigos_interleaved_preprocessor(
 @safe_call
 def amigos_vate_basic_preprocessor(output_path: str, extraction_data_folder: str,
                                    vid_config: VidTargetConfig = VidTargetConfig(), ):
-    config = AmigosConfig()
+    config = AmigosConfig(vid_target_config=vid_config, )
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "default_preprocessor",
-            vid_vate_basic_transform_pipe(vid_config),
-            aud_vate_basic_transform_pipe(config.aud_source_config.fs),
+            vid_vate_basic_transform_pipe(config),
+            aud_vate_basic_transform_pipe(config),
             txt_vate_basic_transform_pipe(),
             (Metadata.modality_code(), MetadataToTensor())
         ),

@@ -4,13 +4,11 @@ import torch
 from torch import nn
 from torchvision.transforms import v2
 
-from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
 from main.core_data.media.video import Video
-from main.core_data.media.video import VidTargetConfig
 from main.core_data.media.video.transforms import SubclipVideo, VideoToTensor, ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
-    UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, \
-    RecencyBiasedCausalResampling
+    UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling
+from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
 from main.dataset.base_config import DatasetConfig
 
 
@@ -33,13 +31,13 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
     )
 
 
-def vid_vate_basic_transform_pipe(target_config: VidTargetConfig) -> tuple[str, nn.Module]:
+def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return Video.modality_code(), nn.Sequential(
         SubclipVideo(),
         UnbufferedResize((224, 224)),
-        VateVideoResamplerTransform(min_frames=target_config.max_frames),
+        VateVideoResamplerTransform(min_frames=config.vid_target_config.max_frames),
         v2.Lambda(lambda x: torch.tensor(x)),
-        RegularFrameResampling(target_config.max_frames, drop_mask=True),
+        RegularFrameResampling(config.vid_target_config.max_frames, drop_mask=True),
         ViVitImageProcessorTransform(),
         ViVitForVideoClassificationEmbedderTransform(),
         v2.Lambda(lambda x: x.to("cpu")),
