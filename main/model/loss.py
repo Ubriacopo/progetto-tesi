@@ -69,6 +69,27 @@ class SiglipLoss(nn.Module):
         self.stop_grad_target: bool = stop_grad_target
 
     def forward(self, za: torch.Tensor, zb: torch.Tensor, ignore_mask=None):
+        """
+        How does siglip work:
+
+        L = - 1/N sum(log(sim(x_ii / tau)) + b + 1 / (N+1) sum(log(1 - sim(x_ij / tau + b))
+        where sim is log-sigmoid = -log(1 - e^-x)
+
+        Bias controls is an offset value on the input of the sigmoid changing where the loss operates.
+        Larger bias logits are more negative -> Reduces flatness (In some correct ranges)
+        Generally speaking the bias helps to control the region of negatives to avoid saturating gradients too soon.
+
+        tau temperature instead rescales similarity before the sigmoid or softmax.
+        Higher taus mean more stable training but also weaker gradients with smoother probs (logits are smaller).
+        Lower taus mean larger logits and easier to overfit or saturate (hit saturation earlier is a big problem).
+
+        Compared to InfoNCE has fewer issues with smaller batches.
+
+        :param za:
+        :param zb:
+        :param ignore_mask:
+        :return:
+        """
         # Normalization
         za = lightweight_whitening(za)
         if self.stop_grad_target:

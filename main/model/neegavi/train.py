@@ -75,6 +75,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         return loss
 
+    @staticmethod
+    @torch.no_grad()
+    def siglip_random_baseline(loss_fn, a, b):
+        # shuffle targets to break alignment
+        idx = torch.randperm(b.shape[0], device=b.device)
+        return loss_fn(a, b[idx])
+
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) -> float:
         loss = .0
 
@@ -82,8 +89,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         for key in teacher_out.keys():
             if key not in student_out:
                 continue  # This element is not KD or is absent from teacher so we cannot learn from it
+            loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
+            loss_fn.to('cuda')
+            # modality_loss = self.siglip_losses[key](student_out[key]["data"], teacher_out[key]['data'])
+            modality_loss = loss_fn(student_out[key]["data"], teacher_out[key]['data'])
+            self.log(
+                f"kd_rand_{key}",
+                self.siglip_random_baseline(loss_fn, student_out[key]["data"], teacher_out[key]['data'], ),
+                on_epoch=True, on_step=False, prog_bar=True
+            )
 
-            modality_loss = InfoNCE()(student_out[key]["data"], teacher_out[key]['data'])
             self.log(f"kd_loss_{key}", modality_loss, on_epoch=True, on_step=False, prog_bar=True)
             loss = loss + modality_loss
 

@@ -38,8 +38,7 @@ class EEGFeatureExtractor:
 
     def pick_segments(self, duration: float, hop: float,
                       bands: tuple[tuple, ...] = ((0.5, 4), (4, 8), (8, 13), (13, 30)),
-                      band_weights: tuple[float, ...] = (0.5, 0.4, 0.5, 0.4),
-                      need_number: int = 30):
+                      band_weights: tuple[float, ...] = (0.5, 0.4, 0.5, 0.4), need_number: int = 30):
         if len(bands) != len(band_weights):
             raise ValueError(f"Shape mismatch between bands and weights: {len(bands)}!= {len(band_weights)}")
 
