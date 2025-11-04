@@ -1,0 +1,30 @@
+# @package preprocessing
+dataset_name: ???
+out_folder_name: ???
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/
+# Subpath to where the dataset is placed
+data_path: ${.base_path}/resources/${.dataset_name}/
+# Subpath to where extracted intervals are placed
+extraction_data_folder: ${.base_path}/data/${.dataset_name}/extraction_data/
+# Subpath to where output has to go to.
+output_path: ${.base_path}/data/${.dataset_name}/${.out_folder_name}/
+output_max_length: 32
+preprocessing_function: main.core.dataset.${.dataset_name}.preprocessing.preprocessing
+
+# Objects have to be defined
+
+vid_config:
+  max_frames: 32
+
+aud_config:
+  fs: 16000
+
+eeg_config:
+  fs: 200
+  model_weights_path: ${..base_path}/main/dependencies/cbramod/pretrained_weights.pth
+
+txt_config:
+  extracted_base_path: ${..base_path}/data/amigos/extraction_data/
+
+ecg_config:
+  fs: 128

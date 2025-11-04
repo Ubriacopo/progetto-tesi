@@ -1,0 +1,8 @@
+---
+defaults:
+  - base
+
+dataset_name: dreamer
+out_folder_name: interleaved
+
+preprocessing_pipeline: main.core.dataset.${dataset_name}.preprocessing.interleaved_preprocessor

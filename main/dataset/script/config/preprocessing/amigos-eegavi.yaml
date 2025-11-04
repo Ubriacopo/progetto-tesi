@@ -1,0 +1,12 @@
+# @package preprocessing
+---
+defaults:
+  - base
+
+dataset_name: amigos
+out_folder_name: interleaved
+
+preprocessing_function: main.dataset.${.dataset_name}.preprocessing.preprocessing
+preprocessing_pipeline: main.dataset.${.dataset_name}.preprocessing.interleaved_preprocessor
+
+# Override different setups todo

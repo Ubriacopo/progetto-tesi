@@ -36,7 +36,7 @@ class DeapPointsLoader(DataPointsLoader):
 
                 clip = VideoFileClip(media_path)
                 fps, size = clip.fps, clip.size
-                metadata = {"nei": int(uid + "010" + idx), "dataset_id": 0}
+                metadata = {"nei": int(uid + "010" + str(idx)), "dataset_id": 0}
 
                 yield FlexibleDatasetPoint(
                     eid,

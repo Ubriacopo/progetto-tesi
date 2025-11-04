@@ -10,7 +10,7 @@ points_loader_classname: ${dataset}PointsLoader
 # Strategy to divide in segments
 segmenter_type: main.core_data.sampler.EegFeaturesAndRandLogUIntervalsSegmenter
 segmenter_args:
-  min_length: 2
+  min_length: 4
   max_length: 32
   num_segments: 20
   anchor_identification_hop: 0.125

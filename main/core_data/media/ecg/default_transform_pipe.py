@@ -17,7 +17,7 @@ def ecg_interleaved_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Modul
         EcgSequenceResampling(
             original_fs=config.eeg_source_config.fs, channels_first=True,
             sequence_duration_seconds=int(config.unit_seconds),
-            resampler=SignalZeroMasking(max_length=config.unit_seconds, fs=config.ecg_target_config.target_fs),
+            resampler=SignalZeroMasking(max_length=config.unit_seconds, fs=config.ecg_target_config.fs),
         ),
         EcgFmEmbedderTransform(
             data_transform_fn=config.ecg_source_config.prepare_ecg, endpoint=config.ecg_target_config.fm_endpoint

@@ -1,0 +1,7 @@
+---
+defaults:
+  - base
+
+dataset_name: dreamer
+out_folder_name: vate
+preprocessing_pipeline: main.core.dataset.${dataset_name}.preprocessing.vate_preprocessor

@@ -1,0 +1,7 @@
+---
+defaults:
+  - base
+
+dataset_name: deap
+out_folder_name: interleaved
+preprocessing_pipeline: main.core.dataset.${dataset_name}.preprocessing.interleaved_preprocessor
