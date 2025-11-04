@@ -2,20 +2,16 @@ from hydra.utils import get_object
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.default_transform_pipe import assessment_transform_pipe
-from main.core_data.media.eeg.config import EegTargetConfig
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
-from main.core_data.media.video import VidTargetConfig
 from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.dataset.deap.config import DeapConfig
 from main.dataset.deap.loader import DeapPointsLoader
 from main.dataset.utils import PreprocessingConfig
-from main.utils.args import safe_call
 
 
-@safe_call
 def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: DeapConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
@@ -32,7 +28,6 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
     )
 
 
-@safe_call
 def vate_preprocessor(output_path: str, extraction_data_folder: str, config: DeapConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
