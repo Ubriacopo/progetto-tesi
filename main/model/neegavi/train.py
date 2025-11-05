@@ -9,7 +9,7 @@ from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import SiglipLoss, InfoNCE
+from main.model.loss import SiglipLoss
 from main.model.neegavi.base_model import WeaklySupervisedNEEEGBaseModel
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs
 from main.utils.data import MaskedValue

@@ -109,7 +109,8 @@ def main(cfg: KdConfig):
         print(n, p.requires_grad, p.grad is None)
 
     torchinfo.summary(module)
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24, overfit_batches=1)
+    # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24, overfit_batches=1)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
 
 
