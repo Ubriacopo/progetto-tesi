@@ -1,0 +1,2 @@
+class ManhobConfig:
+    pass

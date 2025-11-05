@@ -35,8 +35,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.siglip_losses.add_module(fusion_metric, loss_fn)
 
         # Just to debug atm
-        self.use_kd_loss = False
-        self.use_fusion_loss = False
+        self.use_kd_loss = True
+        self.use_fusion_loss = True
         self.use_supervised_loss = True
 
         # Hyperparameters

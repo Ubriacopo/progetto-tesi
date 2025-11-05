@@ -15,7 +15,7 @@ Just run the ```amigos_download_script.py``` with args:
 Face folder example output:
 
 - P{0}_{1}_face.mov: Experiment n. {1} of Person {0}
-- P{0}_{L}{1}_face.mov: Epxeriment n. {1} of Person {0} for
+- P{0}_{L}{1}_face.mov: Experiment n. {1} of Person {0} for
 
 > Face_video contains the frontal face videos recorded from both experiments.
 > Videos of the short videos experiment have been sorted in 40 .zip files, one for each of the recording sessions.
