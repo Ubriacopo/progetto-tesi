@@ -1,0 +1,6 @@
+# Where things are fetched from
+base_path: /mnt/turing-datasets
+defaults:
+  - dataset: amigos
+  - segmenter: eeg_features_segmenter
+

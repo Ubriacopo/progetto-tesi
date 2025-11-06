@@ -1,0 +1,9 @@
+---
+# Where things are fetched from
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/
+# Subpath to where the dataset is places
+data_path: /mnt/turing-datasets/AMIGOS/
+# Subpath to where output has to go to.
+output_path: /mnt/turing-datasets/AMIGOS/EEGAVI-processed/extraction-data
+points_loader_classpath: main.dataset.amigos.loader
+points_loader_classname: AmigosPointsLoader

@@ -5,7 +5,7 @@ from omegaconf import OmegaConf
 
 from main.dataset.utils import PreprocessingConfig
 
-# Register the schema as the default config
+# Register the schema as the default conf
 cs = ConfigStore.instance()
 cs.store(name="prepare_dataset_config_pre_extracted", node=PreprocessingConfig)
 

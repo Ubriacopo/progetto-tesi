@@ -24,7 +24,7 @@ T = TypeVar("T")
 class Preprocessor(ABC, Generic[T]):
     def __init__(self, output_path: str):
         """
-        Creates a processed dataset in a target folder. Info of the new ds are contained in the spec.csv
+        Creates a processed dataset in a target folder. Info of the new dataset are contained in the spec.csv
         """
         self.output_path: str = output_path
 

@@ -1,0 +1,6 @@
+---
+dataset_folder_name: AMIGOS
+# Subpath to where the dataset is places
+data_path: ${..base_path}/AMIGOS/
+output_path: ${..base_path}/AMIGOS/EEGAVI-processed/extraction-data
+points_loader_classpath: main.dataset.amigos.loader.AmigosPointsLoader
