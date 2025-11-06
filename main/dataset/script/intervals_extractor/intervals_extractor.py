@@ -4,6 +4,7 @@ from typing import Any
 import hydra
 from hydra.core.config_store import ConfigStore
 from hydra.utils import get_object
+from omegaconf import OmegaConf
 
 from main.core_data.extract import SegmentBasedExtractionProcessor
 from main.core_data.media.text.extract import ExtractTextFromAudio
@@ -38,11 +39,12 @@ cs = ConfigStore.instance()
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: Config):
+    print(OmegaConf.to_yaml(cfg))
     SegmentBasedExtractionProcessor(
         ExtractTextFromAudio(WhisperExtractor(model_id="openai/whisper-medium", device="cuda:0")),
         base_path=cfg.dataset.output_path,
         segmenter=get_object(cfg.segmenter.segmenter_type)(**cfg.segmenter.segmenter_args),
-        loader=get_object(cfg.dataset.points_loader_classpath)(cfg.base_path + cfg.dataset.data_path),
+        loader=get_object(cfg.dataset.points_loader_classpath)(cfg.dataset.data_path),
     ).extract_segments()
 
 
