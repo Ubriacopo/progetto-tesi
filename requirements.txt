@@ -41,3 +41,4 @@ torchmetrics~=1.8.2
 jedi~=0.19.2
 # CBraMod~=0.0.1
 tensordict~=0.10.0
+openpyxl
