@@ -47,27 +47,3 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.df)
-
-
-class AgnosticMaskedEmbeddingsReadyPdSpecMediaDataset(FlexibleEmbeddingsSpecMediaDataset):
-    # TODO vedi se serve.
-    def __init__(self, modalities: set[str],
-                 dataset_spec_file: str, selected_device: device = None, cache_in_ram: bool = False):
-        super().__init__(dataset_spec_file, selected_device, cache_in_ram)
-        self.modalities = modalities
-
-    def __getitem__(self, idx: int):
-        item = super().__getitem__(idx)
-        # Create a mask
-        item["mod_mask"] = torch.ones(len(item.keys()))
-
-        for modality in self.modalities:
-            if modality not in item:
-                item[modality] = torch.zeros(0)
-            item["mod_mask"] = item[modality]
-
-
-class KDAgnosticEmbeddingsReadyPdSpecMediaDataset(torch.utils.data.Dataset):
-    pass  # todo vedere di fare.
-    # TODO: Mi serve? Ho i dati gia pronti mi basta usare stesso seed su Torch Dataloader. e averne 1 per modello.
-    #           Fino a idee contrarie che possono creare problemi mi sembra ragionevole e facile evitare KdDataset

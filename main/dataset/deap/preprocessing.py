@@ -34,7 +34,7 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Dea
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "deap-vate-processor",
             vid_vivit_interleaved_transform_pipe(config),
-            # Audio and text do not exist so we don't use them. TODO Check better if it was lost during processing.
+            # Audio and text do not exist so we cannot use them :(
             (Metadata.modality_code(), MetadataToTensor())
         )
     )

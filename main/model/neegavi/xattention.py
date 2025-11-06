@@ -36,22 +36,53 @@ class GatedXAttentionBlock(nn.Module):
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
         self.ff_gate = nn.Parameter(torch.tensor([0.]))
 
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+        self.norm_ff = nn.LayerNorm(dim)
+
         self.self_attn: Optional[nn.Module] = None
         self.self_attn_gate: Optional[nn.Parameter] = None
+
         if with_self_attn:
-            self.self_attn_norm = nn.LayerNorm(dim)
+            self.norm_self_attn = nn.LayerNorm(dim)
             self.self_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=2, batch_first=True)
             self.self_attn_gate = nn.Parameter(torch.tensor([1.]))
 
+    # todo valuta
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
-        # todo per chiarezza rimuovi norm at my attn
-        q = q + self.attn(q, kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
-        q = q + self.ff(q) * self.ff_gate.tanh()
+        # Pre-LN
+        norm_q = self.norm_q(q)
+        norm_kv = self.norm_kv(kv)
+
+        # Cross modality attention
+        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
+        if self.self_attn is not None:
+            # Similar to how Flamingo works just that this self attn is not frozen but learnt.
+            # Also respect the convention of torch of passing mask with True where ignore.
+            norm_q = self.norm_self_attn(q)
+            out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
+            q = q + self.self_attn_gate.tanh() * out
+
+        norm_q = self.norm_ff(q)
+        q = q + self.ff(norm_q) * self.ff_gate.tanh()
+
+        return q
+
+
+    def old_forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
+        # Pre-LN
+        norm_q = self.norm_q(q)
+        norm_kv = self.norm_kv(kv)
+
+        # Cross modality attention
+        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
+        norm_q = self.norm_ff(q)
+        q = q + self.ff(norm_q) * self.ff_gate.tanh()
 
         if self.self_attn is not None:
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.
             # Also respect the convention of torch of passing mask with True where ignore.
-            norm_q = self.self_attn_norm(q)
+            norm_q = self.norm_self_attn(q)
             out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
             q = q + self.self_attn_gate.tanh() * out
 
@@ -71,10 +102,6 @@ class MaskedCrossAttention(nn.Module):
         super().__init__()
         self.scale = dim_head ** -0.5
         self.heads: int = heads
-
-        self.norm_qo = nn.LayerNorm(dim)
-        self.norm_kvo = nn.LayerNorm(dim)
-
         self.q = nn.Linear(dim, dim_head * heads, bias=False)
         self.kv = nn.Linear(dim_latent, dim_head * heads * 2, bias=False)
         self.out = nn.Linear(dim_head * heads, dim, bias=False)
@@ -93,10 +120,6 @@ class MaskedCrossAttention(nn.Module):
                 shape (B, T)
         """
         _, Tkv, n = kvo.shape[:3]  # Time steps of kv
-        # Build the query object.
-        qo = self.norm_qo(qo)
-        kvo = self.norm_kvo(kvo)
-
         q = self.q(qo)
         k, v = self.kv(kvo).chunk(2, dim=-1)
 

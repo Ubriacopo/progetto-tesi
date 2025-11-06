@@ -1,6 +1,5 @@
 import math
 
-from duckdb.experimental.spark.sql.functions import sequence
 from torch import nn
 from torchaudio.transforms import Resample
 from torchvision.transforms import v2
@@ -13,8 +12,6 @@ from main.core_data.media.signal.transforms import SignalZeroMasking
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
 from main.dataset.base_config import DatasetConfig
 
-
-# todo change signatrure to get baseconfig DatasetConfig
 def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return Audio.modality_code(), nn.Sequential(
         SubclipAudio(),

@@ -35,7 +35,6 @@ def assessment_transform_pipe():
     )
 
 
-# todo refactor
 def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: AmigosConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,

@@ -9,4 +9,4 @@ out_folder_name: interleaved
 preprocessing_function: main.dataset.${.dataset_name}.preprocessing.preprocessing
 preprocessing_pipeline: main.dataset.${.dataset_name}.preprocessing.interleaved_preprocessor
 
-# Override different setups todo
+# Override different setups if needed here.

@@ -69,32 +69,6 @@ class Wav2VecExtractFromAudio(nn.Module):
         transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', b) for b in transcript]
         return transcript
 
-
-# We can try openai/whisper-large-v3
-class WhisperTextExtractFromAudio(nn.Module):
-    def __init__(self, fs: int, device=None, model_id="openai/whisper-large-v3"):
-        super(WhisperTextExtractFromAudio, self).__init__()
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
-        self.torch_dtype = torch.float16 if device != "cpu" else torch.float32
-
-        self.fs = fs
-        self.processor = AutoProcessor.from_pretrained(model_id)
-        self.pipe = pipeline(
-            "automatic-speech-recognition", model="openai/whisper-large-v3", return_timestamps=True,
-            device=self.device, torch_dtype=self.torch_dtype,
-        )
-
-    # TODO: funziona ma senza cuda va stra lento. vedi se caricabile su cuda
-    @timed()
-    def forward(self, x: torch.Tensor) -> list[str]:
-        # 16 kHz mono float32 in [-1, 1]
-        if len(x.shape) != 1:
-            out = self.pipe(x.numpy(), generate_kwargs={"language": "english"}, batch_size=x.shape[0])
-        else:
-            out = self.pipe(x.numpy(), generate_kwargs={"language": "english"})
-        return out["text"]
-
-
 class Speech2TextExtract(nn.Module):
     def __init__(self, fs: int, model_name="facebook/s2t-medium-mustc-multilingual-st", device=None):
         super(Speech2TextExtract, self).__init__()
@@ -278,7 +252,6 @@ class SubclipTextExtract(nn.Module):
             for i in range(segments):
                 txt = ""
                 i_start, i_stop = i * self.i_max_length + start, (i + 1) * self.i_max_length + start
-                # TODO Verifica che sia corretto.
                 # This idea makes sense: In the current second I might hear a few words but their meaning
                 # stems from previous words also not only a 1s interval.
                 i_start = max(i_start - self.context_seconds, 0)  # Add the context behind.
