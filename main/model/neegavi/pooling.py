@@ -18,7 +18,7 @@ class MaskedPooling(nn.Module):
 
         return z
 
-
+# todo volevo usarlo?
 class SelfAttentionPooling(nn.Module):
     def __init__(self, input_dimension: int) -> None:
         """

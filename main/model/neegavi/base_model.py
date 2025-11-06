@@ -13,10 +13,6 @@ from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAtten
 from main.utils.data import MaskedValue, KdMaskedValue
 
 
-class Model(nn.Module):
-    pass
-
-
 class EegInterAviModel(nn.Module):
     def __init__(self, output_size: int,
                  pivot: ModalityStream, supports: list[ModalityStream],

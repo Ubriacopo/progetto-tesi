@@ -1,17 +1,18 @@
 from typing import Tuple, Optional
 
 import torch
-from einops import repeat
-from torch import nn
+import torch.nn as nn
 
 from main.utils.data import MaskedValue
 
-import torch, torch.nn as nn, torch.nn.functional as F
-
-
+# TODO vedere quale delle 2 usare
 class KDHead(nn.Module):
     def __init__(self, input_size: int, target_shape: Tuple[int, ...],
                  transform: nn.Module = None, return_masks: bool = True):
+        """
+        Has the task to project to same dimension and shape for KD loss computation.
+        Inputs in my model are mostly 4D while the teacher is 1D so we have to pool dimensions.
+        """
         super(KDHead, self).__init__()
 
         self.transform = nn.Linear(input_size, target_shape[-1]) if transform is None else transform
@@ -61,7 +62,6 @@ class KDHead(nn.Module):
         return y if not self.return_masks else MaskedValue(data=y, mask=out_mask)
 
 
-
 class MaskedAttnPool(nn.Module):
     def __init__(self, d, hidden=None):
         super().__init__()
@@ -93,34 +93,12 @@ class MaskedAttnPool(nn.Module):
         return (z * a).sum(dim=dim)
 
 
-class AKDHead(nn.Module):
-    def __init__(self, input_size, target_shape, return_masks=True):
-        super().__init__()
-        D = 384
-        self.poolP = MaskedAttnPool(D, hidden=D)  # or MaskedGeM()
-        self.poolT = MaskedAttnPool(D, hidden=D)
-
-        self.transform = nn.Sequential(
-            nn.Linear(input_size, 4 * 100), nn.GELU(),
-            nn.LayerNorm(4 * 100),
-            nn.Linear(4 * 100, 100), nn.LayerNorm(100)
-        )
-        self.return_masks = return_masks
-        self.target_shape = target_shape
-
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        # x: [B,T,P,IN], mask: [B,T,P] or None
-        mP = repeat(mask, "b t -> b t p", p=x.shape[-2])
-        zTP = self.poolP(x, mP, dim=2)  # [B,T,IN]
-        mT = None if mP is None else mP.any(dim=2)  # [B,T] bool
-        zB = self.poolT(zTP, mT, dim=1)  # [B,IN]
-        y = self.transform(zB)  # [B,OUT]
-        out_mask = torch.ones(y.size(0), dtype=torch.bool, device=y.device) if mT is None else mT.any(dim=1)
-        return y if not self.return_masks else MaskedValue(data=y, mask=out_mask)
-
-
 class KDHead(nn.Module):
     def __init__(self, input_size, target_shape, return_masks: bool = True):
+        """
+        Has the task to project to same dimension and shape for KD loss computation.
+        Inputs in my model are mostly 4D while the teacher is 1D so we have to pool dimensions.
+        """
         super().__init__()
         self.transform = nn.Sequential(
             nn.Linear(input_size, 4 * target_shape[-1]),

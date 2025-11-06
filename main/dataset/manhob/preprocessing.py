@@ -4,7 +4,13 @@ from main.dataset.manhob.config import ManhobConfig
 
 
 def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: ManhobConfig):
-    pass
+    return TorchExportsSegmentsReadyPreprocessor(
+        output_path=output_path,
+        extraction_data_folder=extraction_data_folder,
+        segment_pipeline=FlexibleDatasetTransformWrapper(
+            "manhob-interleaved-processor",
+        )
+    )
 
 
 def vate_preprocessor(output_path: str, extraction_data_folder: str, config: ManhobConfig):
@@ -12,6 +18,6 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Man
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
-            "deap-vate-processor",
+            "manhob-vate-processor",
         )
     )

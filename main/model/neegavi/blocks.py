@@ -44,6 +44,11 @@ class ModalityStream(nn.Module):
 
 class SimpleFeedForward(nn.Module):
     def __init__(self, dim: int, mult: int) -> None:
+        """
+        Two layered feed forward network with GELU activation
+        :param dim: Latent space dimension
+        :param mult: Feed-forward multiplier
+        """
         super().__init__()
         assert mult > 0, "Multiplication has to be a positive integer"
         x, y = dim, dim * mult

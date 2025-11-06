@@ -13,7 +13,6 @@ from main.model.neegavi.blocks import ModalityStream
 
 
 class EegInterAviFactory:
-
     @staticmethod
     def default(target_size: int, supports_latent_size: int, channels: int = 32,
                 teacher_out_shape: Tuple[int, ...] = (1, 100),
@@ -57,10 +56,10 @@ class EegInterAviFactory:
 
     @staticmethod
     def debug(target_size: int, supports_latent_size: int, channels: int = 32,
-                    teacher_out_shape: Tuple[int, ...] = (1, 100),
-                    # Further settings:
-                    use_modality_encoder: bool = True, xattn_blocks: int = 2
-                    ):
+              teacher_out_shape: Tuple[int, ...] = (1, 100),
+              # Further settings:
+              use_modality_encoder: bool = True, xattn_blocks: int = 2
+              ):
         # TODO Is this problem? Config of PerceiverResampler? TODO mi manca memoria?
         perceiver_resampler_config = PerceiverResamplerConfig(
             dim=768, depth=2, dim_head=64, heads=12, num_latents=64, max_num_time_steps=34  # dipenda da modality
