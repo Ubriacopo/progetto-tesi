@@ -40,42 +40,53 @@ class AmigosPointsLoader(DataPointsLoader):
         face_folder = Path(face_video_folder)
 
         for v in face_folder.iterdir():
-            # [0] -> P40 [1] -> 18 [2] -> face(.mov) (Stemmed)
-            person, video_id, _ = v.stem.split("_")
-            user_metadata = participant_metadata[participant_metadata["UserID"] == int(person[1:])].to_dict()
-            # Add missing prefix zero to match the np data
-            person = re.sub(r'([A-Z])(\d)\b', r'\g<1>0\2', person)
+            try:
+                pat = re.compile(r'^P\(\d+(?:,\d+)*\)_N\d+_face$')
+                if pat.match(v.stem):
+                    # todo
+                    print("These files are ignored as we have to extract the person face from them. TODO if not done.")
+                    continue
 
-            experiment_id = person + "_" + video_id
+                # [0] -> P40 [1] -> 18 [2] -> face(.mov) (Stemmed)
+                person, video_id, _ = v.stem.split("_")
+                user_metadata = participant_metadata[participant_metadata["UserID"] == int(person[1:])].to_dict()
+                # Add missing prefix zero to match the np data
+                person = re.sub(r'([A-Z])(\d)\b', r'\g<1>0\2', person)
 
-            video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
-            eeg_data = participant_data[person]["joined_data"][video_index]
-            assessments = participant_data[person]["labels_selfassessment"][video_index]
+                experiment_id = person + "_" + video_id
 
-            media_path: str = str(v.resolve())
-            clip = VideoFileClip(media_path)
+                video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
+                eeg_data = participant_data[person]["joined_data"][video_index]
+                assessments = participant_data[person]["labels_selfassessment"][video_index]
 
-            # Extract ECG and EEG data + metadata that could be useful
-            eeg_fs = self.config.eeg_source_config.fs
-            info = mne.create_info(
-                ch_names=self.config.eeg_source_config.get_CH_NAMES(),
-                ch_types=self.config.eeg_source_config.get_CH_TYPES(),
-                sfreq=eeg_fs
-            )
+                media_path: str = str(v.resolve())
+                clip = VideoFileClip(media_path)
 
-            raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
-            metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
-            yield FlexibleDatasetPoint(
-                experiment_id,
-                EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs, ).as_mod_tuple(),
-                ECG(eid=experiment_id,
-                    data=raw.copy().pick(["ecg"]), fs=eeg_fs,
-                    leads=self.config.ecg_source_config.LEAD_NAMES,
-                    patient_gender=next(iter(user_metadata["Gender"].values())).upper(),
-                    patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
-                Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
-                Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
-                Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
-                Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
-                Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
-            )
+                # Extract ECG and EEG data + metadata that could be useful
+                eeg_fs = self.config.eeg_source_config.fs
+                info = mne.create_info(
+                    ch_names=self.config.eeg_source_config.get_CH_NAMES(),
+                    ch_types=self.config.eeg_source_config.get_CH_TYPES(),
+                    sfreq=eeg_fs
+                )
+
+                raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
+                metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
+                yield FlexibleDatasetPoint(
+                    experiment_id,
+                    EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs, ).as_mod_tuple(),
+                    ECG(eid=experiment_id,
+                        data=raw.copy().pick(["ecg"]), fs=eeg_fs,
+                        leads=self.config.ecg_source_config.LEAD_NAMES,
+                        patient_gender=next(iter(user_metadata["Gender"].values())).upper(),
+                        patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
+                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
+                    Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
+                    Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
+                    Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
+                    Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
+                )
+
+            except Exception as e:
+                print(f"Loading failed for {v.stem}")  # TODO robust logging
+                print(e)
