@@ -10,7 +10,7 @@ cs = ConfigStore.instance()
 cs.store(name="prepare_dataset_config_pre_extracted", node=PreprocessingConfig)
 
 
-@hydra.main(version_base=None, config_path="config")
+@hydra.main(version_base=None, config_path="../config")
 def main(cfg: PreprocessingConfig):
     # allow extra keys only on txt_config
     print(OmegaConf.to_yaml(cfg))
