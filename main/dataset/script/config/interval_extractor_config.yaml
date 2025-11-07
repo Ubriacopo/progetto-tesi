@@ -1,4 +1,0 @@
-base_path: /mnt/turing-datasets
-
-defaults:
-  - intervals_extractor: amigos
