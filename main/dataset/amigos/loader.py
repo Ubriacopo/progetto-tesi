@@ -72,7 +72,7 @@ class AmigosPointsLoader(DataPointsLoader):
                     data=raw.copy().pick(["ecg"]), fs=eeg_fs,
                     leads=self.config.ecg_source_config.LEAD_NAMES,
                     patient_gender=next(iter(user_metadata["Gender"].values())).upper(),
-                    patient_age=user_metadata["Age"][0], ).as_mod_tuple(),
+                    patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
                 Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
                 Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
                 Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
