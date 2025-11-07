@@ -71,6 +71,7 @@ class AmigosPointsLoader(DataPointsLoader):
                 )
 
                 raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
+                # TOD Change to uid generation hex? -> senza tail solo concat di person e video_id
                 metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
                 yield FlexibleDatasetPoint(
                     experiment_id,
