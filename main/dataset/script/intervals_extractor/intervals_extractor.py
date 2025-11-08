@@ -32,6 +32,7 @@ class Config:
     dataset: DatasetConfig
     segmenter: IntervalsExtractorConfig
     base_path: str
+    uid_store_path: str
 
 
 cs = ConfigStore.instance()
@@ -44,7 +45,7 @@ def main(cfg: Config):
         ExtractTextFromAudio(WhisperExtractor(model_id="openai/whisper-medium", device="cuda:0")),
         base_path=cfg.dataset.output_path,
         segmenter=get_object(cfg.segmenter.segmenter_type)(**cfg.segmenter.segmenter_args),
-        loader=get_object(cfg.dataset.points_loader_classpath)(cfg.dataset.data_path),
+        loader=get_object(cfg.dataset.points_loader_classpath)(cfg.dataset.data_path, cfg.uid_store_path),
     ).extract_segments()
 
 

@@ -4,3 +4,4 @@ defaults:
   - dataset: amigos
   - segmenter: eeg_features_segmenter
 
+uid_store_path: ${.base_path}/EEGAVI-common/uid_store.csv
