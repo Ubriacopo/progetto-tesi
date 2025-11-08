@@ -18,12 +18,14 @@ from main.core_data.media.eeg import EEG
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
+from main.dataset.utils import DatasetUidStore
 
 
 class AmigosPointsLoader(DataPointsLoader):
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore):
         super().__init__()
         self.base_path: str = base_path
+        self.dataset_uid_store: DatasetUidStore = dataset_uid_store
         self.config = AmigosConfig()
 
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
@@ -41,9 +43,8 @@ class AmigosPointsLoader(DataPointsLoader):
 
         for v in face_folder.iterdir():
             try:
-                pat = re.compile(r'^P\(\d+(?:,\d+)*\)_N\d+_face$')
+                pat = re.compile(r'^P\(\d+(?:,\d+)*\)_\w\d+_face$')
                 if pat.match(v.stem):
-                    # todo
                     print("These files are ignored as we have to extract the person face from them. TODO if not done.")
                     continue
 
@@ -71,8 +72,10 @@ class AmigosPointsLoader(DataPointsLoader):
                 )
 
                 raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
-                # TOD Change to uid generation hex? -> senza tail solo concat di person e video_id
-                metadata = {"nei": int(person[1:] + "010" + video_id), "dataset_id": 0}
+
+                nei = self.dataset_uid_store.uid(person[1:], video_id, "amigos")
+                metadata = {"nei": nei, "dataset_id": 0}
+
                 yield FlexibleDatasetPoint(
                     experiment_id,
                     EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs, ).as_mod_tuple(),
@@ -89,5 +92,8 @@ class AmigosPointsLoader(DataPointsLoader):
                 )
 
             except Exception as e:
-                print(f"Loading failed for {v.stem}")  # TODO robust logging
+                # TODO robust logging
+                print(f"Loading failed for {v.stem}. Procedure will continue and drop the elemnt")
                 print(e)
+
+        self.dataset_uid_store.store_dictionary()
