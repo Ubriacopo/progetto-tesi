@@ -30,7 +30,6 @@ class AmigosPointsLoader(DataPointsLoader):
 
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "pre_processed_py/")
-
         if not processed_data.exists():
             for f in Path(self.base_path + "pre_processed").iterdir():
                 extract_trial_data(self.base_path + "pre_processed_py/", str(f))
@@ -95,5 +94,5 @@ class AmigosPointsLoader(DataPointsLoader):
                 # TODO robust logging
                 print(f"Loading failed for {v.stem}. Procedure will continue and drop the elemnt")
                 print(e)
-
+        # Would be stupid to loose the information. TODO: Do at every step?
         self.dataset_uid_store.store_dictionary()
