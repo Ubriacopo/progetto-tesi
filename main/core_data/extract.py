@@ -35,8 +35,13 @@ class SegmentBasedExtractionProcessor:
             if x[key] in self.seen:
                 print(f"Skipping {x[key]} as it was already extracted")
                 continue
+            # We want the number of segments to depend on the length. Bounding at least 20 segments:
+            # min: 20 max: 100 ?
 
-            segments: list[tuple[float, float]] = self.segmenter.compute_segments(x[EEG.modality_code()])
+            length = x[EEG.modality_code()].data.duration
+            num_segments = min(int(self.segmenter.num_segments * length / 90), 170)
+            num_segments = max(num_segments, self.segmenter.num_segments)  # Segmenter desired segments are minimum
+            segments: list[tuple[float, float]] = self.segmenter.compute_segments(x[EEG.modality_code()], num_segments)
             local_outs = [o.extract(x, self.base_path) for o in self.other_extractors]
 
             df = pd.DataFrame(segments, columns=["start", "stop"])

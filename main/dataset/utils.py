@@ -18,6 +18,7 @@ class PreprocessingConfig:
     data_path: str  # Subpath to where the dataset is placed
     extraction_data_folder: str  # Subpath to where extracted intervals are placed
     output_path: str  # Subpath to where output has to go to.
+    uid_store_path: str
 
     output_max_length: int
     preprocessing_function: str  # What functions to call to make processing start.

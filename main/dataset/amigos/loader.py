@@ -74,6 +74,8 @@ class AmigosPointsLoader(DataPointsLoader):
 
                 nei = self.dataset_uid_store.uid(person[1:], video_id, "amigos")
                 metadata = {"nei": nei, "dataset_id": 0}
+                # Store the current to fs so that we have it ready
+                self.dataset_uid_store.store_dictionary()
 
                 yield FlexibleDatasetPoint(
                     experiment_id,
@@ -94,5 +96,3 @@ class AmigosPointsLoader(DataPointsLoader):
                 # TODO robust logging
                 print(f"Loading failed for {v.stem}. Procedure will continue and drop the elemnt")
                 print(e)
-        # Would be stupid to loose the information. TODO: Do at every step?
-        self.dataset_uid_store.store_dictionary()

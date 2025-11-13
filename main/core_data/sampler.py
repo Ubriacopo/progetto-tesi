@@ -15,16 +15,17 @@ class Segmenter(ABC):
     Segments input samples into timed ranges defined by predefined logic.
     """
 
-    def __init__(self, max_length: int):
+    def __init__(self, max_length: int, num_segments: int):
         self.max_length: int = max_length
+        self.num_segments: int = num_segments
 
     @abstractmethod
-    def compute_segments(self, sample) -> list[tuple[int, int]]:
+    def compute_segments(self, sample, num_segments: int = None) -> list[tuple[int, int]]:
         pass
 
 
 class FixedIntervalsSegmenter(Segmenter):
-    def compute_segments(self, sample: EEG) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: EEG, num_segments: int = None) -> list[tuple[int, int]]:
         # Good indicator of duration.
         length = sample.data.duration  # Given the length of the sample in time
         starts = np.arange(0, length, self.max_length).astype(int)
@@ -98,7 +99,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         :param return_seconds:
         :param extraction_jitter:
         """
-        super().__init__(max_length)
+        super().__init__(max_length, num_segments)
         self.anchor_identification_hop: float = anchor_identification_hop
         default_features = [SHORT_FEATURE, MEDIUM_FEATURE, LONG_FEATURE]
 
@@ -113,8 +114,6 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         # TODO a che servono?
         self.coverage_resolution_sec: float = coverage_resolution_sec
         self.coverage_cap_K: int = coverage_cap_k
-
-        self.num_segments: int = num_segments
         self.min_length: int = min_length
 
         self.max_attempts = 10  # After 4 you fail for a duration.
@@ -134,9 +133,12 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                 return feature
         raise ValueError("Extracted segment is not a valid duration for the given specs")
 
-    def compute_segments(self, sample: EEG) -> list[tuple[float, float]]:
+    def compute_segments(self, sample: EEG, num_segments: int = None) -> list[tuple[float, float]]:
         buckets: list[Segment] = []
         t = sample.data.duration
+
+        num_segments = num_segments or self.num_segments
+        print(f"For media with duration: {sample.data.duration} we try {num_segments} segments")
 
         extractor = EEGFeatureExtractor(sample.data)
         candidate_anchors = extractor.pick_segments(
@@ -149,7 +151,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         # Coverage tracker in seconds (no index math)
         coverages = {spec.key: np.zeros(num_slots, dtype=np.int16) for spec in self.features_specs}
 
-        for duration in sorted([self.sample_duration_log_uniform() for _ in range(self.num_segments)]):
+        for duration in sorted([self.sample_duration_log_uniform() for _ in range(num_segments)]):
             feature = self.classify_duration(duration)
             ok, candidate_anchors = self.extract(
                 eeg=sample,
@@ -314,12 +316,12 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 class RandomizedSizeIntervalsSegmenter(Segmenter):
 
     def __init__(self, max_length: int, num_segments: int):
-        super().__init__(max_length)
-        self.num_segments: int = num_segments
+        super().__init__(max_length, num_segments)
 
-    def compute_segments(self, sample: EEG) -> list[tuple[float, float]]:
+    def compute_segments(self, sample: EEG, num_segments: int = None) -> list[tuple[float, float]]:
         segments = []
-        for _ in range(self.num_segments):
+        num_segments = num_segments or self.num_segments
+        for _ in range(num_segments):
             # Random duration: 0.5–30 s, expressed in samples.
             dur = np.random.rand(1) * self.max_length
             max_start = self.max_length - dur
@@ -331,5 +333,5 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
 
 
 class SpecSegmenter(Segmenter):
-    def compute_segments(self, sample: FlexibleDatasetPoint) -> list[tuple[int, int]]:
-        pass 
+    def compute_segments(self, sample: FlexibleDatasetPoint, num_segments: int = None) -> list[tuple[int, int]]:
+        pass
