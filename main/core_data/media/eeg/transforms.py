@@ -174,11 +174,27 @@ class CanonicalOrderTransform(nn.Module):
         return {"data": x, "mask": mask}
 
 
+class MaskedPooling(nn.Module):
+    """
+    Simple fusion pooling on mask
+    """
+
+    # noinspection PyMethodMayBeStatic
+    def forward(self, z: torch.Tensor, mask=None) -> torch.Tensor:
+        norm_factor = mask.float().sum(dim=-1, keepdim=True)
+        norm_factor = norm_factor.clamp_min(1e-6)
+        z = (z * mask.unsqueeze(-1)).sum(dim=-2) / norm_factor
+
+        return z
+
+
 class TimePooling(nn.Module):
     def __init__(self, to_seconds: int):
         super().__init__()
         self.to_seconds: int = to_seconds
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = rearrange(x, "b c (t f) d -> b c t f d", f=self.to_seconds)
-        return x.mean(dim=-2)
+    # TODO VERIFICA
+    def forward(self, x: MaskedValue) -> MaskedValue:
+        data = rearrange(x['data'], "c (t f) d -> c t f d", f=self.to_seconds)
+        mask = rearrange(x['mask'], "c (t f) -> c t f", f=self.to_seconds)
+        x['data'] = MaskedPooling()(data, mask)
+        return x

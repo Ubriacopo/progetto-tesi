@@ -22,7 +22,6 @@ def eeg_transform_pipe(config: DatasetConfig) \
         # TODO In ablation vedi se renderlo 1 cosi da allineare con output di CBraMod.
         #       O in alternativa di usare un pooling con attn direttamente nel modello magari (better).
         #       Dormici sopra e decidi. Chiedi poi a Francesco che è sempre così disponibile
-        TimePooling(to_seconds=4),  # We want everything to be 4s windows.
-
         EegTimePadding(max_length=config.max_length),
+        TimePooling(to_seconds=4),  # We want everything to be 4s windows.
     )
