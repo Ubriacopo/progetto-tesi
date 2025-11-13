@@ -48,14 +48,12 @@ class GatedXAttentionBlock(nn.Module):
             self.self_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=2, batch_first=True)
             self.self_attn_gate = nn.Parameter(torch.tensor([1.]))
 
-    # todo valuta
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
-        # Pre-LN
+        # Pre-LN + Cross modality attention
         norm_q = self.norm_q(q)
         norm_kv = self.norm_kv(kv)
-
-        # Cross modality attention
         q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
+
         if self.self_attn is not None:
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.
             # Also respect the convention of torch of passing mask with True where ignore.
@@ -67,7 +65,6 @@ class GatedXAttentionBlock(nn.Module):
         q = q + self.ff(norm_q) * self.ff_gate.tanh()
 
         return q
-
 
     def old_forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
         # Pre-LN
@@ -129,8 +126,6 @@ class MaskedCrossAttention(nn.Module):
 
         # Check similarity between key and query
         sim = einsum("... i d, ... j d -> ... i j", q, k)
-
-        neg_inf = torch.finfo(qo.dtype).min
         # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
         if kv_mask is not None:
             mask = ~kv_mask[:, None, None, :]  # shape [B,1,1,S], bool

@@ -19,6 +19,17 @@ class EegInterAviModel(nn.Module):
                  xattn_blocks: int | list[GatedXAttentionCustomArgs],
                  drop_p: float = 0.0, use_modality_encoder: bool = True,
                  fusion_pooling: nn.Module = MaskedPooling()):
+        """
+        :param pivot: Main modality pipeline that acts as receptor is xattn (q), It is always required
+        :param supports: Other modalities and their pipeline. Once set for a model you can't of course change them.
+                            During inference and training the single modality is optional.
+        :param xattn_blocks: Number of xattn blocks to apply after each modality has been processed
+        :param drop_p: Drop probability for each modality for each sample in batch
+        TODO: Could it be just better to drop at batch level? For loss
+        :param use_modality_encoder: Whether to use modality encoder or not. IF flagged to true a weight vector is
+                                    added to each supporting modality before making concat of the embeddings for xattn.
+        :param fusion_pooling: Pooling logic to get to output shape. Optional. By default is norm over mask.
+        """
         super().__init__()
         self.output_size = output_size
         if len(supports) == 0:
