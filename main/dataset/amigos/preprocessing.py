@@ -23,7 +23,7 @@ from main.core_data.media.video.default_transform_pipe import vid_vivit_interlea
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.dataset.amigos.config import AmigosConfig
 from main.dataset.amigos.loader import AmigosPointsLoader
-from main.dataset.utils import PreprocessingConfig
+from main.dataset.utils import PreprocessingConfig, DatasetUidStore
 
 
 def assessment_transform_pipe():
@@ -90,5 +90,6 @@ def preprocessing(config: PreprocessingConfig):
     # Either way I expect the same signature.
     preprocessor = preprocessing_fn(config.output_path, config.extraction_data_folder, amigos_config)
 
-    loader = AmigosPointsLoader(base_path=config.base_path)
+    uid_store = DatasetUidStore(config.uid_store_path)
+    loader = AmigosPointsLoader(base_path=config.base_path, dataset_uid_store=uid_store)
     preprocessor.run(loader=loader)

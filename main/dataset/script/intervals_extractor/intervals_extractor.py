@@ -28,6 +28,7 @@ class IntervalsExtractorConfig:
     segmenter_type: str
 
 
+
 @dataclasses.dataclass
 class Config:
     dataset: DatasetConfig

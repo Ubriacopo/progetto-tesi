@@ -69,6 +69,7 @@ class Wav2VecExtractFromAudio(nn.Module):
         transcript = [re.sub(r'[^A-Za-z0-9 ]+', '', b) for b in transcript]
         return transcript
 
+
 class Speech2TextExtract(nn.Module):
     def __init__(self, fs: int, model_name="facebook/s2t-medium-mustc-multilingual-st", device=None):
         super(Speech2TextExtract, self).__init__()
@@ -124,12 +125,12 @@ class TextRegistry(nn.Module):
 
 
 class WhisperExtractor(nn.Module):
-    def __init__(self, model_id: str = "openai/whisper-medium", device=None):
+    def __init__(self, model_id: str = "openai/whisper-medium", device=None, duration_drop: int = 3000):
         super(WhisperExtractor, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.torch_dtype = torch.float16 if device != "cpu" else torch.float16  # torch.float32
         # Parameter that comes from whisper requirements
-
+        self.duration_drop = duration_drop  # Videos longer than 5 minutes won´t have a transcript.
         self.model_fs: int = 16000
         model = AutoModelForSpeechSeq2Seq.from_pretrained(
             model_id, torch_dtype=self.torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
@@ -150,6 +151,11 @@ class WhisperExtractor(nn.Module):
     @timed()
     def forward(self, x: torch.Tensor, fs: int) -> dict:
         aud = ToMono()(x)
+        # Too long videos are for the moment dropped (We already want to learn with missing data so it is ok)
+        # Besides text doesn't work that well in our teacher model.
+        if self.duration_drop < len(x) / fs:
+            return dict(text="", chunks=[])
+
         aud = aud.float()
         aud = Resample(orig_freq=fs, new_freq=self.model_fs)(aud)
         aud = aud.numpy()
@@ -160,49 +166,6 @@ class WhisperExtractor(nn.Module):
 
         except Exception as e:
             raise e
-
-
-class WhisperClipTextExtract(nn.Module):
-    def __init__(self, model_id: str = "openai/whisper-large-v3", device=None):
-        super(WhisperClipTextExtract, self).__init__()
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
-        self.torch_dtype = torch.float16 if device != "cpu" else torch.float16  # torch.float32
-        # Parameter that comes from whisper requirements
-
-        self.model_fs: int = 16000
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id, torch_dtype=self.torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
-        )
-        model.to(self.device)
-
-        processor = AutoProcessor.from_pretrained(model_id)
-        self.pipe = pipeline(  # 1 minuto
-            "automatic-speech-recognition",
-            model=model,
-            tokenizer=processor.tokenizer,
-            feature_extractor=processor.feature_extractor,
-            return_timestamps="word",
-            device=self.device,
-            torch_dtype=self.torch_dtype
-        )
-
-    @timed()
-    def forward(self, txt: Text) -> Text:
-        # Apply only once.
-        if txt.text_context is not None:
-            return txt
-
-        aud = torch.tensor(txt.base_audio.to_soundarray()).float()
-        aud = ToMono()(aud)
-        aud = Resample(orig_freq=txt.base_audio.fps, new_freq=self.model_fs)(aud)
-        try:
-            with torch.inference_mode():
-                txt.text_context = self.pipe(aud.numpy())
-        except Exception as e:
-            logging.exception(e)
-            raise e
-
-        return txt
 
 
 class RestoreTextExtract(nn.Module):
