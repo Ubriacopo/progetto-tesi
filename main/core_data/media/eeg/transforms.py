@@ -172,3 +172,13 @@ class CanonicalOrderTransform(nn.Module):
     def forward(self, x: torch.Tensor) -> MaskedValue:
         x, mask = self.canonical_order.adapt(x, self.eeg_order)
         return {"data": x, "mask": mask}
+
+
+class TimePooling(nn.Module):
+    def __init__(self, to_seconds: int):
+        super().__init__()
+        self.to_seconds: int = to_seconds
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = rearrange(x, "b c (t f) d -> b c t f d", f=self.to_seconds)
+        return x.mean(dim=-2)

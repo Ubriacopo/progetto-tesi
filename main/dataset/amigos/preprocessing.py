@@ -91,5 +91,5 @@ def preprocessing(config: PreprocessingConfig):
     preprocessor = preprocessing_fn(config.output_path, config.extraction_data_folder, amigos_config)
 
     uid_store = DatasetUidStore(config.uid_store_path)
-    loader = AmigosPointsLoader(base_path=config.base_path, dataset_uid_store=uid_store)
+    loader = AmigosPointsLoader(base_path=config.data_path, dataset_uid_store=uid_store)
     preprocessor.run(loader=loader)

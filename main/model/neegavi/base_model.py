@@ -58,7 +58,8 @@ class EegInterAviModel(nn.Module):
 
         self.drop_p = drop_p
         self.allow_modality: Literal['window', 'causal'] = 'window'
-        self.window_seconds = 2  # TODO Window units (each block has same unit of measurement)
+        # TODO Window units (each block has same unit of measurement)
+        self.past_window_units = 2
 
         self.fusion_pooling: nn.Module = fusion_pooling
 
@@ -99,12 +100,14 @@ class EegInterAviModel(nn.Module):
     # TODO si semplifica -> ogni mod uniformata a stesso timestep di EEG
     def process_modality(self, x: MaskedValue, idx: torch.Tensor, b: int, modality: ModalityStream, use_kd: bool):
         output = {}
+
         device = x["data"].device
-        t = x["data"].shape[1]  # (b, t, ...) Time is always second axis
+        # (b, t, ...) Time is always second axis
+        t = x["data"].shape[1]
 
         mask = x.get("mask", None)
         # For the moment ignore idx
-        y: MaskedValue | KdMaskedValue = modality(x["data"], mask=mask, use_kd=use_kd)
+        y: MaskedValue | KdMaskedValue = modality(x["data"], mask=x.get("mask", None), use_kd=use_kd)
         if "kd" in y:
             kd_data = y.pop("kd")
 
@@ -121,7 +124,7 @@ class EegInterAviModel(nn.Module):
             z = self.modality_encoder(z, modality=modality.get_code())
 
         # Time mask
-        t_mod = torch.arange(t, device=device) * modality.time_step_length
+        t_mod = torch.arange(t, device=device)
         # Flatten [b, T, M, D] thus update mask and t_mod as-well
         m = z.shape[2]
 
@@ -142,28 +145,35 @@ class EegInterAviModel(nn.Module):
         tk = t_kv.unsqueeze(1)  # [B, 1, Tk]
 
         if self.allow_modality == "window":
-            return (tk - tq).abs() <= self.window_seconds
+            return (tk - tq).abs() <= self.past_window_units
         if self.allow_modality == "causal":
             return tk <= tq
         raise ValueError(f"Unknown mode: {self.allow_modality}")
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
+        """
+        :param x:
+        :param use_kd:
+        :param return_dict:
+        :return:
+        """
+
         kd_outputs, multimodal_outs = {}, {}
 
         pivot_x = x[self.pivot.get_code()]
         device = pivot_x["data"].device
 
         b = pivot_x["data"].shape[0]  # Batch size
-        t_pivot = torch.arange(pivot_x["data"].shape[1], device=device) * self.pivot.time_step_length
+        t_pivot = torch.arange(pivot_x["data"].shape[1], device=device)
         t_pivot = repeat(t_pivot, "t -> b t", b=b)
 
         pivot_output = self.pivot(pivot_x["data"], mask=pivot_x.get("mask", None), use_kd=use_kd)
 
         if "kd" in pivot_output:
             kd_outputs[self.pivot.get_code()] = pivot_output.pop("kd")
-        multimodal_outs[self.pivot.get_code()] = pivot_output
 
-        # Pre compute indices of what modalities to keep and drop
+        multimodal_outs[self.pivot.get_code()] = pivot_output
+        # Pre-compute indices of what modalities to keep and drop
         keep = self.select_keep_modality_rows(b, device)
 
         supports, masks, t_mods = [], [], []

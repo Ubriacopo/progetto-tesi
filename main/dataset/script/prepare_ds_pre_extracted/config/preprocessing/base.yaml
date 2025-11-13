@@ -9,9 +9,10 @@ extraction_data_folder: ${.base_path}/data/${.dataset_name}/extraction_data/
 # Subpath to where output has to go to.
 output_path: ${.base_path}/data/${.dataset_name}/${.out_folder_name}/
 output_max_length: 32
-preprocessing_function: main.core.dataset.${.dataset_name}.preprocessing.preprocessing
+preprocessing_function: main.dataset.${.dataset_name}.preprocessing.preprocessing
 
 # Objects have to be defined
+uid_store_path: ${.base_path}/data/EEGAVI-common/uid_store.csv
 
 vid_config:
   max_frames: 32
@@ -28,3 +29,4 @@ txt_config:
 
 ecg_config:
   fs: 128
+  fm_endpoint: localhost:7860/extract_features

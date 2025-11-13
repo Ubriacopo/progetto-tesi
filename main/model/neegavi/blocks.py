@@ -11,7 +11,7 @@ from main.utils.data import MaskedValue, KdMaskedValue
 
 class ModalityStream(nn.Module):
     def __init__(self, code: str, output_size: int, adapter: nn.Module,
-                 kd_head: KDHead = None, post_kd_adapter: nn.Module = None, time_step_length: float = 1.0):
+                 kd_head: KDHead = None, post_kd_adapter: nn.Module = None):
         super().__init__()
 
         self.output_size: int = output_size
@@ -24,7 +24,6 @@ class ModalityStream(nn.Module):
 
         self.use_kd: bool = kd_head is not None
         self.kd_head: Optional[KDHead] = kd_head
-        self.time_step_length: float = time_step_length
 
     def forward(self, x: torch.Tensor, mask=None, use_kd=True, **kwargs) -> MaskedValue | KdMaskedValue:
         output = {"data": x, "mask": mask}

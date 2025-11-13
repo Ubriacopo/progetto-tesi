@@ -33,14 +33,12 @@ class EegInterAviFactory:
                 ModalityStream(
                     Audio.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384),
-                    time_step_length=timestep_length
+                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
                 ),
                 ModalityStream(
                     Video.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384),
-                    time_step_length=timestep_length
+                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
                 ),
                 ModalityStream(
                     Text.modality_code(), target_size,
@@ -85,7 +83,6 @@ class EegInterAviFactory:
                     # adapter=PMAAudioAdapter(project_out_size=target_size),
                     adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384),
                     # adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size),
-                    time_step_length=0.96
                 ),
                 # ModalityStream(
                 #    Text.modality_code(), target_size,
