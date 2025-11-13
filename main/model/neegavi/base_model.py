@@ -22,13 +22,14 @@ class EegInterAviModel(nn.Module):
         """
         :param pivot: Main modality pipeline that acts as receptor is xattn (q), It is always required
         :param supports: Other modalities and their pipeline. Once set for a model you can't of course change them.
-                            During inference and training the single modality is optional.
-        :param xattn_blocks: Number of xattn blocks to apply after each modality has been processed
+                         During inference and training they all are optional.
+        :param xattn_blocks: Number of xattn blocks to apply after each modality has been processed.
+                             Can also be a list of different configurations for the GatedXAttention blocks.
         :param drop_p: Drop probability for each modality for each sample in batch
-        TODO: Could it be just better to drop at batch level? For loss
+
         :param use_modality_encoder: Whether to use modality encoder or not. IF flagged to true a weight vector is
-                                    added to each supporting modality before making concat of the embeddings for xattn.
-        :param fusion_pooling: Pooling logic to get to output shape. Optional. By default is norm over mask.
+                                     added to each supporting modality before making concat of the embeddings for xattn.
+        :param fusion_pooling: Pooling logic to get to output shape. Optional. By default, is norm over mask.
         """
         super().__init__()
         self.output_size = output_size
@@ -46,7 +47,7 @@ class EegInterAviModel(nn.Module):
                 logging.error(error_msg)
                 raise ValueError(error_msg)
 
-        self.pivot = pivot
+        self.pivot: ModalityStream = pivot
         self.supports: nn.ModuleList[ModalityStream] = nn.ModuleList(supports)
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if use_modality_encoder:
@@ -57,7 +58,7 @@ class EegInterAviModel(nn.Module):
 
         self.drop_p = drop_p
         self.allow_modality: Literal['window', 'causal'] = 'window'
-        self.window_seconds = 2
+        self.window_seconds = 2  # TODO Window units (each block has same unit of measurement)
 
         self.fusion_pooling: nn.Module = fusion_pooling
 
@@ -84,24 +85,26 @@ class EegInterAviModel(nn.Module):
         num_modalities = len(self.supports)
         if (not self.training) or self.drop_p <= 0:
             return torch.ones(batch_size, num_modalities, device=device)
+
         # todo verifica
         keep = torch.bernoulli(torch.full((batch_size, num_modalities), 1 - self.drop_p, device=device)).bool()
         dead = ~keep.any(1)
+
         if dead.any():
             # We force at least one modality to always be on.
             keep[dead, torch.randint(0, num_modalities, (dead.sum(),), device=device)] = True
+
         return keep
 
     # TODO si semplifica -> ogni mod uniformata a stesso timestep di EEG
     def process_modality(self, x: MaskedValue, idx: torch.Tensor, b: int, modality: ModalityStream, use_kd: bool):
         output = {}
-        data = x["data"]
-        t = data.shape[1]  # (b, t, ...) Time is always second axis
+        device = x["data"].device
+        t = x["data"].shape[1]  # (b, t, ...) Time is always second axis
 
         mask = x.get("mask", None)
         # For the moment ignore idx
-        y: MaskedValue | KdMaskedValue = modality(data, mask=mask, use_kd=use_kd)
-
+        y: MaskedValue | KdMaskedValue = modality(x["data"], mask=mask, use_kd=use_kd)
         if "kd" in y:
             kd_data = y.pop("kd")
 
@@ -112,13 +115,13 @@ class EegInterAviModel(nn.Module):
 
             output["kd"] = MaskedValue(data=kd, mask=kd_mask)
 
-        y: MaskedValue
+        y: MaskedValue  # We removed the kd part from y
         z = y["data"]
         if self.modality_encoder is not None:
             z = self.modality_encoder(z, modality=modality.get_code())
 
         # Time mask
-        t_mod = torch.arange(t, device=data.device) * modality.time_step_length
+        t_mod = torch.arange(t, device=device) * modality.time_step_length
         # Flatten [b, T, M, D] thus update mask and t_mod as-well
         m = z.shape[2]
 
@@ -160,10 +163,12 @@ class EegInterAviModel(nn.Module):
             kd_outputs[self.pivot.get_code()] = pivot_output.pop("kd")
         multimodal_outs[self.pivot.get_code()] = pivot_output
 
+        # Pre compute indices of what modalities to keep and drop
         keep = self.select_keep_modality_rows(b, device)
-        supports, masks, t_mods = [], [], []
 
+        supports, masks, t_mods = [], [], []
         modality: ModalityStream
+
         for idx, modality in enumerate(self.supports):
             code = modality.get_code()
             filtered_idx = keep[:, idx].nonzero(as_tuple=True)[0]
@@ -177,9 +182,11 @@ class EegInterAviModel(nn.Module):
             masks.append(modality_out["mask"])
             t_mods.append(modality_out["t_mod"])
 
-        support = torch.cat(supports, dim=1)
-        masks = torch.cat(masks, dim=1)
-        t_mod = torch.cat(t_mods, dim=1)
+        out_size: int = self.latent_output_size
+        # In case no modality passes through we have to still create an empty vector
+        support = torch.cat(supports, dim=1) if len(supports) != 0 else torch.zeros(b, 1, out_size, device=device)
+        masks = torch.cat(masks, dim=1) if len(masks) != 0 else torch.zeros(b, 1, device=device)
+        t_mod = torch.cat(t_mods, dim=1) if len(t_mods) != 0 else torch.zeros(b, 1, device=device)
 
         allow = self.build_allow_mask(t_pivot, t_mod)
         z: torch.Tensor = pivot_output["data"]

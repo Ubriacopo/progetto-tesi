@@ -116,6 +116,10 @@ class MaskedCrossAttention(nn.Module):
             q_mask:
                 shape (B, T)
         """
+        # If no supports are passed the attention mechanism is ignored.
+        if kv_mask is not None and kv_mask.sum() == 0:
+            return torch.zeros_like(qo, device=kvo.device)
+
         _, Tkv, n = kvo.shape[:3]  # Time steps of kv
         q = self.q(qo)
         k, v = self.kv(kvo).chunk(2, dim=-1)
