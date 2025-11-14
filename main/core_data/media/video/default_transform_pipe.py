@@ -26,9 +26,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
             frames_resampler=RegularFrameResampling(max_length=config.vid_target_config.max_frames, drop_mask=True),
         ),
         ViVitEmbedderTransform(map_to="cpu"),
-        # TODO: Proviamo senza con la macchina che abbiamo. Magari abbiamo fortuna!
-        #       Sarebbe da modificare anche in modello
-        # ViVitPyramidPatchPooling(),
+        ViVitPyramidPatchPooling(),
         MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds)),
     )
 

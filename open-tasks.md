@@ -12,6 +12,7 @@
 - Ripristino modality dropout
 - Prova unimodale (skip layer?)
 - Cambia parametrizzazioni
+- Verifica che video senza pooling vada. Quanto è limite di size?
 
 ## Run
 - preprocessing ds
@@ -23,3 +24,4 @@
 
 ## Deap
 - Preprocessing pipeline fix
+
