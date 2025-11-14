@@ -87,7 +87,7 @@ class PerceiverResampler(nn.Module):
     def forward(self, x: torch.Tensor, mask=None) -> torch.Tensor:
         """
 
-        :param x: [b, t (time frames), N (number frames), F (features), D (dim)]
+        :param x: [b, T, P (patches - time usually), F (frames), D] or [b, T, P, D]
         :param mask: [b, t]
         :return:
         """

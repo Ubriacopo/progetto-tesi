@@ -277,6 +277,7 @@ class ViVitPyramidPatchPooling(nn.Module):
     def __init__(self, levels: Iterable[int] = (1, 2, 4, 8, 16, 33)):
         super().__init__()
         self.levels: Iterable[int] = levels
+
         self.use_pyramid_pooling: bool = True
         if sum(self.levels) >= 16:
             # I will avoid Pyramid pooling
