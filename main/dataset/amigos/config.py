@@ -26,20 +26,18 @@ class AmigosEcgSourceConfig(EcgSourceConfig):
     @staticmethod
     def prepare_ecg(ecg: ECG) -> ECG:
         # RA-LL  -> Lead II
-        ecg_II = ecg.data[:, 0, :]
+        II = ecg.data[:, 0, :]
         # LA-LL  -> Lead III
-        ecg_III = ecg.data[:, 1, :]
+        III = ecg.data[:, 1, :]
+        I = II - III
 
-        I = ecg_II - ecg_III
-        II = ecg_II
-        III = ecg_III
         aVR = -(I + II) / 2
         aVL = I - II / 2
         aVF = II - I / 2
+
         zeros = np.zeros_like(I)
 
         # shape [12, T] to be compliant with ECG-LM requirements
-        # todo axis=0 se no time seq
         signal_12xT = np.stack([I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=1)
         lead_names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 

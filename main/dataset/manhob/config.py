@@ -26,6 +26,7 @@ class ManhobEegSourceConfig(EegSourceConfig):
 
 
 class ManhobEcgSourceConfig(EcgSourceConfig):
+    # todo cambia nome non sono lead names ma channels
     LEAD_NAMES: list[str] = dataclasses.field(default_factory=lambda: ["RA", "LA", "LL"])
 
     @staticmethod
@@ -43,6 +44,7 @@ class ManhobEcgSourceConfig(EcgSourceConfig):
         aVF = II - (I / 2)
         zeros = np.zeros_like(I)
 
+        # shape [12, T] to be compliant with ECG-LM requirements
         signal_12xT = np.stack([I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=1)
         LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 
