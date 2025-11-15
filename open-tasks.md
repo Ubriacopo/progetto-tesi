@@ -5,6 +5,8 @@
 - Script decomposizione vid
 - Video gruppi gestione
 - Video Lunghi + segmenti di 20
+- Ma fare estrazione testo solo 1 volta per tipo di video? I candidati non parlano dopotutto
+
 
 ## Loss
 
