@@ -36,7 +36,7 @@ class ManhobEcgSourceConfig(EcgSourceConfig):
 
         II = LL - RA
         III = LL - LA
-        I = RA - LA
+        I = LA - RA
 
         aVR = -(I + II) / 2
         aVL = I - (II / 2)
