@@ -55,6 +55,7 @@ class AmigosConfig(DatasetConfig):
     aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100))
     vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=25))
     ecg_source_config: AmigosEcgSourceConfig = dataclasses.field(
+        # TODO verifica perche passo lead names qui se poi prepare fa tutto. Ah sono i nomi dei canali che ho
         default_factory=lambda: AmigosEcgSourceConfig(LEAD_NAMES=["II", "III"])
     )
     txt_source_config: TxtSourceConfig = dataclasses.field(default_factory=TxtSourceConfig)

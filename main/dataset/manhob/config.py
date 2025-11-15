@@ -1,5 +1,7 @@
 import dataclasses
 
+import numpy as np
+
 from main.core_data.media.ecg import ECG
 from main.core_data.media.ecg.config import EcgSourceConfig
 from main.core_data.media.eeg.config import EegSourceConfig
@@ -24,11 +26,30 @@ class ManhobEegSourceConfig(EegSourceConfig):
 
 
 class ManhobEcgSourceConfig(EcgSourceConfig):
-    LEAD_NAMES: list[str] = dataclasses.field(default_factory=lambda: [])
+    LEAD_NAMES: list[str] = dataclasses.field(default_factory=lambda: ["RA", "LA", "LL"])
 
     @staticmethod
     def prepare_ecg(ecg: ECG) -> ECG:
-        pass  # TODO implement
+        RA = ecg.data[:, 0, :]
+        LA = ecg.data[:, 1, :]
+        LL = ecg.data[:, 2, :]
+
+        II = LL - RA
+        III = LL - LA
+        I = RA - LA
+
+        aVR = -(I + II) / 2
+        aVL = I - (II / 2)
+        aVF = II - (I / 2)
+        zeros = np.zeros_like(I)
+
+        signal_12xT = np.stack([I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=1)
+        LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+
+        ecg.leads = LEADS
+        ecg.data = signal_12xT
+
+        return ecg
 
 
 class ManhobConfig(DatasetConfig):
