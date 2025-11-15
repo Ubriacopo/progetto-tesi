@@ -23,9 +23,8 @@ from main.dataset.utils import DatasetUidStore
 
 class AmigosPointsLoader(DataPointsLoader):
     def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore):
-        super().__init__()
+        super().__init__(dataset_uid_store)
         self.base_path: str = base_path
-        self.dataset_uid_store: DatasetUidStore = dataset_uid_store
         self.config = AmigosConfig()
 
     def scan(self) -> Iterator[FlexibleDatasetPoint]:

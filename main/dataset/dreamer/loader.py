@@ -3,11 +3,12 @@ from typing import Iterator
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
+from main.dataset.utils import DatasetUidStore
 
 
 class DreamerPointsLoader(DataPointsLoader):
-    def __init__(self, base_path: str):
-        super().__init__()
+    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore):
+        super().__init__(dataset_uid_store)
         self.base_path = base_path
 
     # TODO finish

@@ -10,38 +10,44 @@ from main.core_data.media.eeg import EEG
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.video import Video
+from main.dataset.utils import DatasetUidStore
 
 
 class DeapPointsLoader(DataPointsLoader):
-    def __init__(self, base_path: str):
-        super().__init__()
+    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore):
+        super().__init__(dataset_uid_store)
         self.base_path = base_path
 
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "data_preprocessed_python/")
 
         for i in processed_data.iterdir():
-            if i.suffix != ".dat":
-                continue
-            # Contiene:
-            #   - labels (40, 4): Autovalutazioni (o valutazioni controlla) per Valence-Arousal-Dominance-Liking
-            #   - data (128Hz) (40, 40, 8064) (vid x channel x data): I dati EEG. Per la mappa facciamo affidamento al sito.
-            data = np.load(i, allow_pickle=True, encoding="latin1")
-            uid = i.stem
+            try:
+                if i.suffix != ".dat":
+                    continue
+                # Contiene:
+                #   - labels (40, 4): Autovalutazioni (o valutazioni controlla) per Valence-Arousal-Dominance-Liking
+                #   - data (128Hz) (40, 40, 8064) (vid x channel x data): I dati EEG. Per la mappa facciamo affidamento al sito.
+                data = np.load(i, allow_pickle=True, encoding="latin1")
+                uid = i.stem
 
-            # In pre-processing forse per EEG facciamo poco (se non embeddings direttamente).
-            for idx, (labels, trial) in enumerate(zip(data["labels"], data["data"])):
-                eid: str = f"{uid}_trial{idx + 1:02d}"
-                media_path: str = f"{self.base_path}videos/{uid}/{eid}.avi"
+                # In pre-processing forse per EEG facciamo poco (se non embeddings direttamente).
+                for idx, (labels, trial) in enumerate(zip(data["labels"], data["data"])):
+                    eid: str = f"{uid}_trial{idx + 1:02d}"
+                    media_path: str = f"{self.base_path}videos/{uid}/{eid}.avi"
 
-                clip = VideoFileClip(media_path)
-                fps, size = clip.fps, clip.size
-                metadata = {"nei": int(uid + "010" + str(idx)), "dataset_id": 0}
+                    clip = VideoFileClip(media_path)
+                    fps, size = clip.fps, clip.size
+                    metadata = {"nei": int(uid + "010" + str(idx)), "dataset_id": 0}
 
-                yield FlexibleDatasetPoint(
-                    eid,
-                    EEG(data=trial, fs=128, eid=eid).as_mod_tuple(),
-                    Video(data=clip, fps=fps, resolution=size, eid=eid).as_mod_tuple(),
-                    Assessment(data=labels, eid=eid).as_mod_tuple(),
-                    Metadata(data=metadata, eid=eid).as_mod_tuple()
-                )
+                    yield FlexibleDatasetPoint(
+                        eid,
+                        EEG(data=trial, fs=128, eid=eid).as_mod_tuple(),
+                        Video(data=clip, fps=fps, resolution=size, eid=eid).as_mod_tuple(),
+                        Assessment(data=labels, eid=eid).as_mod_tuple(),
+                        Metadata(data=metadata, eid=eid).as_mod_tuple()
+                    )
+            except Exception as e:
+                # TODO robust logging
+                print(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
+                print(e)

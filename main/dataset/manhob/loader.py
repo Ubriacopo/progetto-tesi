@@ -21,9 +21,8 @@ class ManhobPointsLoader(DataPointsLoader):
     DATASET_ID: int = 2
 
     def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore, config: ManhobConfig = ManhobConfig()):
-        super().__init__()
+        super().__init__(dataset_uid_store)
         self.base_path: str = base_path
-        self.dataset_uid_store: DatasetUidStore = dataset_uid_store
         self.config: ManhobConfig = config
 
     def scan(self):
