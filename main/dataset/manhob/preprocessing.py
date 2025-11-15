@@ -12,7 +12,7 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
-            "manhob-interleaved-processor",
+            "MANHOB-interleaved-processor",
         )
     )
 
@@ -22,7 +22,7 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Man
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
-            "manhob-vate-processor",
+            "MANHOB-vate-processor",
         )
     )
 
