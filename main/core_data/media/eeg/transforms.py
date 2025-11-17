@@ -127,7 +127,7 @@ class EegTimePadding(nn.Module):
         T = x.shape[-2]
         if self.max_length > T:
             x = torch.nn.functional.pad(x, (0, 0, 0, self.max_length - T))
-            # Set time steps first. We get a simpler MASK like this.
+        # Set time steps first. We get a simpler MASK like this.
         x = rearrange(x, 'c t d -> t c d')
 
         mask = mask.T  # Mask is supposed to be 2D so i cant jus transpose

@@ -18,5 +18,4 @@ def eeg_transform_pipe(config: DatasetConfig) \
         CanonicalOrderTransform(eeg_order=config.eeg_source_config.EEG_CHANNELS),
         CBraModEmbedderTransform(weights_path=config.eeg_target_config.model_weights_path),
         EegTimePadding(max_length=config.max_length),
-        TimePooling(to_seconds=4),  # We want everything to be 4s windows.
     )
