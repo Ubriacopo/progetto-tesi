@@ -1,24 +1,27 @@
+from abc import ABC, abstractmethod
 from typing import Tuple
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
-
-from main.model.neegavi.kd import KDHead
-from main.model.neegavi.adapters import SimpleFeedForwardAdapter as SimpleAudioAdapter, PerceiverResamplerAdapter, \
+from main.model.neegavi.adapters import PerceiverResamplerAdapter, \
     TemporalEncoderAdapter, PerceiverResamplerConfig, EegAdapter
 from main.model.neegavi.base_model import EegInterAviModel, WeaklySupervisedNEEEGBaseModel
 from main.model.neegavi.blocks import ModalityStream
-
+from main.model.neegavi.kd import KDHead
 
 class EegInterAviFactory:
+    @staticmethod
+    def build(output_size: int, pivot: ModalityStream, supports: list[ModalityStream],
+              use_modality_encoder: bool, xattn_blocks: int, drop_p: float):
+        return EegInterAviModel(output_size, pivot, supports, xattn_blocks, drop_p, use_modality_encoder)
+
     @staticmethod
     def default(target_size: int, supports_latent_size: int, channels: int = 32,
                 teacher_out_shape: Tuple[int, ...] = (1, 100),
                 # Further settings:
                 use_modality_encoder: bool = True, xattn_blocks: int = 2):
-        timestep_length = 1
         perceiver_resampler_config = PerceiverResamplerConfig(
             dim=768, depth=2, dim_head=64, heads=12, num_latents=64,
             max_num_time_steps=34  # Dipenda da modality (Non piu visto che passiamo a tutti sesso fs)
@@ -43,13 +46,47 @@ class EegInterAviFactory:
                 ModalityStream(
                     Text.modality_code(), target_size,
                     kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                    # adapter=PMAAudioAdapter(project_out_size=target_size),
                     adapter=TemporalEncoderAdapter(p=64, dim=384, ),
                 )
             ],
 
             use_modality_encoder=use_modality_encoder,
             xattn_blocks=xattn_blocks,
+        )
+
+    @staticmethod
+    def eeg_pooled(output_size: int, supports_latent_size: int,
+                   perceiver_resampler_config: PerceiverResamplerConfig,
+                   eeg_channels: int = 32,
+                   teacher_out_shape: Tuple[int, ...] = (1, 100),
+                   # Further settings:
+                   use_modality_encoder: bool = True, xattn_blocks: int = 2):
+        pivot = ModalityStream(EEG.modality_code(), output_size, adapter=None)  # TODO
+        supports = [
+            # Audio
+            ModalityStream(
+                Audio.modality_code(), output_size,
+                kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
+            ),
+            # Video
+            ModalityStream(
+                Video.modality_code(), output_size,
+                kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
+            ),
+            # Text
+            ModalityStream(
+                Text.modality_code(), output_size,
+                kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                # adapter=PMAAudioAdapter(project_out_size=target_size),
+                adapter=TemporalEncoderAdapter(p=64, dim=384, ),
+            )
+            # ECG todo
+        ]
+
+        return EegInterAviFactory.build(
+            output_size, pivot, supports, use_modality_encoder, xattn_blocks
         )
 
     @staticmethod

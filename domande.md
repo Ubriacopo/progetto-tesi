@@ -1,10 +1,7 @@
-- MANHOB ha solo 36 video? Mi sembrano pochini
-  - Controlla tra i backup
-- Posso avere piú CPU di potenza su VM?
-  - Prova a darmene poi
 - I video lunghi (20m) non facciot trascript che se no dura una vita va bene? (Whisper)
   - Okay saltalo -> Scelta strutturale
 - EEG 4s pooling dentro il modello e tenere entrambe le possibility
   - 3 varianti del modello: [No pool], avg pool (sum + iniettività ma stiamo su avg), attn
-- Massimo possibile dei semgneti da estrarre (cerca il 90%) -> Si dovrebbe fare ablation questo
+- Massimo possibile dei semgneti da estrarre (cerca il 90%) 
+  - -> Si dovrebbe fare ablation questo
 - Chiedi a ChatGPT cosa fare ablation
