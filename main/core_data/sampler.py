@@ -80,6 +80,8 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                  *features: Feature,
                  coverage_resolution_sec: float = 0.1,
                  coverage_cap_k: int = 5,
+                 min_coverage_ratio: float = 0.9,
+                 max_coverage_expansion_attempts: int = 10,
                  return_seconds: bool = True,
                  extraction_jitter: float = .1,
                  verbose: bool = False
@@ -114,6 +116,8 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         # TODO a che servono?
         self.coverage_resolution_sec: float = coverage_resolution_sec
         self.coverage_cap_K: int = coverage_cap_k
+        self.min_coverage_ratio: float = min_coverage_ratio
+        self.max_coverage_expansion_attempts: int = max_coverage_expansion_attempts
         self.min_length: int = min_length
 
         self.max_attempts = 10  # After 4 you fail for a duration.
@@ -137,7 +141,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         buckets: list[Segment] = []
         t = sample.data.duration
 
-        num_segments = num_segments or self.num_segments
+        num_segments: int = num_segments or self.num_segments
         print(f"For media with duration: {sample.data.duration} we try {num_segments} segments")
 
         extractor = EEGFeatureExtractor(sample.data)
@@ -151,6 +155,9 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         # Coverage tracker in seconds (no index math)
         coverages = {spec.key: np.zeros(num_slots, dtype=np.int16) for spec in self.features_specs}
 
+        # global coverage across all feature types
+        global_coverage = np.zeros(num_slots, dtype=np.int16)
+
         for duration in sorted([self.sample_duration_log_uniform() for _ in range(num_segments)]):
             feature = self.classify_duration(duration)
             ok, candidate_anchors = self.extract(
@@ -160,15 +167,47 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                 candidate_anchors=candidate_anchors,
                 anchors=anchors[feature.key],
                 segments=buckets,
-                coverage=coverages[feature.key]
+                coverage=coverages[feature.key],
+                global_coverage=global_coverage
             )
 
             if not ok:
                 print(f"Something went wrong for interval {duration} and duration will be discarded")
 
+        current_ratio = self._coverage_ratio(global_coverage)
+        coverage_attempts = 0
+        while (
+                self.min_coverage_ratio > 0  # If below 0 no coverage is granted.
+                and self._coverage_ratio(global_coverage) < self.min_coverage_ratio
+                and coverage_attempts < self.max_coverage_expansion_attempts
+        ):
+            duration = self.sample_duration_log_uniform()
+            feature = self.classify_duration(duration)
+            ok, candidate_anchors = self.extract(
+                eeg=sample,
+                t=t, d=duration,
+                base_feature=feature,
+                candidate_anchors=candidate_anchors,
+                anchors=anchors[feature.key],
+                segments=buckets,
+                coverage=coverages[feature.key],
+                global_coverage=global_coverage
+            )
+            coverage_attempts += 1
+
+            if ok:
+                current_ratio = self._coverage_ratio(global_coverage)
+            if not ok:
+                self.verbose and print("Coverage expansion attempt failed; retrying")
+
         if self.return_seconds:
             return [(bucket.start / sample.fs, bucket.stop / sample.fs) for bucket in buckets]
         return [(bucket.start, bucket.stop) for bucket in buckets]
+
+    @staticmethod
+    def _coverage_ratio(global_coverage: np.ndarray) -> float:
+        if global_coverage.size == 0: return 0.0
+        return np.count_nonzero(global_coverage > 0) / global_coverage.size
 
     def decide_start_anchor(self, eeg: EEG, t: float, d: float, candidate_anchors: np.ndarray) \
             -> tuple[float, float, Optional[int]]:
@@ -231,11 +270,13 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         return True
 
-    def add_coverage(self, eeg: EEG, start, stop, coverage: np.ndarray) -> None:
+    def add_coverage(self, eeg: EEG, start, stop, coverage: np.ndarray, global_coverage: np.ndarray) -> None:
         coverage_chunks = self.coverage_resolution_sec / eeg.fs
         start_idx = int(np.floor(start / coverage_chunks))
         stop_idx = int(np.ceil(stop / coverage_chunks))
         coverage[start_idx:stop_idx] += 1
+        if global_coverage is not None:
+            global_coverage[start_idx:stop_idx] += 1
 
     def check_coverage(self, eeg: EEG, start, stop, coverage: np.ndarray) -> bool:
         coverage_chunks = self.coverage_resolution_sec / eeg.fs
@@ -253,7 +294,8 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                 # (start, stop, type, duration)
                 segments: list[Segment],
                 coverage: np.ndarray,
-                attempt: int = 0
+                global_coverage: np.ndarray,
+                attempt: int = 0,
                 ):
         """
 
@@ -265,6 +307,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         :param anchors:
         :param segments:
         :param coverage:
+        :param global_coverage:
         :param attempt:
         :return:
         """
@@ -296,10 +339,12 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                 f"Check failed for ({start}-{stop}) ({base_feature.key}).\n"
                 f"Problem was: {'IoU' if not ok_iou else 'coverage'}.\n"
                 f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.\n\n")
-            return self.extract(eeg, t, d, base_feature, candidate_anchors, anchors, segments, coverage, attempt + 1)
+            return self.extract(
+                eeg, t, d, base_feature, candidate_anchors, anchors, segments, coverage, global_coverage, attempt + 1
+            )
 
         segments.append(Segment(start=start, stop=stop, feature_spec=base_feature, duration=d))
-        self.add_coverage(eeg, start, stop, coverage)
+        self.add_coverage(eeg, start, stop, coverage, global_coverage)
 
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
@@ -320,7 +365,7 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
 
     def compute_segments(self, sample: EEG, num_segments: int = None) -> list[tuple[float, float]]:
         segments = []
-        num_segments = num_segments or self.num_segments
+        num_segments: int = num_segments or self.num_segments
         for _ in range(num_segments):
             # Random duration: 0.5–30 s, expressed in samples.
             dur = np.random.rand(1) * self.max_length
