@@ -14,6 +14,10 @@ from main.core_data.media.video import VidTargetConfig
 @dataclasses.dataclass
 class PreprocessingConfig:
     dataset_name: str
+
+    config_classpath: str
+    loader_classpath: str
+
     base_path: str  # Where things are fetched from
     data_path: str  # Subpath to where the dataset is placed
     extraction_data_folder: str  # Subpath to where extracted intervals are placed

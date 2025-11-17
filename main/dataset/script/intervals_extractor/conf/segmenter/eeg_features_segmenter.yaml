@@ -2,6 +2,6 @@ segmenter_type: main.core_data.sampler.EegFeaturesAndRandLogUIntervalsSegmenter
 segmenter_args:
   min_length: 4
   max_length: 32
-  num_segments: 20
+  num_segments: 20 # Is minimum number of segments to extract. Upper bound is calc from length of clip.
   anchor_identification_hop: 0.125
   extraction_jitter: 0.1

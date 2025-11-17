@@ -3,5 +3,6 @@ defaults:
   - base
 
 dataset_name: deap
+config_classpath: main.dataset.deap.config.DeapConfig
 out_folder_name: vate
 preprocessing_pipeline: main.core.dataset.${dataset_name}.preprocessing.vate_preprocessor

@@ -1,5 +1,6 @@
 ---
 dataset_folder_name: AMIGOS
+config_classpath: main.dataset.amigos.config.AmigosConfig
 # Subpath to where the dataset is places
 data_path: ${..base_path}/AMIGOS/
 output_path: ${..base_path}/AMIGOS/EEGAVI-processed/extraction-data/

@@ -1,6 +1,11 @@
 # @package preprocessing
 dataset_name: ???
 out_folder_name: ???
+DatasetName: "${capitalize:${.dataset_name}}"
+
+config_classpath: main.dataset.${.dataset_name}.config.${.DatasetName}Config
+loader_classpath: main.dataset.${.dataset_name}.loader.${.DatasetName}Loader
+
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 # Subpath to where the dataset is placed
 data_path: ${.base_path}/resources/${.dataset_name}/
@@ -9,7 +14,7 @@ extraction_data_folder: ${.base_path}/data/${.dataset_name}/extraction_data/
 # Subpath to where output has to go to.
 output_path: ${.base_path}/data/${.dataset_name}/${.out_folder_name}/
 output_max_length: 32
-preprocessing_function: main.dataset.${.dataset_name}.preprocessing.preprocessing
+
 
 # Objects have to be defined
 uid_store_path: ${.base_path}/data/EEGAVI-common/uid_store.csv

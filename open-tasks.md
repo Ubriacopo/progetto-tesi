@@ -13,7 +13,6 @@
 - studia bilanciamento
 
 ## Model
-
 - Ripristino modality dropout
 - Prova unimodale (skip layer?)
 - Cambia parametrizzazioni
