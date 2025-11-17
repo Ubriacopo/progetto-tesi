@@ -200,6 +200,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
             if not ok:
                 self.verbose and print("Coverage expansion attempt failed; retrying")
 
+        print(f"Current coverage ration is: {current_ratio}")
         if self.return_seconds:
             return [(bucket.start / sample.fs, bucket.stop / sample.fs) for bucket in buckets]
         return [(bucket.start, bucket.stop) for bucket in buckets]
@@ -214,7 +215,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         # Returns start. We favour more based on features than on random selection here.
         base_on_feature = np.random.random() < .6 and len(candidate_anchors) > 0
         if base_on_feature:
-            selected_candidate = np.random.choice(len(candidate_anchors))
+            selected_candidate: Optional[int] = np.random.choice(len(candidate_anchors))
             # For now keep it simple: All our segments have a duration of 4 seconds if short.
             start = int(candidate_anchors[selected_candidate])
             return start, start + self.anchor_modality.max_length * eeg.fs, selected_candidate
@@ -271,15 +272,15 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         return True
 
     def add_coverage(self, eeg: EEG, start, stop, coverage: np.ndarray, global_coverage: np.ndarray) -> None:
-        coverage_chunks = self.coverage_resolution_sec / eeg.fs
-        start_idx = int(np.floor(start / coverage_chunks))
-        stop_idx = int(np.ceil(stop / coverage_chunks))
+        coverage_chunks = self.coverage_resolution_sec * eeg.fs
+        start_idx = max(0, min(int(np.floor(start / coverage_chunks)), coverage.size))
+        stop_idx = max(0, min(int(np.ceil(stop / coverage_chunks)), coverage.size))
         coverage[start_idx:stop_idx] += 1
         if global_coverage is not None:
             global_coverage[start_idx:stop_idx] += 1
 
     def check_coverage(self, eeg: EEG, start, stop, coverage: np.ndarray) -> bool:
-        coverage_chunks = self.coverage_resolution_sec / eeg.fs
+        coverage_chunks = self.coverage_resolution_sec * eeg.fs
         start_index = int(np.floor(start / coverage_chunks))
         stop_index = int(np.ceil(stop / coverage_chunks))
         return (coverage[start_index:stop_index] < self.coverage_cap_K).all()
