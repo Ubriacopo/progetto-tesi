@@ -125,7 +125,12 @@ class TextRegistry(nn.Module):
 
 
 class WhisperExtractor(nn.Module):
-    def __init__(self, model_id: str = "openai/whisper-medium", device=None, duration_drop: int = 3000):
+    def __init__(self, model_id: str = "openai/whisper-medium", device=None, duration_drop: int = 300):
+        """
+        :param model_id
+        :param device
+        :param duration_drop: If the length of the source is longer than this Whisper model won't compute text (In seconds).
+        """
         super(WhisperExtractor, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.torch_dtype = torch.float16 if device != "cpu" else torch.float16  # torch.float32
@@ -138,7 +143,8 @@ class WhisperExtractor(nn.Module):
         model.to(self.device)
 
         processor = AutoProcessor.from_pretrained(model_id)
-        self.pipe = pipeline(  # 1 minuto
+        # 1 minuto
+        self.pipe = pipeline(
             "automatic-speech-recognition",
             model=model,
             tokenizer=processor.tokenizer,
@@ -149,12 +155,15 @@ class WhisperExtractor(nn.Module):
         )
 
     @timed()
-    def forward(self, x: torch.Tensor, fs: int) -> dict:
+    def forward(self, x: torch.Tensor, fs: int) -> dict | None:
         aud = ToMono()(x)
         # Too long videos are for the moment dropped (We already want to learn with missing data so it is ok)
         # Besides text doesn't work that well in our teacher model.
-        if self.duration_drop < len(x) / fs:
-            return dict(text="", chunks=[])
+        if self.duration_drop < len(aud) / fs:
+            raise ValueError(
+                f"The source is too long to process with Whisper."
+                f"Videos shorer than {int(self.duration_drop)}s are allowed (current is {int(len(aud) / fs)} s)"
+            )
 
         aud = aud.float()
         aud = Resample(orig_freq=fs, new_freq=self.model_fs)(aud)

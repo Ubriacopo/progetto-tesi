@@ -1,4 +1,6 @@
 import json
+import logging
+import traceback
 
 import torch
 
@@ -17,8 +19,16 @@ class ExtractTextFromAudio(Extractor):
             raise ValueError("x.txt must be provided")
         txt: Text = getattr(x, "txt")
 
-        extracted = self.extractor(torch.tensor(txt.base_audio.to_soundarray()), txt.base_audio.fps)
-        output_filepath = f"{base_path}{x.eid}-txt-extract.json"
-        with open(output_filepath, "w") as f:
-            json.dump(extracted, f, indent=4)
-        return output_filepath
+        try:
+            extracted = self.extractor(torch.tensor(txt.base_audio.to_soundarray()), txt.base_audio.fps)
+            output_filepath = f"{base_path}{x.eid}-txt-extract.json"
+            with open(output_filepath, "w") as f:
+                json.dump(extracted, f, indent=4)
+            return output_filepath
+
+        except Exception as e:
+            logging.error(e)
+            logging.debug(traceback.format_exc())
+
+            logging.info("The sample won´t be discarded but it will have no text track")
+            return "missing"
