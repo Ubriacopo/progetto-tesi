@@ -16,6 +16,7 @@ class Config:
 
 cs = ConfigStore.instance()
 OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
+OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
 
 @hydra.main(version_base=None, config_name="config", config_path="config")
@@ -40,7 +41,9 @@ def main(cfg: Config):
         cfg.preprocessing.output_path, cfg.preprocessing.extraction_data_folder, config
     )
 
-    loader = get_object(cfg.preprocessing.loader_classpath)(base_path=config.base_path, dataset_uid_store=uid_store)
+    loader = get_object(cfg.preprocessing.loader_classpath)(
+        base_path=cfg.preprocessing.data_path, dataset_uid_store=uid_store
+    )
     preprocessing_fn.run(loader=loader)
 
 

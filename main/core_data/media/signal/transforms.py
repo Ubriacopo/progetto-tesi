@@ -37,7 +37,7 @@ class SubclipMneRaw(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Signal) -> Signal:
         if not isinstance(x.data, mne.io.RawArray):
-            raise TypeError("Raw array must be of type mne.io.RawArray")
+            raise TypeError("Raw array must be a mne.io.Arrawy")
         tmin, tmax = x.interval
         x.data = x.data.crop(tmin=tmin, tmax=tmax)
         return x

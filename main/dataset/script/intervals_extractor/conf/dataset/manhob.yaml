@@ -1,7 +1,5 @@
 ---
-dataset_folder_name: manhob
-config_classpath: main.dataset.manhob.config.ManhobConfig
-# Subpath to where the dataset is places
-data_path: ${..base_path}/manhob/
-output_path: ${..base_path}/manhob/EEGAVI-processed/extraction-data/
-points_loader_classpath: main.dataset.manhob.loader.ManhobPointsLoader
+defaults:
+  - base
+
+dataset_name: manhob

@@ -1,6 +1,3 @@
-import dataclasses
-from typing import Any
-
 import hydra
 from hydra.core.config_store import ConfigStore
 from hydra.utils import get_object
@@ -9,35 +6,12 @@ from omegaconf import OmegaConf
 from main.core_data.extract import SegmentBasedExtractionProcessor
 from main.core_data.media.text.extract import ExtractTextFromAudio
 from main.core_data.media.text.transforms import WhisperExtractor
+from main.dataset.script.intervals_extractor.utils import Config
 from main.dataset.utils import DatasetUidStore
 
-
-@dataclasses.dataclass
-class DatasetConfig:
-    dataset_folder_name: str
-    data_path: str
-    output_path: str
-    points_loader_classpath: str
-
-
-@dataclasses.dataclass
-class IntervalsExtractorConfig:
-    base_path: str
-    data_path: str
-    segmenter_args: dict[str, Any]
-    segmenter_type: str
-
-
-
-@dataclasses.dataclass
-class Config:
-    dataset: DatasetConfig
-    segmenter: IntervalsExtractorConfig
-    base_path: str
-    uid_store_path: str
-
-
 cs = ConfigStore.instance()
+OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
+OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
 
 @hydra.main(config_path="conf", config_name="config.local")

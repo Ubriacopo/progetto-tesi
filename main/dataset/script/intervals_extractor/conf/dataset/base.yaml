@@ -1,0 +1,11 @@
+dataset_name: ???
+DatasetName: "${capitalize:${.dataset_name}}"
+DATASETNAME: "${uppercase:${.dataset_name}}"
+
+config_classpath: main.dataset.${.dataset_name}.config.${.DatasetName}Config
+points_loader_classpath: main.dataset.${.dataset_name}.loader.${.DatasetName}PointsLoader
+
+# Subpath to where the dataset is places
+data_path: ${..base_path}/${.DATASETNAME}/
+# Where output has to go to
+output_path: ${..base_path}/EEGAVI/${.DATASETNAME}/extraction-data/

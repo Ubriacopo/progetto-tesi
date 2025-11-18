@@ -1,24 +1,24 @@
 # @package preprocessing
 dataset_name: ???
 out_folder_name: ???
+
 DatasetName: "${capitalize:${.dataset_name}}"
+DATASETNAME: "${uppercase:${.dataset_name}}"
 
 config_classpath: main.dataset.${.dataset_name}.config.${.DatasetName}Config
-loader_classpath: main.dataset.${.dataset_name}.loader.${.DatasetName}Loader
+loader_classpath: main.dataset.${.dataset_name}.loader.${.DatasetName}PointsLoader
 
-base_path: /home/jacopo/PycharmProjects/progetto-tesi/
-# Subpath to where the dataset is placed
-data_path: ${.base_path}/resources/${.dataset_name}/
-# Subpath to where extracted intervals are placed
-extraction_data_folder: ${.base_path}/data/${.dataset_name}/extraction_data/
-# Subpath to where output has to go to.
-output_path: ${.base_path}/data/${.dataset_name}/${.out_folder_name}/
-output_max_length: 32
-
-
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/
+# Where the dataset is placed
+data_path: ${.base_path}${.DATASETNAME}/
+# Where extracted intervals are placed
+extraction_data_folder: ${.base_path}EEGAVI/${.DATASETNAME}/extraction-data/
+# Where output has to go to
+output_path: ${.base_path}EEGAVI/${.DATASETNAME}/${.out_folder_name}/
 # Objects have to be defined
-uid_store_path: ${.base_path}/data/EEGAVI-common/uid_store.csv
+uid_store_path: ${.base_path}/EEGAVI/uid_store.csv
 
+output_max_length: 32
 vid_config:
   max_frames: 32
 
@@ -27,9 +27,10 @@ aud_config:
 
 eeg_config:
   fs: 200
-  model_weights_path: ${..base_path}/main/dependencies/cbramod/pretrained_weights.pth
+  model_weights_path: ${..base_path}/../main/dependencies/cbramod/pretrained_weights.pth
 
 txt_config:
+  # TODO Problema
   extracted_base_path: ${..base_path}/data/amigos/extraction_data/
 
 ecg_config:

@@ -142,7 +142,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         t = sample.data.duration
 
         num_segments: int = num_segments or self.num_segments
-        print(f"For media with duration: {sample.data.duration} we try {num_segments} segments")
+        print(f"For media with duration: {t} we try {num_segments} segments")
 
         extractor = EEGFeatureExtractor(sample.data)
         candidate_anchors = extractor.pick_segments(

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import mne
+from mne.io import RawArray
 from mne.io.edf.edf import RawEDF
 from moviepy import VideoFileClip
 
@@ -39,7 +40,13 @@ class ManhobPointsLoader(DataPointsLoader):
 
                 for file in i.iterdir():
                     if file.suffix == ".bdf":
-                        raw = mne.io.read_raw_bdf(str(file), preload=True)
+                        raw: RawEDF = mne.io.read_raw_bdf(str(file), preload=True)
+                        # TODO mne.find_events(raw) mi trova eventi coerenti.
+                        #       Problema non posso essere certo su quale dei due sia start di video.
+                        #       Dovrei farmi dare resources
+                        data, info = raw.get_data(), raw.info
+                        raw: RawArray = mne.io.RawArray(data, info)
+
                     elif file.suffix == ".avi":
                         clip = VideoFileClip(str(file))
 
@@ -50,12 +57,11 @@ class ManhobPointsLoader(DataPointsLoader):
                 metadata = {"nei": nei, "dataset_id": self.DATASET_ID}
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
-                eeg_fs = self.config.eeg_source_config.fs
                 yield FlexibleDatasetPoint(
                     experiment_id,
-                    EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs).as_mod_tuple(),
-                    ECG(eid=experiment_id, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS), fs=eeg_fs,
-                        leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
+                    EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
+                    ECG(eid=experiment_id, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS),
+                        fs=raw.info['sfreq'], leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
                     Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
                     # No assessment! TODO Vedi se rompe objective
