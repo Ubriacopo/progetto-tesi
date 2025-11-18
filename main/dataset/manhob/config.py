@@ -8,7 +8,7 @@ from main.core_data.media.eeg.config import EegSourceConfig
 from main.core_data.media.video.config import VidSourceConfig
 from main.dataset.base_config import DatasetConfig
 
-
+@dataclasses.dataclass
 class ManhobEegSourceConfig(EegSourceConfig):
     fs: int = 256
     EEG_CHANNELS: list[str] = dataclasses.field(default_factory=lambda: [
@@ -24,7 +24,7 @@ class ManhobEegSourceConfig(EegSourceConfig):
         'EXG4', 'EXG5', 'EXG6', 'EXG7', 'EXG8', 'GSR1', 'GSR2', 'Erg1', 'Erg2', 'Resp', 'Temp'
     ])
 
-
+@dataclasses.dataclass
 class ManhobEcgSourceConfig(EcgSourceConfig):
     # todo cambia nome non sono lead names ma channels
     LEAD_NAMES: list[str] = dataclasses.field(default_factory=lambda: ["RA", "LA", "LL"])
@@ -54,7 +54,8 @@ class ManhobEcgSourceConfig(EcgSourceConfig):
         return ecg
 
 
+@dataclasses.dataclass
 class ManhobConfig(DatasetConfig):
     eeg_source_config: ManhobEegSourceConfig = dataclasses.field(default_factory=ManhobEegSourceConfig)
     vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=61))
-    ecg_source_config: ManhobEcgSourceConfig = dataclasses.field(default_factory=ManhobEegSourceConfig)
+    ecg_source_config: ManhobEcgSourceConfig = dataclasses.field(default_factory=ManhobEcgSourceConfig)

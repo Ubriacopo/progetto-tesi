@@ -29,6 +29,9 @@ class ManhobPointsLoader(DataPointsLoader):
         processed_data = Path(self.base_path)
         for i in processed_data.iterdir():
             try:
+                if i.stem == "EEGAVI-processed":
+                    continue  # This folder is to ignore.
+
                 experiment_id = i.stem  # Manhob experiment ID
 
                 raw: Optional[RawEDF] = None
@@ -48,11 +51,11 @@ class ManhobPointsLoader(DataPointsLoader):
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
                 eeg_fs = self.config.eeg_source_config.fs
-                ecg_leads = self.config.ecg_source_config.LEAD_NAMES
                 yield FlexibleDatasetPoint(
                     experiment_id,
                     EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs).as_mod_tuple(),
-                    ECG(eid=experiment_id, data=raw.copy().pick(["ecg"]), fs=eeg_fs, leads=ecg_leads).as_mod_tuple(),
+                    ECG(eid=experiment_id, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS), fs=eeg_fs,
+                        leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
                     Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
                     # No assessment! TODO Vedi se rompe objective
