@@ -32,4 +32,3 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Eav
             (Metadata.modality_code(), MetadataToTensor())
         )
     )
-

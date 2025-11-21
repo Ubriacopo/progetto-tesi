@@ -40,9 +40,8 @@ class SubclipMneRaw(nn.Module):
             raise TypeError("Raw array must be a mne.io.Arrawy")
 
         tmin, tmax = x.interval
-        tmax = max(min(x.data.duration, tmax), 0)
-        tmin = max(min(x.data.duration, tmin), 0)
-
+        tmin = max(min(x.data.times[-1], tmin), 0)
+        tmax = max(min(x.data.times[-1], tmax), 0)
         x.data = x.data.crop(tmin=tmin, tmax=tmax)
         return x
 
