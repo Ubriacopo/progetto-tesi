@@ -38,7 +38,11 @@ class SubclipMneRaw(nn.Module):
     def forward(self, x: Signal) -> Signal:
         if not isinstance(x.data, mne.io.RawArray):
             raise TypeError("Raw array must be a mne.io.Arrawy")
+
         tmin, tmax = x.interval
+        tmax = max(min(x.data.duration, tmax), 0)
+        tmin = max(min(x.data.duration, tmin), 0)
+
         x.data = x.data.crop(tmin=tmin, tmax=tmax)
         return x
 
@@ -52,7 +56,7 @@ class BandpassFilter(nn.Module):
 
     def forward(self, x: Signal) -> Signal:
         raw: mne.io.RawArray = x.data
-        print(x.eid)
+
         raw.notch_filter(self.notch, verbose=False)
         raw.filter(l_freq=self.lowpass, h_freq=self.highpass, verbose=False, filter_length='auto')
 

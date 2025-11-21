@@ -9,7 +9,7 @@ from main.core_data.media.signal.transforms import SubclipMneRaw, SignalZeroMask
 from main.core_data.processing.transform import MultimediaPadding
 from main.dataset.base_config import DatasetConfig
 
-
+# todo rivisiona
 def ecg_interleaved_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return ECG.modality_code(), nn.Sequential(
         SubclipMneRaw(),

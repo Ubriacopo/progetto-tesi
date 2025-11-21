@@ -46,8 +46,9 @@ class SubclipVideo(nn.Module):
         check_video_data(x, VideoFileClip)
 
         offset = 0 if x.offset is None else x.offset
-        start = max(min(x.data.duration, x.interval[0] - offset), 0)
-        stop = max(min(x.data.duration, x.interval[1] - offset), 0)
+        start, stop = x.interval
+        start = max(min(x.data.duration, start - offset), 0)
+        stop = max(min(x.data.duration, stop - offset), 0)
 
         if start == stop:
             raise ValueError(

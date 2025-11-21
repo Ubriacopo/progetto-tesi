@@ -152,5 +152,5 @@ class EmptyObjectTransform(nn.Module):
     def forward(self) -> MaskedValue | torch.Tensor:
         data = torch.zeros(self.shape, device=self.device)
         if self.mask_shape is not None:
-            return MaskedValue(data=data, mask=torch.zeros(self.shape, device=self.device))
+            return MaskedValue(data=data, mask=torch.zeros(self.mask_shape, device=self.device))
         return torch.zeros(data)
