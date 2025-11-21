@@ -13,6 +13,7 @@ from main.core_data.utils import sanitize_for_ast
 class Media(ABC):
     data: Any
     eid: Optional[str]
+    offset: Optional[int | float] = dataclasses.field(default=None, kw_only=True)
 
     def as_mod_tuple(self) -> tuple[str, Media]:
         return self.modality_code(), self

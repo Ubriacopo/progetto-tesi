@@ -62,7 +62,8 @@ class ManhobPointsLoader(DataPointsLoader):
                     EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
                     ECG(eid=experiment_id, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS),
                         fs=raw.info['sfreq'], leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
+                    # All MANHOB videos have 30s offset
+                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id, offset=30).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
                     # No assessment! TODO Vedi se rompe objective
                 )

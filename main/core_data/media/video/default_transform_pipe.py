@@ -8,17 +8,24 @@ from main.core_data.media.video import Video
 from main.core_data.media.video.transforms import SubclipVideo, VideoToTensor, ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
     UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling
-from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
+from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
+    EmptyObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 
+# todo pensa bene a come fare facilemnte empty2
 def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         -> tuple[str, nn.Module]:
-    return Video.modality_code(), nn.Sequential(
+    max_length = math.ceil(config.max_length / config.unit_seconds)
+    # To handle empty rows
+    vivit_latent = 768  # VIVIT Configuration
+    patches = 16  # From our PyramidPatchPooling
+
+    return Video.modality_code(), SequentialWithFallback(
         SubclipVideo(),
         VideoToTensor(),
         ViVitImageProcessorTransform(),
-        v2.Lambda(lambda x: x.pixel_values),
+        v2.Lambda(lambda x: x.pixel_values if "pixel_values" in x else x),
         VideoSequenceResampling(
             original_fps=config.vid_source_config.fps,
             sequence_duration_seconds=config.unit_seconds,
@@ -27,7 +34,8 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         ),
         ViVitEmbedderTransform(map_to="cpu"),
         ViVitPyramidPatchPooling(),
-        MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds)),
+        MultimediaPadding(max_length=max_length),
+        default_remap=EmptyObjectTransform(shape=(max_length, patches, vivit_latent), mask_shape=(max_length,)),
     )
 
 

@@ -5,6 +5,7 @@ from typing import Literal, Optional, Iterable
 import torch
 from einops import rearrange
 from moviepy import VideoFileClip
+from numpy.ma.core import zeros_like
 from torch import nn, dtype
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
@@ -43,7 +44,17 @@ class SubclipVideo(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
         check_video_data(x, VideoFileClip)
-        return replace(x, data=x.data.subclipped(x.interval[0], x.interval[1]))
+
+        offset = 0 if x.offset is None else x.offset
+        start = max(min(x.data.duration, x.interval[0] - offset), 0)
+        stop = max(min(x.data.duration, x.interval[1] - offset), 0)
+
+        if start == stop:
+            raise ValueError(
+                f"Cannot continue as the video is 0s longs. Sample VID modality has to be discarded EID:({x.eid})"
+            )
+
+        return replace(x, data=x.data.subclipped(start, stop))
 
 
 class VideoSequenceResampling(nn.Module):
@@ -204,6 +215,8 @@ class ViVitImageProcessorTransform(nn.Module):
     def forward(self, x):
         if isinstance(x, torch.Tensor) and len(x.shape) == 3:
             x = [x]
+        elif isinstance(x, torch.Tensor) and x.count_nonzero() == 0 and x.dim() == 1:
+            return x  # Empty tensor
         elif isinstance(x, torch.Tensor):
             x = list(x.unbind(0))
 
@@ -229,6 +242,9 @@ class ViVitEmbedderTransform(nn.Module):
 
     @timed()
     def forward(self, x) -> torch.Tensor:
+        if x.count_nonzero() == 0 and x.dim() == 1:
+            return x  # Empty tensor
+
         if len(x.shape) == 4:
             # Add a virtual batch
             x = x.unsqueeze(0)
@@ -286,6 +302,10 @@ class ViVitPyramidPatchPooling(nn.Module):
             self.use_pyramid_pooling = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.count_nonzero() == 0 and x.dim() == 1:
+            # TODO REASHPE
+            return x  # Empty tensor
+
         x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
         # Average pooling over the spatial grid
         x = x.mean(dim=-2)

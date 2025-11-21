@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import dataclasses
+import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
 
 import torch
 from torch import nn
@@ -122,3 +125,32 @@ class ToSimpleMaskedObject(nn.Module):
         # Drop masking on last dimension
         shape = x.shape[:self.stop_at_dim] if self.stop_at_dim is not None else x.shape
         return {"data": x, "mask": torch.ones(shape)}
+
+
+class SequentialWithFallback(nn.Module):
+    def __init__(self, *transforms: nn.Module, default_remap: nn.Module):
+        super().__init__()
+        self.sequential: nn.Sequential = nn.Sequential(*transforms)
+        self.default_remap: nn.Module = default_remap
+
+    def forward(self, x):
+        try:
+            self.sequential(x)
+        except ValueError as error:
+            logging.error(error)
+            return self.default_remap()
+
+
+class EmptyObjectTransform(nn.Module):
+    def __init__(self, shape: Tuple[int, ...], mask_shape: Tuple[int, ...] = None, device=torch.device('cpu')):
+        super().__init__()
+        self.shape: Tuple[int, ...] = shape
+        self.mask_shape: Tuple[int, ...] = mask_shape
+        # Where to create the new objects. Defaults to CPU
+        self.device = device
+
+    def forward(self) -> MaskedValue | torch.Tensor:
+        data = torch.zeros(self.shape, device=self.device)
+        if self.mask_shape is not None:
+            return MaskedValue(data=data, mask=torch.zeros(self.shape, device=self.device))
+        return torch.zeros(data)

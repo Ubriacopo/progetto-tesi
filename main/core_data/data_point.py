@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import ast
+import logging
+import traceback
 from abc import ABC, abstractmethod
 from dataclasses import is_dataclass, replace
 from typing import Optional
 
+import torch
 from torch import nn
 
 from main.core_data.media import media_types
@@ -143,13 +146,19 @@ class FlexibleDatasetTransformWrapper:
         y = {} if not keep_type else x
         for key, value in x.__dict__.items():
             if self.is_defined(key):
-                # Call each transform that maps to x definition
-                y[key] = self[key](value)
-                # If the generation implies expanding keys (Example would be audio that generates text as well)
-                # they are iterated and expanded. I can only work if result of pipeline is dict like
-                if self.expand_nested and isinstance(y[key], dict):
-                    for expand_key in self.nested_keys:
-                        if expand_key in y[key]:
-                            y[expand_key] = y[key].pop(expand_key)
-
+                try:
+                    # Call each transform that maps to x definition
+                    y[key] = self[key](value)
+                    # If the generation implies expanding keys (Example would be audio that generates text as well)
+                    # they are iterated and expanded. I can only work if result of pipeline is dict like
+                    if self.expand_nested and isinstance(y[key], dict):
+                        for expand_key in self.nested_keys:
+                            if expand_key in y[key]:
+                                y[expand_key] = y[key].pop(expand_key)
+                except ValueError as error:
+                    logging.error(error)
+                    traceback.print_exc()
+                    y[key] = torch.zeros(1)  # We set a single vector for failed operations
         return y
+
+

@@ -69,7 +69,7 @@ class Preprocessor(ABC, Generic[T]):
 
             for i in loader.scan():
                 key = i.get_identifier()
-                if existing_df is not None and existing_df[key].str.contains(i.eid).any():
+                if existing_df is not None and (existing_df[key] == i.eid).any():
                     continue  # This element was already processed.
 
                 docs = [e for e in self.preprocess(i)]
