@@ -2,8 +2,8 @@ from torch import nn
 
 from main.core_data.media.eeg import EEG
 from main.core_data.media.eeg.transforms import EEGResample, EEGToTimePatches, CBraModEmbedderTransform, EegTimePadding, \
-    CanonicalOrderTransform, TimePooling
-from main.core_data.media.signal.transforms import SubclipMneRaw, SignalToTensor
+    CanonicalOrderTransform
+from main.core_data.media.signal.transforms import SubclipMneRaw, SignalToTensor, BandpassFilter
 from main.dataset.base_config import DatasetConfig
 
 
@@ -18,4 +18,11 @@ def eeg_transform_pipe(config: DatasetConfig) \
         CanonicalOrderTransform(eeg_order=config.eeg_source_config.EEG_CHANNELS),
         CBraModEmbedderTransform(weights_path=config.eeg_target_config.model_weights_path),
         EegTimePadding(max_length=config.max_length),
+    )
+
+
+def eeg_sample_pipeline(config: DatasetConfig) -> tuple[str, nn.Module]:
+    return EEG.modality_code(), nn.Sequential(
+        BandpassFilter(l_freq=0.5, h_freq=40.0, notch=50.0),
+        EEGResample(tfreq=config.eeg_target_config.fs, sfreq=config.eeg_source_config.fs),
     )

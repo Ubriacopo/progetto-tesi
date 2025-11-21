@@ -11,7 +11,7 @@ from main.core_data.media.assessment.transform import SliceAssessments, ToTensor
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
 from main.core_data.media.ecg.default_transform_pipe import ecg_interleaved_transform_pipe
-from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
+from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
 from main.core_data.media.text import Text
@@ -52,6 +52,7 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
             "shared_interleaved_preprocessor",
             (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
             assessment_transform_pipe(),
+            eeg_sample_pipeline(config)
         ),
         extraction_data_folder=extraction_data_folder
     )

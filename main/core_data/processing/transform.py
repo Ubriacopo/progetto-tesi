@@ -135,7 +135,7 @@ class SequentialWithFallback(nn.Module):
 
     def forward(self, x):
         try:
-            self.sequential(x)
+            return self.sequential(x)
         except ValueError as error:
             logging.error(error)
             return self.default_remap()

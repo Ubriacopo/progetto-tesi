@@ -43,6 +43,22 @@ class SubclipMneRaw(nn.Module):
         return x
 
 
+class BandpassFilter(nn.Module):
+    def __init__(self, l_freq=0.5, h_freq=40.0, notch=50.0):
+        super().__init__()
+        self.lowpass: float = l_freq
+        self.highpass: float = h_freq
+        self.notch: float = notch
+
+    def forward(self, x: Signal) -> Signal:
+        raw: mne.io.RawArray = x.data
+        print(x.eid)
+        raw.notch_filter(self.notch, verbose=False)
+        raw.filter(l_freq=self.lowpass, h_freq=self.highpass, verbose=False, filter_length='auto')
+
+        return x
+
+
 class SignalZeroMasking(nn.Module):
     def __init__(self, max_length: int | float, fs: int, channels_first: bool = False):
         """
