@@ -51,6 +51,8 @@ class EavPointsLoader(DataPointsLoader):
                     audio: Optional[AudioFileClip] = None
                     if information[3] == "Speaking":
                         #todo regexs to match
+                        # 002_Trial_02_Speaking_Neutral_aud.wav in Folder Audio
+                        # corrisponde a 042_Trial_02_Speaking_Neutral.mp4 in Video
                         audio_filename = f"Trial_{information[2]}_Speaking_{emotion}_aud.wav"
                         audio: Optional[AudioFileClip] = AudioFileClip(str(i) + "/Audio/" + audio_filename)
 
