@@ -5,7 +5,8 @@ from typing import Optional
 import mne
 from mne.io import RawArray
 from mne.io.edf.edf import RawEDF
-from moviepy import VideoFileClip
+from moviepy import VideoFileClip, AudioFileClip
+from scipy.io import loadmat
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
@@ -29,13 +30,35 @@ class EavPointsLoader(DataPointsLoader):
         # In Manhob we have folders that are experiments.
         processed_data = Path(self.base_path)
         for i in processed_data.iterdir():
+            # Each folder is a subject
+            subject_id = i.stem.split('subject')[1]
+            matlab_file = loadmat(f"{i}/EEG/subject{subject_id}_eeg.mat")
+
+            eeg = matlab_file["seg"]
+            # TODO: Use them or not? Prolly not.
+            labels_mat = loadmat(f"{i}/EEG/subject{subject_id}_eeg_label.mat")
+
             try:
-                if i.stem == "EEGAVI-processed":
-                    continue  # This folder is to ignore.
+                # Video files for this dataset are the double of audio files
+                for video_file in Path(str(i) + "/Video").iterdir():
+                    information = video_file.stem.split('_')
+                    index = int(information[0])
+                    trial_id = information[2]
+                    emotion = information[4]
+
+                    raw: RawArray
+                    clip: VideoFileClip = VideoFileClip(str(video_file))
+                    audio: Optional[AudioFileClip] = None
+                    if information[3] == "Speaking":
+                        #todo regexs to match
+                        audio_filename = f"Trial_{information[2]}_Speaking_{emotion}_aud.wav"
+                        audio: Optional[AudioFileClip] = AudioFileClip(str(i) + "/Audio/" + audio_filename)
+
+                    nei = self.dataset_uid_store.uid(subject_id, str(trial_id) + "_" + emotion, "EAV")
+                    metadata = {"nei": nei, "dataset_id": self.DATASET_ID}
 
                 experiment_id = i.stem  # Manhob experiment ID
 
-                raw: Optional[RawEDF] = None
                 clip: Optional[VideoFileClip] = None
 
                 for file in i.iterdir():
