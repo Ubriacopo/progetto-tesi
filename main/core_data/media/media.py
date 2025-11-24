@@ -12,7 +12,7 @@ from main.core_data.utils import sanitize_for_ast
 @dataclasses.dataclass
 class Media(ABC):
     data: Any
-    eid: Optional[str]
+    eid: Optional[str | int]
     offset: Optional[int | float] = dataclasses.field(default=None, kw_only=True)
 
     def as_mod_tuple(self) -> tuple[str, Media]:

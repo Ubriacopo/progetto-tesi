@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -7,6 +8,7 @@ from mne.io import RawArray
 from mne.io.edf.edf import RawEDF
 from moviepy import VideoFileClip, AudioFileClip
 from scipy.io import loadmat
+from sympy.physics.mechanics.functions import inertia_of_point_mass
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
@@ -42,22 +44,44 @@ class EavPointsLoader(DataPointsLoader):
                 # Video files for this dataset are the double of audio files
                 for video_file in Path(str(i) + "/Video").iterdir():
                     information = video_file.stem.split('_')
-                    index = int(information[0])
-                    trial_id = information[2]
-                    emotion = information[4]
+                    index = int(information[0])  # Incremental index that means basically nothing.
+                    trial_id = information[2]  # What trial it is (ID)
+                    speaking = information[3].lower() == 'speaking'  # If it is speaking means we have audio.
+                    emotion = information[4]  # Category of the emotion that should be observed
 
                     raw: RawArray
                     clip: VideoFileClip = VideoFileClip(str(video_file))
                     audio: Optional[AudioFileClip] = None
-                    if information[3] == "Speaking":
-                        #todo regexs to match
-                        # 002_Trial_02_Speaking_Neutral_aud.wav in Folder Audio
-                        # corrisponde a 042_Trial_02_Speaking_Neutral.mp4 in Video
-                        audio_filename = f"Trial_{information[2]}_Speaking_{emotion}_aud.wav"
-                        audio: Optional[AudioFileClip] = AudioFileClip(str(i) + "/Audio/" + audio_filename)
+                    # TODO hanno fatto puttanate. index é unica cosa da guardare.
+                    if speaking:
+                        pattern = re.compile(r'^data_\d+\.csv$')
+                        audio_path = Path(str(i) + "/Audio")
+                        matches = [f for f in audio_path.iterdir() if f.is_file() and pattern.match(f.name)]
+                        if len(matches) > 1:
+                            raise ValueError("I found more than one audio file for a single clip.")
+                        if len(matches) == 0:
+                            raise ValueError("I found no audio file while I expected one")
+
+                        audio: Optional[AudioFileClip] = AudioFileClip(str(i) + "/Audio/" + matches[0].stem)
 
                     nei = self.dataset_uid_store.uid(subject_id, str(trial_id) + "_" + emotion, "EAV")
                     metadata = {"nei": nei, "dataset_id": self.DATASET_ID}
+
+                    # EEG data part
+                    info = mne.create_info(
+                        ch_names=self.config.eeg_source_config.get_CH_NAMES(),
+                        ch_types=self.config.eeg_source_config.get_CH_TYPES(),
+                        sfreq=self.config.eeg_source_config.fs
+                    )
+
+                    raw = mne.io.RawArray(data, info=info, verbose=False)
+
+                    yield FlexibleDatasetPoint(
+                        nei,
+                        EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
+                        Video(eid=nei, ).as_mod_tuple(),
+                        Metadata(data=metadata, eid=str(nei)).as_mod_tuple()
+                    )
 
                 experiment_id = i.stem  # Manhob experiment ID
 
