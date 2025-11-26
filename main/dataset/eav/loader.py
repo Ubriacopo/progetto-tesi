@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 import mne
+from einops import rearrange
+
 from mne.io import RawArray
 from moviepy import VideoFileClip, AudioFileClip
 from scipy.io import loadmat
@@ -31,11 +33,14 @@ class EavPointsLoader(DataPointsLoader):
         # In Manhob we have folders that are experiments.
         processed_data = Path(self.base_path)
         for i in processed_data.iterdir():
+            if not "subject" in i.stem:
+                continue
             # Each folder is a subject
             subject_id = i.stem.split('subject')[1]
             matlab_file = loadmat(f"{i}/EEG/subject{subject_id}_eeg.mat")
 
             eeg = matlab_file["seg"]
+            eeg = rearrange(eeg, "d c b -> b c d")
             # Video files for this dataset are the double of audio files
             for video_file in Path(str(i) + "/Video").iterdir():
                 try:
