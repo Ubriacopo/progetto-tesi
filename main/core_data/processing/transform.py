@@ -137,7 +137,7 @@ class SequentialWithFallback(nn.Module):
         try:
             return self.sequential(x)
         except ValueError as error:
-            logging.error(error)
+            logging.error(error, exc_info=True)
             return self.default_remap()
 
 

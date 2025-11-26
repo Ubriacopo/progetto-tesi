@@ -15,7 +15,7 @@ from main.core_data.media.audio.transforms import ToMono
 from main.core_data.media.text import Text
 from main.core_data.utils import timed
 
-
+# TODO sostituire moviepy con torch codec anche x audio
 class GreedyCTCDecoder(torch.nn.Module):
     def __init__(self, labels, blank=0):
         """
@@ -184,7 +184,7 @@ class RestoreTextExtract(nn.Module):
 
     def forward(self, txt: Text) -> Text:
         try:
-            with open(self.base_path + txt.eid + "-txt-extract.json") as f:
+            with open(self.base_path + str(txt.eid) + "-txt-extract.json") as f:
                 txt.text_context = json.load(f)
         except Exception as e:
             logging.error(e)

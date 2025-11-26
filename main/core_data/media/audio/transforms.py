@@ -133,17 +133,21 @@ class WavLmFeatureExtractorTransform(nn.Module):
 
 
 class WavLmEmbedderTransform(nn.Module):
-    def __init__(self, model_name: str = "microsoft/wavlm-base", device=None):
+    def __init__(self, model_name: str = "microsoft/wavlm-base", device=None, map_to=None):
         super(WavLmEmbedderTransform, self).__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model = WavLMModel.from_pretrained(model_name, device_map=self.device)
+        self.map_to = map_to
 
     @timed()
     def forward(self, x: BatchFeature) -> torch.Tensor:
         x = x.to(self.device)
         with torch.no_grad():
             y = self.model(**x)
-        return y.last_hidden_state
+        y = y.last_hidden_state
+        if self.map_to is not None:
+            y = y.to(self.map_to)
+        return y
 
 
 class HubertBaseComputeFeature(nn.Module):

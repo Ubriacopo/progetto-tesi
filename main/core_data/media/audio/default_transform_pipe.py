@@ -13,6 +13,7 @@ from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaske
     EmptyObjectTransform
 from main.dataset.base_config import DatasetConfig
 
+
 def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     max_length = math.ceil(config.max_length / config.unit_seconds)
     return Audio.modality_code(), SequentialWithFallback(
@@ -25,7 +26,7 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
             resampler=SignalZeroMasking(max_length=config.unit_seconds, fs=config.aud_target_config.fs),
         ),
         WavLmFeatureExtractorTransform(sampling_rate=config.aud_target_config.fs),
-        WavLmEmbedderTransform(),
+        WavLmEmbedderTransform(map_to="cpu"),
         MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds)),
         default_remap=EmptyObjectTransform(shape=(max_length, 199, 768), mask_shape=(max_length,)),
     )
