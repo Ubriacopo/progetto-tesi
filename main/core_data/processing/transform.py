@@ -128,7 +128,7 @@ class ToSimpleMaskedObject(nn.Module):
 
 
 class SequentialWithFallback(nn.Module):
-    def __init__(self, *transforms: nn.Module, default_remap: nn.Module):
+    def __init__(self, *transforms: nn.Module, default_remap: nn.Module) -> None:
         super().__init__()
         self.sequential: nn.Sequential = nn.Sequential(*transforms)
         self.default_remap: nn.Module = default_remap

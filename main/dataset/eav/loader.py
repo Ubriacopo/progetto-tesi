@@ -53,17 +53,19 @@ class EavPointsLoader(DataPointsLoader):
 
                     audio: Optional[AudioFileClip] = None
                     if speaking:
-                        pattern = re.compile(fr'{index}_.*')
+                        pattern = re.compile(fr'{information[0]}_.*')
                         audio_path = Path(str(i) + "/Audio")
                         matches = [f for f in audio_path.iterdir() if f.is_file() and pattern.match(f.name)]
                         if len(matches) > 1:
                             raise ValueError("I found more than one audio file for a single clip.")
                         if len(matches) == 0:
                             raise ValueError("I found no audio file while I expected one")
-
-                        audio: Optional[AudioFileClip] = AudioFileClip(str(i) + "/Audio/" + matches[0].stem)
+                        audio: Optional[AudioFileClip] = AudioFileClip(str(matches[0]))
 
                     nei = self.dataset_uid_store.uid(subject_id, str(index) + "_" + emotion, "EAV")
+                    # Store the current to fs so that we have it ready
+                    self.dataset_uid_store.store_dictionary()
+
                     metadata = {"nei": nei, "dataset_id": self.DATASET_ID}
 
                     # EEG data part

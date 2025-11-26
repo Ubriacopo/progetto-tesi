@@ -162,7 +162,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
-        segments = pd.read_csv(self.extraction_data_folder + x.eid + "-segments.csv").to_dict(orient="records")
+        segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
         if self.shared_pipeline is not None:
             x = self.shared_pipeline.call(x, keep_type=True)
 

@@ -6,7 +6,8 @@ from main.core_data.media.text import Text
 from main.core_data.media.text import TxtTargetConfig
 from main.core_data.media.text.transforms import SubclipTextExtract, MiniLMEmbedderTransform, \
     RestoreTextExtract, BertEmbeddings
-from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
+from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
+    EmptyObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 
@@ -18,16 +19,20 @@ def shared_txt_transform_pipe(text_config: TxtTargetConfig, txt_extract_base_pat
 
 def txt_from_aud_interleaved_txt_extract_transform_pipe(config: DatasetConfig) \
         -> tuple[str, nn.Module]:
-    return Text.modality_code(), nn.Sequential(
+    max_length = math.ceil(config.max_length / config.unit_seconds)
+    return Text.modality_code(), SequentialWithFallback(
         SubclipTextExtract(interleaved=True, i_max_length=int(config.unit_seconds)),
         MiniLMEmbedderTransform(),
-        MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds))
+        MultimediaPadding(max_length=max_length),
+        default_remap=EmptyObjectTransform(shape=(max_length, 384), mask_shape=(max_length,)),
     )
 
 
 def txt_vate_basic_transform_pipe() -> tuple[str, nn.Module]:
-    return Text.modality_code(), nn.Sequential(
+    # todo verify
+    return Text.modality_code(), SequentialWithFallback(
         SubclipTextExtract(interleaved=False),
         BertEmbeddings(),
-        ToSimpleMaskedObject(stop_at_dim=-1)
+        ToSimpleMaskedObject(stop_at_dim=-1),
+        default_remap=EmptyObjectTransform(shape=(384,), mask_shape=(384,)),
     )

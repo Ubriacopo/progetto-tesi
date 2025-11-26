@@ -37,6 +37,9 @@ class EegCanonicalOrder:
         "CP2",
         "P4",
         "PO4",
+        # Coming From EAV
+        "PO9",
+        "PO10"
     ]
 
     def adapt(self, eeg: torch.Tensor, tensor_order: list[str]):
