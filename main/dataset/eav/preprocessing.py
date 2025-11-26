@@ -1,8 +1,9 @@
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
-from main.core_data.media.ecg.default_transform_pipe import ecg_interleaved_transform_pipe
+from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
+from main.core_data.media.text.default_transform_pipe import txt_from_aud_interleaved_txt_extract_transform_pipe
 from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.dataset.eav.config import EavConfig
@@ -15,8 +16,9 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "EAV-interleaved-processor",
             vid_vivit_interleaved_transform_pipe(config),
+            aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
             eeg_transform_pipe(config),
-            ecg_interleaved_transform_pipe(config),
+            txt_from_aud_interleaved_txt_extract_transform_pipe(config),
             (Metadata.modality_code(), MetadataToTensor())
         )
     )

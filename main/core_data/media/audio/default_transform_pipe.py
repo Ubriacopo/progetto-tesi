@@ -9,11 +9,13 @@ from main.core_data.media.audio import Audio
 from main.core_data.media.audio.transforms import SubclipAudio, AudioToTensor, ToMono, AudioSequencePartitioning, \
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform, HubertBaseComputeFeature, HubertFeatureExtractor
 from main.core_data.media.signal.transforms import SignalZeroMasking
-from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject
+from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
+    EmptyObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
-    return Audio.modality_code(), nn.Sequential(
+    max_length = math.ceil(config.max_length / config.unit_seconds)
+    return Audio.modality_code(), SequentialWithFallback(
         SubclipAudio(),
         AudioToTensor(),
         ToMono(),
@@ -24,7 +26,8 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
         ),
         WavLmFeatureExtractorTransform(sampling_rate=config.aud_target_config.fs),
         WavLmEmbedderTransform(),
-        MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds))
+        MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds)),
+        default_remap=EmptyObjectTransform(shape=(max_length, 199, 768), mask_shape=(max_length,)),
     )
 
 

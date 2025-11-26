@@ -13,7 +13,6 @@ from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaske
 from main.dataset.base_config import DatasetConfig
 
 
-# todo pensa bene a come fare facilemnte empty2
 def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         -> tuple[str, nn.Module]:
     max_length = math.ceil(config.max_length / config.unit_seconds)
