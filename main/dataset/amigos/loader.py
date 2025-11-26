@@ -78,7 +78,7 @@ class AmigosPointsLoader(DataPointsLoader):
 
                 yield FlexibleDatasetPoint(
                     experiment_id,
-                    EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=eeg_fs, ).as_mod_tuple(),
+                    EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq'], ).as_mod_tuple(),
                     ECG(eid=experiment_id,
                         data=raw.copy().pick(["ecg"]), fs=eeg_fs,
                         leads=self.config.ecg_source_config.LEAD_NAMES,
