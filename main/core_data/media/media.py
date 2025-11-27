@@ -14,6 +14,7 @@ class Media(ABC):
     data: Any
     eid: Optional[str | int]
     offset: Optional[int | float] = dataclasses.field(default=None, kw_only=True)
+    filepath: Optional[str] = dataclasses.field(default=None, kw_only=True)
 
     def as_mod_tuple(self) -> tuple[str, Media]:
         return self.modality_code(), self

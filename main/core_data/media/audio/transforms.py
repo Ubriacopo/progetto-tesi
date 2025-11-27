@@ -30,8 +30,8 @@ class SubclipAudio(nn.Module):
     # noinspection PyMethodMayBeStatic
     @timed()
     def forward(self, x: Audio):
+        x.data = AudioFileClip(x.filepath)
         aud: AudioFileClip = x.data
-        check_audio_data(x, AudioFileClip)
 
         x.data = aud.subclipped(x.interval[0], x.interval[1])
         return x

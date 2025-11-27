@@ -84,8 +84,9 @@ class AmigosPointsLoader(DataPointsLoader):
                         leads=self.config.ecg_source_config.LEAD_NAMES,
                         patient_gender=next(iter(user_metadata["Gender"].values())).upper(),
                         patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
-                    Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
+                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id,
+                          filepath=media_path).as_mod_tuple(),
+                    Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id,filepath=media_path).as_mod_tuple(),
                     Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
                     Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()

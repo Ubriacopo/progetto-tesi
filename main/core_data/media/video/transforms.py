@@ -43,8 +43,7 @@ class UnbufferedResize(nn.Module):
 class SubclipVideo(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
-        check_video_data(x, VideoFileClip)
-
+        x.data = VideoFileClip(x.filepath)
         offset = 0 if x.offset is None else x.offset
         start, stop = x.interval
         start = max(min(x.data.duration, start - offset), 0)
