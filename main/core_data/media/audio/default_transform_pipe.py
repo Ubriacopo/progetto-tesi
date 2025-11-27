@@ -19,7 +19,7 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
     return Audio.modality_code(), SequentialWithFallback(
         SubclipAudio(),
         AudioToTensor(),
-        ToMono(dim=0),
+        ToMono(),
         Resample(orig_freq=config.aud_source_config.fs, new_freq=config.aud_target_config.fs),
         AudioSequencePartitioning(
             fs=config.aud_target_config.fs, sequence_duration_seconds=config.unit_seconds,

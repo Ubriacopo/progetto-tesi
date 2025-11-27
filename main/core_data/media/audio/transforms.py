@@ -1,12 +1,9 @@
-from dataclasses import replace
 from typing import Optional
 
 import torch
 import torchaudio
 from moviepy import AudioFileClip
 from torch import nn
-from torchcodec import AudioSamples
-from torchcodec.decoders import AudioDecoder
 from transformers import AutoFeatureExtractor, BatchFeature, WavLMModel
 
 from main.core_data.media.audio.audio import Audio
@@ -22,32 +19,30 @@ class AudioToTensor(nn.Module):
             x, waveform = torchaudio.load(x.file_path)
             return x.T  # This is kinda peculiar. I need to pass by torchaudio for 1s clips for some reason (moviepy has issues)
 
-        aud: AudioSamples = x.data
-        return aud.data[:].float()
+        aud: AudioFileClip = x.data
+        x = aud.to_soundarray()
+        x = torch.from_numpy(x).float()
+
+        return x
+
 
 class SubclipAudio(nn.Module):
     # noinspection PyMethodMayBeStatic
     @timed()
     def forward(self, x: Audio):
-        aud: AudioDecoder = x.data
-        offset = 0 if x.offset is None else x.offset
-        start, stop = x.interval
+        aud: AudioFileClip = x.data
+        check_audio_data(x, AudioFileClip)
 
-        start = max(min(aud.metadata.duration_seconds_from_header, start - offset), 0)
-        stop = max(min(aud.metadata.duration_seconds_from_header, stop - offset), 0)
+        x.data = aud.subclipped(x.interval[0], x.interval[1])
+        return x
 
-        if start == stop:
-            message = f"Cannot continue as the video is 0s longs. Sample VID modality has to be discarded EID:({x.eid})"
-            raise ValueError(message)
-
-        return replace(x, data=aud.get_samples_played_in_range(start, stop))
 
 class ToMono(nn.Module):
     """
     Transforms a source from Stereo or any other format to MONO. (Single wave)
     """
 
-    def __init__(self, dim: int = 0, keepdim: bool = False):
+    def __init__(self, dim: int = 1, keepdim: bool = False):
         super().__init__()
         self.keepdim: bool = keepdim
         self.dim: int = dim
