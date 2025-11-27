@@ -22,7 +22,7 @@ class AudioToTensor(nn.Module):
         aud: AudioFileClip = x.data
         x = aud.to_soundarray()
         x = torch.from_numpy(x).float()
-
+        aud.close() # Close the process we are done with it
         return x
 
 

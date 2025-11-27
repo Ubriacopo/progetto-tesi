@@ -26,6 +26,7 @@ class VideoToTensor(nn.Module):
         frames: torch.Tensor = x.data
         if isinstance(x.data, VideoFileClip):
             frames = torch.stack([torch.tensor(frame) for frame in x.data.iter_frames()])
+        x.data.close() # Close the process we are done with it
         return frames.type(dtype=self.tensor_dtype)
 
 
