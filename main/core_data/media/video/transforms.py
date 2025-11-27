@@ -7,6 +7,8 @@ from einops import rearrange
 from moviepy import VideoFileClip
 from numpy.ma.core import zeros_like
 from torch import nn, dtype
+from torchcodec import FrameBatch
+from torchcodec.decoders import VideoDecoder
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from main.core_data.utils import timed
@@ -23,10 +25,8 @@ class VideoToTensor(nn.Module):
         self.tensor_dtype = tensor_dtype
 
     def forward(self, x: Video) -> torch.Tensor:
-        frames: torch.Tensor = x.data
-        if isinstance(x.data, VideoFileClip):
-            frames = torch.stack([torch.tensor(frame) for frame in x.data.iter_frames()])
-        return frames.type(dtype=self.tensor_dtype)
+        video: FrameBatch = x.data
+        return video.data[:].type(dtype=self.tensor_dtype)
 
 
 class UnbufferedResize(nn.Module):
@@ -43,19 +43,19 @@ class UnbufferedResize(nn.Module):
 class SubclipVideo(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
-        check_video_data(x, VideoFileClip)
-
+        assert isinstance(x.data, VideoDecoder), "Passed object has to be a VideoDecoder"
+        video: VideoDecoder = x.data
         offset = 0 if x.offset is None else x.offset
         start, stop = x.interval
-        start = max(min(x.data.duration, start - offset), 0)
-        stop = max(min(x.data.duration, stop - offset), 0)
+
+        start = max(min(video.metadata.duration_seconds, start - offset), 0)
+        stop = max(min(video.metadata.duration_seconds, stop - offset), 0)
 
         if start == stop:
-            raise ValueError(
-                f"Cannot continue as the video is 0s longs. Sample VID modality has to be discarded EID:({x.eid})"
-            )
+            message = f"Cannot continue as the video is 0s longs. Sample VID modality has to be discarded EID:({x.eid})"
+            raise ValueError(message)
 
-        return replace(x, data=x.data.subclipped(start, stop))
+        return replace(x, data=video.get_frames_played_in_range(start, stop))
 
 
 class VideoSequenceResampling(nn.Module):

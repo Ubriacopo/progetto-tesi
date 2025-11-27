@@ -6,6 +6,7 @@ import mne
 import numpy as np
 import pandas as pd
 from moviepy import VideoFileClip
+from torchcodec.decoders import VideoDecoder, AudioDecoder
 
 from main.core_data.media.assessment.assessment import Assessment
 from main.core_data.media.metadata.metadata import Metadata
@@ -59,8 +60,8 @@ class AmigosPointsLoader(DataPointsLoader):
                 assessments = participant_data[person]["labels_selfassessment"][video_index]
 
                 media_path: str = str(v.resolve())
-                clip = VideoFileClip(media_path)
-
+                video = VideoDecoder(media_path)
+                audio = AudioDecoder(media_path)
                 # Extract ECG and EEG data + metadata that could be useful
                 eeg_fs = self.config.eeg_source_config.fs
                 info = mne.create_info(
@@ -79,14 +80,14 @@ class AmigosPointsLoader(DataPointsLoader):
                 yield FlexibleDatasetPoint(
                     experiment_id,
                     EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq'], ).as_mod_tuple(),
-                    ECG(eid=experiment_id,
-                        data=raw.copy().pick(["ecg"]), fs=eeg_fs,
+                    ECG(eid=experiment_id, data=raw.copy().pick(["ecg"]), fs=eeg_fs,
                         leads=self.config.ecg_source_config.LEAD_NAMES,
                         patient_gender=next(iter(user_metadata["Gender"].values())).upper(),
                         patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id).as_mod_tuple(),
-                    Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id).as_mod_tuple(),
-                    Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
+                    Video(data=video, fps=video.metadata.average_fps,
+                          resolution=(video.metadata.width, video.metadata.height), eid=experiment_id).as_mod_tuple(),
+                    Audio(data=audio, fs=audio.metadata.bit_rate, eid=experiment_id).as_mod_tuple(),
+                    Text(eid=experiment_id, data=audio, base_audio=audio).as_mod_tuple(),
                     Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
                 )

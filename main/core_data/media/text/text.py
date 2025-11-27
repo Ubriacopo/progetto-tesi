@@ -4,13 +4,14 @@ from pathlib import Path
 from typing import Optional
 
 from moviepy import AudioFileClip
+from torchcodec.decoders import AudioDecoder
 
 from main.core_data.media.media import Media
 
 
 @dataclasses.dataclass
 class Text(Media):
-    base_audio: Optional[AudioFileClip] = None
+    base_audio: Optional[AudioDecoder] = None
     text_context: Optional[dict] = None
     interval: Optional[tuple[int, int]] = None
 
