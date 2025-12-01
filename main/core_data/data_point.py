@@ -115,7 +115,7 @@ class FlexibleDatasetTransformWrapper:
     def __init__(self, name: str, *transforms: tuple[str, nn.Module],
                  # If nested are to expand and what keys we want to expand
                  expand_nested: bool = False, nested_keys: list[str] = None,
-                 shared_pipeline: nn.Module = None):
+                 shared_pipeline: nn.Module = None, verbose: bool = True):
         """
         A custom definable transform wrapper that works on existing modalities contained in any AgnosticDatasetPoint
         :param name: Name of the transform to identify the process.
@@ -134,6 +134,8 @@ class FlexibleDatasetTransformWrapper:
         self.logger = make_logger(self.__class__.__name__)
         for (k, o) in transforms:
             self.__setattr__(k, o)
+
+        self.verbose = verbose
 
     def __getitem__(self, item: str):
         return getattr(self, item)
@@ -154,6 +156,7 @@ class FlexibleDatasetTransformWrapper:
                         for expand_key in self.nested_keys:
                             if expand_key in y[key]:
                                 y[expand_key] = y[key].pop(expand_key)
+
                 except ValueError as error:
                     self.logger.error(error, exc_info=True)
                     y[key] = torch.zeros(1)  # We set a single vector for failed operations

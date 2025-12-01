@@ -17,12 +17,14 @@ from .utils import check_video_data
 from .video import Video
 
 
+# TODO Rework to go to target fps
 class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, device="cpu", tensor_dtype: dtype = torch.float32):
+    def __init__(self, target_fps: int = 0, device="cpu", tensor_dtype: dtype = torch.float32):
         super().__init__()
 
         self.device = device
         self.tensor_dtype = tensor_dtype
+        self.target_fps: int = target_fps
 
     def forward(self, x: Video):
         av.logging.set_level(av.logging.FATAL)
@@ -32,26 +34,32 @@ class VideoSubclipTensorRead(nn.Module):
         start, stop = x.interval
         offset = 0 if x.offset is None else x.offset
         duration = float(stream.duration * stream.time_base)
-        # These are in frames
+        # These are in frames TODO vedi se indexes are correct. FPS are different for that so it crashes
         start_time = max(min(duration, start - offset), 0)
         stop_time = max(min(duration, stop - offset), 0)
+
+        src_fps = float(stream.average_rate)
+        step = src_fps / self.target_fps if self.target_fps > 0 else 1
 
         frames = []
         start_pts = int(start_time / stream.time_base)
         container.seek(start_pts, stream=stream, any_frame=False, backward=True)
 
-        for frame in container.decode(stream):
-            if frame.pts is None:
-                continue
-
+        i, out_idx = 0, 0
+        for idx, frame in enumerate(container.decode(stream)):
             t = frame.pts * float(stream.time_base)
-
             if t < start_time:
                 continue
             if t >= stop_time:
                 break
 
-            frames.append(frame.to_ndarray(format="rgb24"))
+            if frame.pts is None:
+                continue
+
+            if idx >= i:
+                frames.append(frame.to_ndarray(format="rgb24"))
+                out_idx += 1
+                i = out_idx * step
 
         container.close()
         return torch.from_numpy(np.stack(frames)).to(self.device).type(dtype=self.tensor_dtype)
