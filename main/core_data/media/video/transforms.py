@@ -2,11 +2,14 @@ import logging
 from dataclasses import replace
 from typing import Literal, Optional, Iterable
 
+import av
+import numpy as np
 import torch
 from einops import rearrange
 from moviepy import VideoFileClip
 from numpy.ma.core import zeros_like
 from torch import nn, dtype
+from torch.cuda import device
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from main.core_data.utils import timed
@@ -14,6 +17,45 @@ from main.core_data.media.video.video_processor import VideoResampler
 from main.utils.pyramid_pooling import temporal_pyramid_pooling_3d
 from .utils import check_video_data
 from .video import Video
+
+
+class VideoSubclipTensorRead(nn.Module):
+    def __init__(self, device="cpu", tensor_dtype: dtype = torch.float32):
+        super().__init__()
+
+        self.device = device
+        self.tensor_dtype = tensor_dtype
+
+    def forward(self, x: Video):
+        container = av.open(x.filepath)
+        stream = container.streams.video[0]
+
+        start, stop = x.interval
+        offset = 0 if x.offset is None else x.offset
+        duration = float(stream.duration * stream.time_base)
+        # These are in frames
+        start_time = max(min(duration, start - offset), 0)
+        stop_time = max(min(duration, stop - offset), 0)
+
+        frames = []
+        start_pts = int(start_time / stream.time_base)
+        container.seek(start_pts, stream=stream, any_frame=False, backward=True)
+
+        for frame in container.decode(stream):
+            if frame.pts is None:
+                continue
+
+            t = frame.pts * float(stream.time_base)
+
+            if t < start_time:
+                continue
+            if t >= stop_time:
+                break
+
+            frames.append(frame.to_ndarray(format="rgb24"))
+
+        container.close()
+        return torch.from_numpy(np.stack(frames)).to(self.device).type(dtype=self.tensor_dtype)
 
 
 class VideoToTensor(nn.Module):
@@ -26,7 +68,7 @@ class VideoToTensor(nn.Module):
         frames: torch.Tensor = x.data
         if isinstance(x.data, VideoFileClip):
             frames = torch.stack([torch.tensor(frame) for frame in x.data.iter_frames()])
-        x.data.close() # Close the process we are done with it
+        x.data.close()  # Close the process we are done with it
         return frames.type(dtype=self.tensor_dtype)
 
 

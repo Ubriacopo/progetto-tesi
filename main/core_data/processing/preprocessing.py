@@ -105,6 +105,7 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         self.segmenter: Segmenter = segmenter
         self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
         self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
+        self.counter = 0
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
@@ -140,7 +141,11 @@ class TorchExportsSegmenterPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
         if self.pipeline is None:
             raise ValueError("pipeline is required for preprocessing")
+
+        print(self.counter)
         y = self.pipeline.call(y)
+        self.counter += 1
+
         return y
 
     def export(self, segments: list[FlexibleDatasetPoint], output_path: str):
@@ -159,7 +164,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
         self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
         self.extraction_data_folder: str = extraction_data_folder
-
+        self.counter = 0
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
         segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
@@ -194,7 +199,9 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
         if self.pipeline is None:
             raise ValueError("pipeline is required for preprocessing")
+        print(self.counter)
         y = self.pipeline.call(y)
+        self.counter += 1
         return y
 
     def export(self, x: list[FlexibleDatasetPoint], output_path: str) -> None:
