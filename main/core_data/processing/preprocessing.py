@@ -62,8 +62,8 @@ class Preprocessor(ABC, Generic[T]):
 
             if workers > 1:
                 with ThreadPoolExecutor(max_workers=workers) as executor:
-                    docs = []
                     for block in batched(loader.scan(), workers):
+                        docs = []
                         for i in block:
                             key = i.get_identifier()
                             if existing_df is not None and (existing_df[key] == i.eid).any():
