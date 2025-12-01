@@ -21,6 +21,7 @@ uid_store_path: ${.base_path}/EEGAVI/uid_store.csv
 output_max_length: 32
 vid_config:
   max_frames: 32
+  target_fps: 25
 
 aud_config:
   fs: 16000
