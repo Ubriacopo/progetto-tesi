@@ -63,7 +63,7 @@ class Preprocessor(ABC, Generic[T]):
                         existing_df = df
 
                 self.logger.info("Procedure finished correctly.")
-                self.logger.info("Spec file can be found at:", self.output_path, "spec.csv")
+                self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")
                 return True
 
             for i in loader.scan():
