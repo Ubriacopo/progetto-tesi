@@ -27,6 +27,7 @@ class VideoSubclipTensorRead(nn.Module):
         self.tensor_dtype = tensor_dtype
 
     def forward(self, x: Video):
+        av.logging.set_level(av.logging.FATAL)
         container = av.open(x.filepath)
         stream = container.streams.video[0]
 
