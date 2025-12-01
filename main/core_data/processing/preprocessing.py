@@ -111,7 +111,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         total_elements = len(segments)
         for idx, segment in enumerate(segments):
             self.logger.info(f"About to process the element {idx + 1}/{total_elements} for {x.eid}")
-            self.preprocess_segment(x, (segment["start"], segment["stop"]))
+            x_segments.append(self.preprocess_segment(x, (segment["start"], segment["stop"])))
 
         output_path: str = self.output_path + f'{x.eid}'
         self.export(x_segments, output_path)

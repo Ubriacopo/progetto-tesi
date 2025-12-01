@@ -41,18 +41,20 @@ class DatasetUidStore:
         self.path = file_path
 
         if Path(file_path).exists():
-            self.df = pd.read_csv(file_path, index_col=None)
+            self.df = pd.read_csv(file_path, index_col=None, dtype={"user_id": "string"})
 
         self.next_id = len(self.df)
 
-    def uid(self, person_id: str, experiment_id: str, dataset_name: str) -> int:
+    def uid(self, user_id: str, experiment_id: str, dataset_name: str) -> int:
         next_id = self.next_id
 
-        exists = self.df[(self.df["user_id"] == person_id) & (self.df["experiment_id"] == experiment_id)]
+        exists = self.df[(self.df["user_id"] == user_id)
+                         & (self.df["experiment_id"] == experiment_id)
+                         & (self.df["dataset_name"] == dataset_name)]
         if len(exists) > 0:
             return exists.iloc[0]['id']
 
-        self.df.loc[len(self.df)] = [next_id, person_id, experiment_id, dataset_name]
+        self.df.loc[len(self.df)] = [next_id, user_id, experiment_id, dataset_name]
         self.next_id += 1
         return next_id
 
