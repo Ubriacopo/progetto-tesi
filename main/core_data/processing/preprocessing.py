@@ -62,7 +62,6 @@ class Preprocessor(ABC, Generic[T]):
 
             if workers > 1:
                 with ThreadPoolExecutor(max_workers=workers) as executor:
-                    docs = []
                     for block in batched(loader.scan(), workers):
                         docs = []
                         for i in block:
