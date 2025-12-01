@@ -70,12 +70,12 @@ class Preprocessor(ABC, Generic[T]):
                                 continue  # This element was already processed.
                             docs.append(executor.submit(self.preprocess, i))
 
-                for doc in docs:
-                    df = pd.DataFrame([d for d in doc.result()])
-                    if existing_df is not None:
-                        df = pd.concat([df, existing_df], ignore_index=True)
-                    df.to_csv(self.output_path + "spec.csv", index=False)
-                    existing_df = df
+                        for doc in docs:
+                            df = pd.DataFrame([d for d in doc.result()])
+                            if existing_df is not None:
+                                df = pd.concat([df, existing_df], ignore_index=True)
+                            df.to_csv(self.output_path + "spec.csv", index=False)
+                            existing_df = df
 
                 self.logger.info("Procedure finished correctly.")
                 self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")
