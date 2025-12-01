@@ -62,20 +62,27 @@ class Preprocessor(ABC, Generic[T]):
 
             if workers > 1:
                 with ThreadPoolExecutor(max_workers=workers) as executor:
-                    docs = []
                     for block in batched(loader.scan(), workers):
+                        docs = []
                         for i in block:
                             key = i.get_identifier()
                             if existing_df is not None and (existing_df[key] == i.eid).any():
                                 continue  # This element was already processed.
                             docs.append(executor.submit(self.preprocess, i))
 
-                for doc in docs:
-                    df = pd.DataFrame([d for d in doc.result()])
-                    if existing_df is not None:
-                        df = pd.concat([df, existing_df], ignore_index=True)
-                    df.to_csv(self.output_path + "spec.csv", index=False)
-                    existing_df = df
+                        if not docs:
+                            continue
+
+                        block_results = ([d.result() for d in docs if d.result() is not None])
+                        if not block_results:
+                            continue
+
+                        df = pd.DataFrame(block_results)
+                        if existing_df is not None:
+                            df = pd.concat([df, existing_df], ignore_index=True)
+
+                        df.to_csv(self.output_path + "spec.csv", index=False)
+                        existing_df = df
 
                 self.logger.info("Procedure finished correctly.")
                 self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")
@@ -95,7 +102,7 @@ class Preprocessor(ABC, Generic[T]):
                 existing_df = df
 
             self.logger.info("Procedure finished correctly.")
-            self.logger.info("Spec file can be found at:", self.output_path, "spec.csv")
+            self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")
             return True
 
         except Exception as e:
