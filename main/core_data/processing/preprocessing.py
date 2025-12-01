@@ -73,7 +73,7 @@ class Preprocessor(ABC, Generic[T]):
                         if not docs:
                             continue
 
-                        block_results = ([d.result() for d in docs if d.result() is not None])
+                        block_results = ([res for d in docs if (res := d.result()) is not None])
                         if not block_results:
                             continue
 
