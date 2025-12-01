@@ -1,10 +1,13 @@
+import logging
 import traceback
 from abc import abstractmethod, ABC
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures.process import ProcessPoolExecutor
 from itertools import batched
 from pathlib import Path
 from typing import Optional, TypeVar, Generic
 
+import colorlog
 import numpy as np
 import pandas as pd
 from tensordict import TensorDict, stack
@@ -17,6 +20,18 @@ from main.utils.logging import make_logger
 SPEC_FILE_NAME: str = "spec.csv"
 
 T = TypeVar("T")
+
+
+def setup_logging():
+    logger = logging.getLogger()  # root
+    logger.handlers.clear()
+    logger.setLevel(logging.INFO)
+
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(colorlog.ColoredFormatter(
+        '%(log_color)s%(asctime)s %(levelname)s:%(name)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S',
+    ))
+    logger.addHandler(handler)
 
 
 class Preprocessor(ABC, Generic[T]):
@@ -46,21 +61,21 @@ class Preprocessor(ABC, Generic[T]):
                 existing_df = pd.read_csv(existing_path)
 
             if workers > 1:
-                for block in batched(loader.scan(), workers):
-                    docs = []  # Where the stuff is stored.
-                    with ThreadPoolExecutor(max_workers=workers) as executor:
+                with ThreadPoolExecutor(max_workers=workers, initializer=setup_logging, ) as executor:
+                    docs = []
+                    for block in batched(loader.scan(), workers):
                         for i in block:
                             key = i.get_identifier()
                             if existing_df is not None and (existing_df[key] == i.eid).any():
                                 continue  # This element was already processed.
                             docs.append(executor.submit(self.preprocess, i))
 
-                    for doc in docs:
-                        df = pd.DataFrame([d for d in doc.result()])
-                        if existing_df is not None:
-                            df = pd.concat([df, existing_df], ignore_index=True)
-                        df.to_csv(self.output_path + "spec.csv", index=False)
-                        existing_df = df
+                for doc in docs:
+                    df = pd.DataFrame([d for d in doc.result()])
+                    if existing_df is not None:
+                        df = pd.concat([df, existing_df], ignore_index=True)
+                    df.to_csv(self.output_path + "spec.csv", index=False)
+                    existing_df = df
 
                 self.logger.info("Procedure finished correctly.")
                 self.logger.info("Spec file can be found at:", self.output_path, "spec.csv")
