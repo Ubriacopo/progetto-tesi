@@ -61,7 +61,7 @@ class Preprocessor(ABC, Generic[T]):
                 existing_df = pd.read_csv(existing_path)
 
             if workers > 1:
-                with ThreadPoolExecutor(max_workers=workers, initializer=setup_logging, ) as executor:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
                     docs = []
                     for block in batched(loader.scan(), workers):
                         for i in block:
@@ -118,6 +118,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
+
         segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
         if self.shared_pipeline is not None:
             x = self.shared_pipeline.call(x, keep_type=True)
