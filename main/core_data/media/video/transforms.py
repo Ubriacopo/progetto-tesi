@@ -1,4 +1,3 @@
-import logging
 from dataclasses import replace
 from typing import Literal, Optional, Iterable
 
@@ -7,13 +6,12 @@ import numpy as np
 import torch
 from einops import rearrange
 from moviepy import VideoFileClip
-from numpy.ma.core import zeros_like
 from torch import nn, dtype
-from torch.cuda import device
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
-from main.core_data.utils import timed
 from main.core_data.media.video.video_processor import VideoResampler
+from main.core_data.utils import timed
+from main.utils.logging import make_logger
 from main.utils.pyramid_pooling import temporal_pyramid_pooling_3d
 from .utils import check_video_data
 from .video import Video
@@ -337,11 +335,12 @@ class ViVitPyramidPatchPooling(nn.Module):
         super().__init__()
         self.levels: Iterable[int] = levels
 
+        self.logger = make_logger(self.__class__.__name__)
         self.use_pyramid_pooling: bool = True
         if sum(self.levels) >= 16:
             # I will avoid Pyramid pooling
-            logging.warning("Pyramid part of pooling is kinda useless if we keep the same patch size."
-                            "It might be better to just not do it, thus pyramid pooling is disabled for this iteration.")
+            self.logger.warning("Pyramid part of pooling is kinda useless if we keep the same patch size."
+                                "It might be better to just not do it, thus pyramid pooling is disabled for this iteration.")
             self.use_pyramid_pooling = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

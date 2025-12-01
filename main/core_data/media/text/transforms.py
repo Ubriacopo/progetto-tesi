@@ -14,6 +14,8 @@ from transformers import Speech2TextForConditionalGeneration, Speech2TextProcess
 from main.core_data.media.audio.transforms import ToMono
 from main.core_data.media.text import Text
 from main.core_data.utils import timed
+from main.utils.logging import make_logger
+
 
 # TODO sostituire moviepy con torch codec anche x audio
 class GreedyCTCDecoder(torch.nn.Module):
@@ -181,14 +183,15 @@ class RestoreTextExtract(nn.Module):
     def __init__(self, base_path: str):
         super(RestoreTextExtract, self).__init__()
         self.base_path: str = base_path
+        self.logger = make_logger(self.__class__.__name__)
 
     def forward(self, txt: Text) -> Text:
         try:
             with open(self.base_path + str(txt.eid) + "-txt-extract.json") as f:
                 txt.text_context = json.load(f)
         except Exception as e:
-            logging.error(e)
-            logging.warning(
+            self.logger.error(e)
+            self.logger.warning(
                 f"Tried to read text context for {txt.eid} but we had an error.\n "
                 f"Empty chunks will be set instead"
             )

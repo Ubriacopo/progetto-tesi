@@ -1,4 +1,3 @@
-import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -9,6 +8,7 @@ from torch import nn
 from main.model.neegavi.blocks import TemporalEncoder
 from main.model.neegavi.perceiver import PerceiverResampler
 from main.utils.data import MaskedValue
+from main.utils.logging import make_logger
 
 
 @dataclass
@@ -54,9 +54,12 @@ class PerceiverResamplerAdapter(nn.Module):
         super().__init__()
         self.resampler = PerceiverResampler(**perceiver_config.__dict__)
         self.post_resample_module: Optional[nn.Module] = post_resample_module
+        self.logger = make_logger(self.__class__.__name__)
         # We have to adapt
         if self.post_resample_module is None and project_out_size is not None and project_out_size != perceiver_config.dim:
-            logging.info(f"Shapes do not match so a nn.Linear({perceiver_config.dim}, {project_out_size}) is created")
+            self.logger.info(
+                f"Shapes do not match so a nn.Linear({perceiver_config.dim}, {project_out_size}) is created"
+            )
             self.post_resample_module = nn.Linear(perceiver_config.dim, project_out_size)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> MaskedValue:

@@ -8,7 +8,7 @@ DATASETNAME: "${uppercase:${.dataset_name}}"
 config_classpath: main.dataset.${.dataset_name}.config.${.DatasetName}Config
 loader_classpath: main.dataset.${.dataset_name}.loader.${.DatasetName}PointsLoader
 
-base_path: /mnt/turing-datasets/
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/
 # Where the dataset is placed
 data_path: ${.base_path}${.DATASETNAME}/
 # Where extracted intervals are placed
@@ -27,7 +27,7 @@ aud_config:
 
 eeg_config:
   fs: 200
-  model_weights_path: /root/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
+  model_weights_path: /home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
 
 txt_config:
   # TODO Problema

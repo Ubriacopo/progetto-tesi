@@ -1,11 +1,9 @@
-import logging
 import re
 from pathlib import Path
 from typing import Optional
 
 import mne
 from einops import rearrange
-
 from mne.io import RawArray
 from moviepy import VideoFileClip, AudioFileClip
 from scipy.io import loadmat
@@ -52,6 +50,7 @@ class EavPointsLoader(DataPointsLoader):
                     emotion = information[4]  # Category of the emotion that should be observed. No use.
 
                     audio: Optional[AudioFileClip] = None
+                    audio_filepath: Optional[str] = None
                     if speaking:
                         pattern = re.compile(fr'{information[0]}_.*')
                         audio_path = Path(str(i) + "/Audio")
@@ -60,7 +59,9 @@ class EavPointsLoader(DataPointsLoader):
                             raise ValueError("I found more than one audio file for a single clip.")
                         if len(matches) == 0:
                             raise ValueError("I found no audio file while I expected one")
-                        audio: Optional[AudioFileClip] = AudioFileClip(str(matches[0]))
+
+                        audio_filepath = str(matches[0])
+                        audio: Optional[AudioFileClip] = AudioFileClip(audio_filepath)
 
                     nei = self.dataset_uid_store.uid(subject_id, str(index) + "_" + emotion, "EAV")
                     # Store the current to fs so that we have it ready
@@ -83,12 +84,13 @@ class EavPointsLoader(DataPointsLoader):
                     yield FlexibleDatasetPoint(
                         nei,
                         EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
-                        Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size).as_mod_tuple(),
-                        Audio(eid=nei, data=audio, fs=audio_fs, ).as_mod_tuple(),
+                        Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size,
+                              filepath=str(video_file.resolve())).as_mod_tuple(),
+                        Audio(eid=nei, data=audio, fs=audio_fs, filepath=audio_filepath).as_mod_tuple(),
                         Text(eid=nei, data=audio_copy, base_audio=audio_copy).as_mod_tuple(),
                         Metadata(data=metadata, eid=str(nei)).as_mod_tuple()
                     )
 
                 except Exception as e:
-                    logging.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
-                    logging.error(e)
+                    self.logger.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
+                    self.logger.error(e)

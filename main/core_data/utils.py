@@ -16,6 +16,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import BatchFeature
 
 from base_config import BaseConfig
+from main.utils.logging import make_logger
 
 
 def dataset_information(dataset: Dataset, image_size: tuple[int, int]) -> tuple[torch.Tensor, torch.Tensor]:
@@ -150,11 +151,14 @@ def debug_exceptional_catch(func):
             print(f"{func.__name__}: raised exception: \n")
             print(e)
             raise e
+
     return wrapper
 
 
 def timed(label: str = None, longer_than: float = 0.5, suppress_timed: bool = BaseConfig.SUPPRESS_TIMED):
     def decorator(fn):
+        logger = make_logger("timed")
+
         @wraps(fn)
         def wrapper(*args, **kwargs):
             # Disable the function entirely
@@ -174,7 +178,7 @@ def timed(label: str = None, longer_than: float = 0.5, suppress_timed: bool = Ba
             tag = label or f"{cls_name}.{fn.__name__}"
             # Maybe really short times are ignorable
             if longer_than < end - start:
-                print(
+                logger.debug(
                     f"{datetime.today().strftime('%H:%M:%S')}:{tag} took {end - start:.3f} seconds ({start:.2f} - {end:.2f})"
                 )
             return result

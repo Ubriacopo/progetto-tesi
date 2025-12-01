@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Literal, Tuple
 
@@ -12,6 +11,7 @@ from torchvision.transforms import Lambda
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.media.media import Media
 from main.utils.data import MaskedValue
+from main.utils.logging import make_logger
 
 IDENTITY = Lambda(lambda x: x)
 
@@ -132,12 +132,13 @@ class SequentialWithFallback(nn.Module):
         super().__init__()
         self.sequential: nn.Sequential = nn.Sequential(*transforms)
         self.default_remap: nn.Module = default_remap
+        self.logger = make_logger(str(self.__class__.__name__))
 
     def forward(self, x):
         try:
             return self.sequential(x)
-        except ValueError as error:
-            logging.error(error, exc_info=True)
+        except Exception as exception:
+            self.logger.error(exception, exc_info=True)
             return self.default_remap()
 
 

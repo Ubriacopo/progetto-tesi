@@ -8,11 +8,13 @@ from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.extract import Extractor
 from main.core_data.media.text import Text
 from main.core_data.media.text.transforms import WhisperExtractor
+from main.utils.logging import make_logger
 
 
 class ExtractTextFromAudio(Extractor):
     def __init__(self, extractor: WhisperExtractor):
         self.extractor = extractor
+        self.logger = make_logger(self.__class__.__name__)
 
     def extract(self, x: FlexibleDatasetPoint, base_path: str):
         if not hasattr(x, "txt"):
@@ -27,8 +29,7 @@ class ExtractTextFromAudio(Extractor):
             return output_filepath
 
         except Exception as e:
-            logging.error(e)
-            logging.debug(traceback.format_exc())
-
-            logging.info("The sample won´t be discarded but it will have no text track")
+            self.logger.error(e)
+            self.logger.debug(traceback.format_exc())
+            self.logger.info("The sample won´t be discarded but it will have no text track")
             return "missing"

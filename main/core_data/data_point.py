@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import ast
-import logging
-import traceback
 from abc import ABC, abstractmethod
 from dataclasses import is_dataclass, replace
 from typing import Optional
@@ -12,6 +10,7 @@ from torch import nn
 
 from main.core_data.media import media_types
 from main.core_data.media.media import Media
+from main.utils.logging import make_logger
 
 
 class DatasetDataPoint(ABC):
@@ -132,7 +131,7 @@ class FlexibleDatasetTransformWrapper:
 
         # This allows
         self.shared_pipeline: nn.Module = shared_pipeline
-
+        self.logger = make_logger(self.__class__.__name__)
         for (k, o) in transforms:
             self.__setattr__(k, o)
 
@@ -156,9 +155,6 @@ class FlexibleDatasetTransformWrapper:
                             if expand_key in y[key]:
                                 y[expand_key] = y[key].pop(expand_key)
                 except ValueError as error:
-                    logging.error(error)
-                    traceback.print_exc()
+                    self.logger.error(error, exc_info=True)
                     y[key] = torch.zeros(1)  # We set a single vector for failed operations
         return y
-
-

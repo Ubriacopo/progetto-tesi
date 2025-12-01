@@ -68,5 +68,5 @@ class ManhobPointsLoader(DataPointsLoader):
                     # No assessment! TODO Vedi se rompe objective
                 )
             except Exception as e:
-                logging.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
-                logging.error(e)
+                self.logger.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
+                self.logger.error(e)

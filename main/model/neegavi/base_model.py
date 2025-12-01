@@ -11,6 +11,7 @@ from main.model.neegavi.pooling import MaskedPooling
 from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.utils.data import MaskedValue, KdMaskedValue
+from main.utils.logging import make_logger
 
 
 class EegInterAviModel(nn.Module):
@@ -36,6 +37,7 @@ class EegInterAviModel(nn.Module):
         if len(supports) == 0:
             raise ValueError("For EegBaseModel, supports must not be empty")
 
+        self.logger = make_logger(self.__class__.__name__)
         self.latent_output_size = supports[0].output_size
         for i in supports:
             if i.output_size != self.latent_output_size:
@@ -44,7 +46,7 @@ class EegInterAviModel(nn.Module):
                     f"of {supports[0].code} ({self.latent_output_size})"
                 )
 
-                logging.error(error_msg)
+                self.logger.error(error_msg)
                 raise ValueError(error_msg)
 
         self.pivot: ModalityStream = pivot

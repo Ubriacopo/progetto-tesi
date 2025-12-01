@@ -44,7 +44,7 @@ def main(cfg: Config):
     loader = get_object(cfg.preprocessing.loader_classpath)(
         base_path=cfg.preprocessing.data_path, dataset_uid_store=uid_store
     )
-    preprocessing_fn.run(loader=loader)
+    preprocessing_fn.run(loader=loader, workers=4)
 
 
 if __name__ == "__main__":
