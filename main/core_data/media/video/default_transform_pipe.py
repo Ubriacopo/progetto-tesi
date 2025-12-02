@@ -36,7 +36,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         default_remap=EmptyObjectTransform(shape=(max_length, patches, vivit_latent), mask_shape=(max_length,)),
     )
 
-
+# todo change
 def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return Video.modality_code(), nn.Sequential(
         SubclipVideo(),

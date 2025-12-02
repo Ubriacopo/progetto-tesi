@@ -3,12 +3,13 @@ use_base_path: True
 batch_size: 12
 teacher_weights_path: main/dependencies/VATE/best_model_contrastive.pt
 student_dataset_path: [
-  "data/amigos/p-interleaved-d/spec.csv",
+  "data/EEGAVI/AMIGOS/interleaved/spec.csv",
+  "data/EEGAVI/EAV/interleaved/spec.csv"
   # "data/deap/p-interleaved-d/spec.csv"
 ]
 teacher_dataset_path: [
-  "data/amigos/vate/spec.csv",
-  # "data/deap/vate/spec.csv"
+  "data/EEGAVI/AMIGOS/vate/spec.csv",
+  "data/EEGAVI/EAV/vate/spec.csv"
 ]
 # Training infos
 lr: 1e-3
