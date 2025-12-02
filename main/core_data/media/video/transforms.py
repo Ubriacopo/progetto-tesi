@@ -19,51 +19,69 @@ from .video import Video
 
 # TODO Rework to go to target fps
 class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, target_fps: int = 30, device="cpu", tensor_dtype: dtype = torch.float32):
+    def __init__(self, target_fps: int = 30, device="cpu",
+                 tensor_dtype: dtype = torch.float32, target_w: int = 500, target_h: int = 500):
         super().__init__()
 
         self.device = device
         self.tensor_dtype = tensor_dtype
         self.target_fps: int = target_fps
 
+        # Size
+        self.width: int = target_w
+        self.height: int = target_h
+
+        av.logging.set_level(av.logging.FATAL)
+
+    def fit_into(self, width, height):
+        scale = min(self.width / width, self.height / height)
+        return int(width * scale), int(height * scale)
+
     @timed()
     @call_log()
     def forward(self, x: Video):
-        # TODO refactor a little
-        av.logging.set_level(av.logging.FATAL)
         container = av.open(x.filepath)
         stream = container.streams.video[0]
 
         start, stop = x.interval
         offset = 0 if x.offset is None else x.offset
         duration = float(stream.duration * stream.time_base)
-        # These are in frames TODO vedi se indexes are correct. FPS are different for that so it crashes
+        # TODO vedi se indexes are correct. FPS are different for that so it crashes
         start_time = max(min(duration, start - offset), 0)
         stop_time = max(min(duration, stop - offset), 0)
 
         frames = []
-        start_pts = int(start_time / stream.time_base)
-        container.seek(start_pts, stream=stream, any_frame=False, backward=True)
-        frame_period = 1.0 / self.target_fps if self.target_fps > 0 else 1  # seconds per output frame
-        # TODO guard se fps lower than og
+        # Move the container close to the starting point of the clip
+        container.seek(int(start_time / stream.time_base), stream=stream, any_frame=False, backward=True)
+        # Seconds per output frame
+        frame_period = 1.0 / self.target_fps
         next_t = start_time
+
         for idx, frame in enumerate(container.decode(stream)):
             t = frame.pts * float(stream.time_base)
-            if t < start_time:
+            if frame.pts is None or t < start_time:
                 continue
             if t >= stop_time:
                 break
 
-            if frame.pts is None:
-                continue
-
             if t >= next_t:
-                frames.append(frame.to_ndarray(format="rgb24").T)
+                if frame.width > self.width or frame.height > self.height:
+                    # Resize frame. This is because we have some problems with large images.
+                    # The preprocessing call will resize the image again (For correct aspect ratio and others).
+                    new_w, new_h = self.fit_into(frame.width, frame.height)
+                    resized = frame.reformat(width=new_w, height=new_h, format="rgb24")
+                    arr = resized.to_ndarray()
+                else:
+                    # Avoid rescaling if the image is little enough
+                    arr = frame.to_ndarray(format="rgb24")
+
+                # Add it to our list
+                frames.append(arr.transpose(2, 0, 1))  # (H W C) -> (C, H, W)
                 next_t += frame_period
 
         container.close()
         # TODO memory qui ineficcient
-        return torch.from_numpy(np.stack(frames)).to(self.device).type(dtype=self.tensor_dtype)
+        return torch.from_numpy(np.stack(frames)).to(self.device)
 
 
 class VideoToTensor(nn.Module):
