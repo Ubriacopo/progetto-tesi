@@ -1,5 +1,8 @@
+import dataclasses
+
 import cv2
 import numpy as np
+import torch
 
 from main.core_data.media.video import Video
 
@@ -27,3 +30,9 @@ def check_video_data(x, data_type: type):
 
     if not isinstance(x.data, data_type):
         raise TypeError("Given video object is not valid")
+
+
+@dataclasses.dataclass
+class VideoTensor:
+    value: torch.Tensor
+    fps: int

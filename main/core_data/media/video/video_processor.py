@@ -3,6 +3,8 @@ import mediapipe as mp
 import numpy as np
 from moviepy import VideoFileClip, ImageSequenceClip
 
+from main.core_data.media.video.utils import VideoTensor
+
 
 def enforce_minimum_frames(frames, target=32):
     if len(frames) >= target:
@@ -83,7 +85,7 @@ class VideoResampler:
         h2 = cv2.normalize(cv2.calcHist([roi], [2], None, [256], [0, 256]), None).flatten()
         return h0, h1, h2
 
-    def resample_clip(self, clip: VideoFileClip, keep_when_no_face=True, output_fps=None):
+    def resample_clip(self, clip: VideoTensor, keep_when_no_face=True, output_fps=None):
         """
         Returns an ImageSequenceClip keeping frames where (RGB-change > thrRGB) OR (BB-change > thrBB).
         - keep_when_no_face: if True, keeps frames when tracking/detection fail (so output isn’t empty).
@@ -93,8 +95,9 @@ class VideoResampler:
         output_fps = output_fps or fps
 
         # Pull frames as numpy arrays (RGB) using get_frame at original fps
-        n_frames = int(np.floor(clip.duration * fps))
-        frames_rgb = [clip.get_frame(i / fps) for i in range(n_frames)]
+        n_frames = int(np.floor(clip.value.shape[0] * fps))
+        # TODO vediamo se prende giusto
+        frames_rgb = [clip.value[int(i / fps)].numpy() for i in range(n_frames)]
         if not frames_rgb:
             return ImageSequenceClip([], fps=output_fps)
 

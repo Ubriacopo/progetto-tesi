@@ -1,4 +1,3 @@
-import dataclasses
 from dataclasses import replace
 from typing import Literal, Optional, Iterable
 
@@ -14,25 +13,22 @@ from main.core_data.media.video.video_processor import VideoResampler
 from main.core_data.utils import timed, call_log
 from main.utils.logging import make_logger
 from main.utils.pyramid_pooling import temporal_pyramid_pooling_3d
-from .utils import check_video_data
+from .utils import check_video_data, VideoTensor
 from .video import Video
 
 
-@dataclasses.dataclass
-class VideoTensor:
-    value: torch.Tensor
-    fps: int
-
-
 class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, target_fps: int = 30, device="cpu", target_w: int = 500, target_h: int = 500):
+    def __init__(self, target_fps: int = 30, device="cpu", max_width: int = 224,
+                 max_height: int = 224, strict_resize: bool = True):
         super().__init__()
         self.device = device
         self.target_fps: int = target_fps
 
         # Size
-        self.width: int = target_w
-        self.height: int = target_h
+        self.width: int = max_width
+        self.height: int = max_height
+        # If we want to resize exactly to the max values
+        self.strict_resize: bool = strict_resize
 
         av.logging.set_level(av.logging.FATAL)
 
@@ -68,17 +64,27 @@ class VideoSubclipTensorRead(nn.Module):
                 break
 
             if t >= next_t:
-                if frame.width > self.width or frame.height > self.height:
-                    # Resize frame. This is because we have some problems with large images.
-                    # The preprocessing call will resize the image again (For correct aspect ratio and others).
+                # The frame is to be picked up.
+                if self.strict_resize and (frame.width != self.width or frame.height != self.height):
+                    # Strict resizing
+                    new_w, new_h = self.fit_into(frame.width, frame.height)
+                    resized = frame.reformat(width=new_w, height=new_h, format="rgb24")
+                    arr = resized.to_ndarray()
+                    pad_h, pad_w = self.height - new_h, self.width - new_w
+                    # H W C padding in order.
+                    pad = ((pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2), (0, 0))
+                    arr = np.pad(arr, pad, mode="constant", constant_values=0)
+
+                elif not self.strict_resize and (frame.width > self.width or frame.height > self.height):
+                    # Only downscale. Padding will be handled elsewhere
                     new_w, new_h = self.fit_into(frame.width, frame.height)
                     resized = frame.reformat(width=new_w, height=new_h, format="rgb24")
                     arr = resized.to_ndarray()
                 else:
-                    # Avoid rescaling if the image is little enough
+                    # Avoid rescaling if the image is little enough by our standards
                     arr = frame.to_ndarray(format="rgb24")
 
-                # Add it to our list
+                # Add it to our list in expected form
                 frames.append(arr.transpose(2, 0, 1))  # (H W C) -> (C, H, W)
                 next_t += frame_period
 
@@ -360,8 +366,8 @@ class VateVideoResamplerTransform(nn.Module):
 
     @timed()
     @call_log()
-    def forward(self, x: Video) -> torch.Tensor:
-        x.data = torch.tensor(self.video_resampler.resample_clip(x.data))
+    def forward(self, x: VideoTensor) -> torch.Tensor:
+        x.data = torch.tensor(self.video_resampler.resample_clip(x))
         return x.data
 
 

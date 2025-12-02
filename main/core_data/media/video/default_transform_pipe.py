@@ -5,7 +5,7 @@ from torch import nn
 from torchvision.transforms import v2
 
 from main.core_data.media.video import Video
-from main.core_data.media.video.transforms import SubclipVideo, VideoToTensor, ViVitImageProcessorTransform, \
+from main.core_data.media.video.transforms import ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
     UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, VideoSubclipTensorRead
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
@@ -21,7 +21,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
     patches = 16  # From our PyramidPatchPooling
 
     return Video.modality_code(), SequentialWithFallback(
-        VideoSubclipTensorRead(target_fps=30),
+        VideoSubclipTensorRead(target_fps=32),
         ViVitImageProcessorTransform(),
         VideoSequenceResampling(
             sequence_duration_seconds=config.unit_seconds,
@@ -34,11 +34,11 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         default_remap=EmptyObjectTransform(shape=(max_length, patches, vivit_latent), mask_shape=(max_length,)),
     )
 
+
 # todo change
 def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return Video.modality_code(), nn.Sequential(
-        SubclipVideo(),
-        UnbufferedResize((224, 224)),
+        VideoSubclipTensorRead(target_fps=32, max_height=224, max_width=224),
         VateVideoResamplerTransform(min_frames=config.vid_target_config.max_frames),
         v2.Lambda(lambda x: torch.tensor(x)),
         RegularFrameResampling(config.vid_target_config.max_frames, drop_mask=True),
