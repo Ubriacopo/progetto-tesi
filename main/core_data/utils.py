@@ -5,7 +5,6 @@ from datetime import datetime
 import gzip
 import shutil
 import time
-from contextlib import suppress
 from functools import wraps
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -155,14 +154,37 @@ def debug_exceptional_catch(func):
     return wrapper
 
 
-def timed(label: str = None, longer_than: float = 0.5, suppress_timed: bool = BaseConfig.SUPPRESS_TIMED):
+def call_log(before: bool = True, after: bool = False, suppress: bool = BaseConfig.SUPPRESS_ENTER_LEAVE_LOG):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if suppress:
+                return fn(*args, **kwargs)
+
+            name = fn.__name__
+            classname = "[function]"
+            if args and hasattr(args[0], "__class__"):
+                classname = f"[{args[0].__class__.__name__}]"
+
+            logger = make_logger(name)
+            before and logger.info(f"Entering {classname}.{name}")
+            result = fn(*args, **kwargs)
+            after and logger.info(f"Exiting {classname}.{name}")
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+def timed(label: str = None, longer_than: float = 0.5, suppress: bool = BaseConfig.SUPPRESS_TIMED):
     def decorator(fn):
         logger = make_logger("timed")
 
         @wraps(fn)
         def wrapper(*args, **kwargs):
             # Disable the function entirely
-            if suppress_timed:
+            if suppress:
                 return fn(*args, **kwargs)
 
             start = time.perf_counter()

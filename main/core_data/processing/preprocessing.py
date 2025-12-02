@@ -1,8 +1,6 @@
 import logging
-import traceback
 from abc import abstractmethod, ABC
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures.process import ProcessPoolExecutor
 from itertools import batched
 from pathlib import Path
 from typing import Optional, TypeVar, Generic
@@ -146,7 +144,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         return_segments = sanitize_for_ast(return_segments)
         return return_segments
 
-    @timed(suppress_timed=False)
+    @timed(suppress=False)
     def preprocess_segment(self, x: FlexibleDatasetPoint,
                            segment: tuple[int | float | np.ndarray, int | float | np.ndarray],
                            ) -> FlexibleDatasetPoint:

@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import replace
 from typing import Literal, Optional, Iterable
 
@@ -10,57 +11,79 @@ from torch import nn, dtype
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from main.core_data.media.video.video_processor import VideoResampler
-from main.core_data.utils import timed
+from main.core_data.utils import timed, call_log
 from main.utils.logging import make_logger
 from main.utils.pyramid_pooling import temporal_pyramid_pooling_3d
 from .utils import check_video_data
 from .video import Video
 
 
-# TODO Rework to go to target fps
-class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, target_fps: int = 30, device="cpu", tensor_dtype: dtype = torch.float32):
-        super().__init__()
+@dataclasses.dataclass
+class VideoTensor:
+    value: torch.Tensor
+    fps: int
 
+
+class VideoSubclipTensorRead(nn.Module):
+    def __init__(self, target_fps: int = 30, device="cpu", target_w: int = 500, target_h: int = 500):
+        super().__init__()
         self.device = device
-        self.tensor_dtype = tensor_dtype
         self.target_fps: int = target_fps
 
-    def forward(self, x: Video):
-        # TODO refactor a little
+        # Size
+        self.width: int = target_w
+        self.height: int = target_h
+
         av.logging.set_level(av.logging.FATAL)
+
+    def fit_into(self, width, height):
+        scale = min(self.width / width, self.height / height)
+        return int(width * scale), int(height * scale)
+
+    @timed()
+    @call_log()
+    def forward(self, x: Video) -> VideoTensor:
         container = av.open(x.filepath)
         stream = container.streams.video[0]
 
         start, stop = x.interval
         offset = 0 if x.offset is None else x.offset
         duration = float(stream.duration * stream.time_base)
-        # These are in frames TODO vedi se indexes are correct. FPS are different for that so it crashes
+
         start_time = max(min(duration, start - offset), 0)
         stop_time = max(min(duration, stop - offset), 0)
 
         frames = []
-        start_pts = int(start_time / stream.time_base)
-        container.seek(start_pts, stream=stream, any_frame=False, backward=True)
-        frame_period = 1.0 / self.target_fps if self.target_fps > 0 else 1      # seconds per output frame
-        # TODO guard se fps lower than og
+        # Move the container close to the starting point of the clip
+        container.seek(int(start_time / stream.time_base), stream=stream, any_frame=False, backward=True)
+        # Seconds per output frame
+        frame_period = 1.0 / self.target_fps
         next_t = start_time
+
         for idx, frame in enumerate(container.decode(stream)):
             t = frame.pts * float(stream.time_base)
-            if t < start_time:
+            if frame.pts is None or t < start_time:
                 continue
             if t >= stop_time:
                 break
 
-            if frame.pts is None:
-                continue
-
             if t >= next_t:
-                frames.append(frame.to_ndarray(format="rgb24"))
+                if frame.width > self.width or frame.height > self.height:
+                    # Resize frame. This is because we have some problems with large images.
+                    # The preprocessing call will resize the image again (For correct aspect ratio and others).
+                    new_w, new_h = self.fit_into(frame.width, frame.height)
+                    resized = frame.reformat(width=new_w, height=new_h, format="rgb24")
+                    arr = resized.to_ndarray()
+                else:
+                    # Avoid rescaling if the image is little enough
+                    arr = frame.to_ndarray(format="rgb24")
+
+                # Add it to our list
+                frames.append(arr.transpose(2, 0, 1))  # (H W C) -> (C, H, W)
                 next_t += frame_period
 
         container.close()
-        return torch.from_numpy(np.stack(frames)).to(self.device).type(dtype=self.tensor_dtype)
+        return VideoTensor(value=torch.from_numpy(np.stack(frames)).to(self.device), fps=min(self.target_fps, x.fps))
 
 
 class VideoToTensor(nn.Module):
@@ -69,6 +92,7 @@ class VideoToTensor(nn.Module):
         self.device = device
         self.tensor_dtype = tensor_dtype
 
+    @call_log()
     def forward(self, x: Video) -> torch.Tensor:
         frames: torch.Tensor = x.data
         if isinstance(x.data, VideoFileClip):
@@ -82,6 +106,7 @@ class UnbufferedResize(nn.Module):
         super().__init__()
         self.new_size = new_size
 
+    @call_log()
     def forward(self, x: Video):
         clip: VideoFileClip = x.data
         check_video_data(x, VideoFileClip)
@@ -89,6 +114,7 @@ class UnbufferedResize(nn.Module):
 
 
 class SubclipVideo(nn.Module):
+    @call_log()
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
         x.data = VideoFileClip(x.filepath)
@@ -106,23 +132,25 @@ class SubclipVideo(nn.Module):
 
 
 class VideoSequenceResampling(nn.Module):
-    def __init__(self, original_fps: int, sequence_duration_seconds: int | float, frames_resampler: nn.Module):
+    def __init__(self, sequence_duration_seconds: int | float, frames_resampler: nn.Module):
         super().__init__()
-        self.sequence_length = original_fps * sequence_duration_seconds
+        self.sequence_duration_seconds = sequence_duration_seconds  # 30fps * 4s -> 120 frames MA per 25fps -> 100
         self.frames_resampler = frames_resampler
 
     @timed()
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        T, c, h, w = x.shape
-        segments = int(T / self.sequence_length)
+    @call_log()
+    def forward(self, x: VideoTensor) -> torch.Tensor:
+        T, c, h, w = x.value.shape
+        sequence_length = int(self.sequence_duration_seconds * x.fps)
+        segments = int(T / sequence_length)
 
-        if T % self.sequence_length != 0:
+        if T % sequence_length != 0:
             segments += 1
 
-        points = x.unbind(0)
+        points = list(x.value.unbind(0))
         y: Optional[torch.Tensor] = None
         for i in range(segments):
-            segment_points = points[i * self.sequence_length:(i + 1) * self.sequence_length]
+            segment_points = points[i * sequence_length:(i + 1) * sequence_length]
             res = self.frames_resampler(torch.stack(segment_points))
             res = res.unsqueeze(0)  # We have new dimension that records the sequence.
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
@@ -141,6 +169,7 @@ class RegularFrameResampling(nn.Module):
         self.drop_mask: bool = drop_mask
 
     @timed()
+    @call_log()
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         T, c, h, w = x.shape
 
@@ -215,6 +244,7 @@ class RecencyBiasedCausalResampling(nn.Module):
         return idx_abs.to(torch.long)
 
     @timed()
+    @call_log()
     def forward(self, x: torch.Tensor):
         """
         x: [T, C, H, W] where x[-1] is the most recent frame at time t.
@@ -260,18 +290,13 @@ class ViVitImageProcessorTransform(nn.Module):
 
     @torch.inference_mode()
     @timed()
-    def forward(self, x):
-        if isinstance(x, torch.Tensor) and len(x.shape) == 3:
-            x = [x]
-        elif isinstance(x, torch.Tensor) and x.count_nonzero() == 0 and x.dim() == 1:
-            return x  # Empty tensor
-        elif isinstance(x, torch.Tensor):
-            x = list(x.unbind(0))
-
-        x = self.processor.preprocess(x, return_tensors="pt")
+    @call_log()
+    def forward(self, x: VideoTensor) -> VideoTensor:
+        frames = list(x.value.unbind(0))
+        frames = self.processor.preprocess(frames, return_tensors="pt")
         if not self.force_time_seq:
-            x["pixel_values"] = x["pixel_values"].squeeze(0)
-
+            frames["pixel_values"] = frames["pixel_values"].squeeze(0)
+        x.value = frames["pixel_values"]
         return x
 
 
@@ -286,9 +311,10 @@ class ViVitEmbedderTransform(nn.Module):
         # If the device is the same we don't have to remap.
         self.map_to = map_to if map_to is not None and map_to != self.device else None
 
-        self.mini_batch_size: int = mini_batch_size
+        self.mini_batch_size: Optional[int] = mini_batch_size
 
     @timed()
+    @call_log()
     def forward(self, x) -> torch.Tensor:
         if x.count_nonzero() == 0 and x.dim() == 1:
             return x  # Empty tensor
@@ -317,6 +343,7 @@ class ViVitForVideoClassificationEmbedderTransform(nn.Module):
         self.force_time_seq = force_time_seq
 
     @timed()
+    @call_log()
     def forward(self, x):
         with torch.inference_mode():
             x["pixel_values"] = x["pixel_values"].unsqueeze(0)
@@ -332,6 +359,7 @@ class VateVideoResamplerTransform(nn.Module):
         self.video_resampler = VideoResampler(detect_conf=detect_conf, reduce_bbox=reduce_bbox, min_frames=min_frames)
 
     @timed()
+    @call_log()
     def forward(self, x: Video) -> torch.Tensor:
         x.data = torch.tensor(self.video_resampler.resample_clip(x.data))
         return x.data
@@ -350,11 +378,8 @@ class ViVitPyramidPatchPooling(nn.Module):
                                 "It might be better to just not do it, thus pyramid pooling is disabled for this iteration.")
             self.use_pyramid_pooling = False
 
+    @call_log()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.count_nonzero() == 0 and x.dim() == 1:
-            # TODO REASHPE
-            return x  # Empty tensor
-
         x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
         # Average pooling over the spatial grid
         x = x.mean(dim=-2)
