@@ -18,7 +18,7 @@ from .video import Video
 
 
 class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, target_fps: int = 30, device="cpu", max_width: int = 224,
+    def __init__(self, target_fps: int = 32, device="cpu", max_width: int = 224,
                  max_height: int = 224, strict_resize: bool = True):
         super().__init__()
         self.device = device
