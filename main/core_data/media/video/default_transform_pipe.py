@@ -39,7 +39,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
 # todo change
 def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return Video.modality_code(), nn.Sequential(
-        VideoSubclipTensorRead(target_fps=32, max_height=224, max_width=224),
+        VideoSubclipTensorRead(target_fps=32, max_edge_size=224),
         VateVideoResamplerTransform(min_frames=config.vid_target_config.max_frames),
         v2.Lambda(lambda x: torch.tensor(x)),
         RegularFrameResampling(config.vid_target_config.max_frames, drop_mask=True),
