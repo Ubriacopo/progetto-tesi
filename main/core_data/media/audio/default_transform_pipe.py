@@ -38,7 +38,7 @@ def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfi
         SubclipAudio(),  # In the split interval
         AudioToTensor(),  # Transform to a tensor object
         ToMono(),  # Drop the dual channel audio and go to Mono
-        Resample(orig_freq=fs, new_freq=target_config.fs),
+        Resample(orig_freq=fs, new_freq=target_config.fs), # TODO vedi se questo crea problemi
         SignalZeroMasking(max_length, target_config.fs, channels_first=False),
         WavLmFeatureExtractorTransform(sampling_rate=target_config.fs),
         WavLmEmbedderTransform()

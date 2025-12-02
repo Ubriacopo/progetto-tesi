@@ -9,29 +9,33 @@ from transformers import AutoFeatureExtractor, BatchFeature, WavLMModel
 from main.core_data.media.audio.audio import Audio
 from main.core_data.processing.transform import IDENTITY
 from main.core_data.utils import timed
+from main.utils.logging import make_logger
 
 
 class AudioToTensor(nn.Module):
     # noinspection PyMethodMayBeStatic
     @timed()
     def forward(self, x: Audio):
-        if x.data is None:
-            x, waveform = torchaudio.load(x.file_path)
-            return x.T  # This is kinda peculiar. I need to pass by torchaudio for 1s clips for some reason (moviepy has issues)
-
         aud: AudioFileClip = x.data
         x = aud.to_soundarray()
         x = torch.from_numpy(x).float()
-        aud.close() # Close the process we are done with it
+        aud.close()  # Close the process we are done with it
         return x
 
 
 class SubclipAudio(nn.Module):
+    def __init__(self, verbose: bool = True):
+        super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+
     # noinspection PyMethodMayBeStatic
     @timed()
     def forward(self, x: Audio):
         x.data = AudioFileClip(x.filepath)
         aud: AudioFileClip = x.data
+
+        if x.fs != aud.fps:
+            self.logger.error(f"fs mismatch (actual/stored): {aud.fps} != {x.fs}")
 
         x.data = aud.subclipped(x.interval[0], x.interval[1])
         return x
