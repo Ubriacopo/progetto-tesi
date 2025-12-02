@@ -283,16 +283,12 @@ class RecencyBiasedCausalResampling(nn.Module):
         return out, mask
 
 
-class ViVitImageProcessorTransform(nn.Module):
-    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400",
-                 processor: VivitImageProcessor = None, force_time_seq: bool = False):
+class ViVitVideoTensorImageProcessorTransform(nn.Module):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", processor: VivitImageProcessor = None):
         super().__init__()
-
         self.processor: VivitImageProcessor = processor
         if processor is None:
             self.processor: VivitImageProcessor = VivitImageProcessor.from_pretrained(model_name)
-
-        self.force_time_seq = force_time_seq
 
     @torch.inference_mode()
     @timed()
@@ -300,10 +296,24 @@ class ViVitImageProcessorTransform(nn.Module):
     def forward(self, x: VideoTensor) -> VideoTensor:
         frames = list(x.value.unbind(0))
         frames = self.processor.preprocess(frames, return_tensors="pt")
-        if not self.force_time_seq:
-            frames["pixel_values"] = frames["pixel_values"].squeeze(0)
         x.value = frames["pixel_values"]
         return x
+
+
+class ViVitImageProcessorTransform(nn.Module):
+    def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", processor: VivitImageProcessor = None):
+        super().__init__()
+        self.processor: VivitImageProcessor = processor
+        if processor is None:
+            self.processor: VivitImageProcessor = VivitImageProcessor.from_pretrained(model_name)
+
+    @torch.inference_mode()
+    @timed()
+    @call_log()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        frames = list(x.unbind(0))
+        frames = self.processor.preprocess(frames, return_tensors="pt")
+        return frames["pixel_values"]
 
 
 class ViVitEmbedderTransform(nn.Module):
@@ -316,7 +326,6 @@ class ViVitEmbedderTransform(nn.Module):
         self.device = device
         # If the device is the same we don't have to remap.
         self.map_to = map_to if map_to is not None and map_to != self.device else None
-
         self.mini_batch_size: Optional[int] = mini_batch_size
 
     @timed()
@@ -350,13 +359,11 @@ class ViVitForVideoClassificationEmbedderTransform(nn.Module):
 
     @timed()
     @call_log()
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         with torch.inference_mode():
-            x["pixel_values"] = x["pixel_values"].unsqueeze(0)
             x = x.to(self.model.device)  # In case they differ!
-            x = self.model(**x).logits.squeeze(0)
-
-        return x
+            y = self.model(x).logits.squeeze(0)
+        return y
 
 
 class VateVideoResamplerTransform(nn.Module):
@@ -367,8 +374,9 @@ class VateVideoResamplerTransform(nn.Module):
     @timed()
     @call_log()
     def forward(self, x: VideoTensor) -> torch.Tensor:
-        x.data = torch.tensor(self.video_resampler.resample_clip(x))
-        return x.data
+        y = torch.tensor(self.video_resampler.resample_clip(x))
+        y = rearrange(y, "t h w c -> t c h w")
+        return y
 
 
 class ViVitPyramidPatchPooling(nn.Module):

@@ -93,12 +93,9 @@ class VideoResampler:
         """
         fps = clip.fps if hasattr(clip, "fps") and clip.fps else 25
         output_fps = output_fps or fps
+        frames_rgb = clip.value.numpy().transpose(0, 2, 3, 1)
 
-        # Pull frames as numpy arrays (RGB) using get_frame at original fps
-        n_frames = int(np.floor(clip.value.shape[0] * fps))
-        # TODO vediamo se prende giusto
-        frames_rgb = [clip.value[int(i / fps)].numpy() for i in range(n_frames)]
-        if not frames_rgb:
+        if not frames_rgb.any():
             return ImageSequenceClip([], fps=output_fps)
 
         # Detect once
@@ -181,14 +178,12 @@ class VideoResampler:
                 kept_indices.append(i)
 
         # always keep first and last for context
-        if frames_rgb:
+        if frames_rgb.any():
             kept_indices.extend([0, len(frames_rgb) - 1])
 
         kept_indices = sorted(set(kept_indices))
-
         # build output clip
-        kept_frames = [frames_rgb[i] for i in kept_indices]
-
+        kept_frames = frames_rgb[kept_indices]
         # Enforce minimum
         kept_frames = enforce_minimum_frames(kept_frames, target=self.min_frames)
         # return ImageSequenceClip(kept_frames, fps=output_fps)
