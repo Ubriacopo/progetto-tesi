@@ -146,7 +146,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         return_segments = sanitize_for_ast(return_segments)
         return return_segments
 
-    @timed(suppress_timed=False)
+    @timed(suppress=False)
     def preprocess_segment(self, x: FlexibleDatasetPoint,
                            segment: tuple[int | float | np.ndarray, int | float | np.ndarray],
                            ) -> FlexibleDatasetPoint:

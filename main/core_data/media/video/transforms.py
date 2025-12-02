@@ -10,7 +10,7 @@ from torch import nn, dtype
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from main.core_data.media.video.video_processor import VideoResampler
-from main.core_data.utils import timed
+from main.core_data.utils import timed, call_log
 from main.utils.logging import make_logger
 from main.utils.pyramid_pooling import temporal_pyramid_pooling_3d
 from .utils import check_video_data
@@ -26,6 +26,8 @@ class VideoSubclipTensorRead(nn.Module):
         self.tensor_dtype = tensor_dtype
         self.target_fps: int = target_fps
 
+    @timed()
+    @call_log()
     def forward(self, x: Video):
         # TODO refactor a little
         av.logging.set_level(av.logging.FATAL)
@@ -42,7 +44,7 @@ class VideoSubclipTensorRead(nn.Module):
         frames = []
         start_pts = int(start_time / stream.time_base)
         container.seek(start_pts, stream=stream, any_frame=False, backward=True)
-        frame_period = 1.0 / self.target_fps if self.target_fps > 0 else 1      # seconds per output frame
+        frame_period = 1.0 / self.target_fps if self.target_fps > 0 else 1  # seconds per output frame
         # TODO guard se fps lower than og
         next_t = start_time
         for idx, frame in enumerate(container.decode(stream)):
@@ -56,10 +58,11 @@ class VideoSubclipTensorRead(nn.Module):
                 continue
 
             if t >= next_t:
-                frames.append(frame.to_ndarray(format="rgb24"))
+                frames.append(frame.to_ndarray(format="rgb24").T)
                 next_t += frame_period
 
         container.close()
+        # TODO memory qui ineficcient
         return torch.from_numpy(np.stack(frames)).to(self.device).type(dtype=self.tensor_dtype)
 
 
@@ -69,6 +72,7 @@ class VideoToTensor(nn.Module):
         self.device = device
         self.tensor_dtype = tensor_dtype
 
+    @call_log()
     def forward(self, x: Video) -> torch.Tensor:
         frames: torch.Tensor = x.data
         if isinstance(x.data, VideoFileClip):
@@ -82,6 +86,7 @@ class UnbufferedResize(nn.Module):
         super().__init__()
         self.new_size = new_size
 
+    @call_log()
     def forward(self, x: Video):
         clip: VideoFileClip = x.data
         check_video_data(x, VideoFileClip)
@@ -89,6 +94,7 @@ class UnbufferedResize(nn.Module):
 
 
 class SubclipVideo(nn.Module):
+    @call_log()
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
         x.data = VideoFileClip(x.filepath)
@@ -112,6 +118,7 @@ class VideoSequenceResampling(nn.Module):
         self.frames_resampler = frames_resampler
 
     @timed()
+    @call_log()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, c, h, w = x.shape
         segments = int(T / self.sequence_length)
@@ -141,6 +148,7 @@ class RegularFrameResampling(nn.Module):
         self.drop_mask: bool = drop_mask
 
     @timed()
+    @call_log()
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         T, c, h, w = x.shape
 
@@ -215,6 +223,7 @@ class RecencyBiasedCausalResampling(nn.Module):
         return idx_abs.to(torch.long)
 
     @timed()
+    @call_log()
     def forward(self, x: torch.Tensor):
         """
         x: [T, C, H, W] where x[-1] is the most recent frame at time t.
@@ -260,6 +269,7 @@ class ViVitImageProcessorTransform(nn.Module):
 
     @torch.inference_mode()
     @timed()
+    @call_log()
     def forward(self, x):
         if isinstance(x, torch.Tensor) and len(x.shape) == 3:
             x = [x]
@@ -289,6 +299,7 @@ class ViVitEmbedderTransform(nn.Module):
         self.mini_batch_size: int = mini_batch_size
 
     @timed()
+    @call_log()
     def forward(self, x) -> torch.Tensor:
         if x.count_nonzero() == 0 and x.dim() == 1:
             return x  # Empty tensor
@@ -317,6 +328,7 @@ class ViVitForVideoClassificationEmbedderTransform(nn.Module):
         self.force_time_seq = force_time_seq
 
     @timed()
+    @call_log()
     def forward(self, x):
         with torch.inference_mode():
             x["pixel_values"] = x["pixel_values"].unsqueeze(0)
@@ -332,6 +344,7 @@ class VateVideoResamplerTransform(nn.Module):
         self.video_resampler = VideoResampler(detect_conf=detect_conf, reduce_bbox=reduce_bbox, min_frames=min_frames)
 
     @timed()
+    @call_log()
     def forward(self, x: Video) -> torch.Tensor:
         x.data = torch.tensor(self.video_resampler.resample_clip(x.data))
         return x.data
@@ -350,6 +363,7 @@ class ViVitPyramidPatchPooling(nn.Module):
                                 "It might be better to just not do it, thus pyramid pooling is disabled for this iteration.")
             self.use_pyramid_pooling = False
 
+    @call_log()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.count_nonzero() == 0 and x.dim() == 1:
             # TODO REASHPE

@@ -16,6 +16,15 @@ from main.utils.logging import make_logger
 IDENTITY = Lambda(lambda x: x)
 
 
+class BaseTransform(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.logger = make_logger(str(self.__class__.__name__))
+
+    def before_log(self):
+        self.logger.info(f"Entering transform {self.__class__.__name__}")
+
+
 class SequenceResampler(nn.Module, ABC):
     def __init__(self, sequence_length: int, resampler: nn.Module = IDENTITY):
         super(SequenceResampler, self).__init__()
