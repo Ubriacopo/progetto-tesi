@@ -18,23 +18,21 @@ from .video import Video
 
 
 class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, target_fps: int = 32, device="cpu", max_width: int = 224,
-                 max_height: int = 224, strict_resize: bool = True):
+    def __init__(self, target_fps: int = 32, device="cpu", max_edge_size: int = 224, strict_resize: bool = True):
         super().__init__()
         self.device = device
         self.target_fps: int = target_fps
 
         # Size
-        self.width: int = max_width
-        self.height: int = max_height
+        self.max_edge_size: int = max_edge_size
         # If we want to resize exactly to the max values
         self.strict_resize: bool = strict_resize
 
         av.logging.set_level(av.logging.FATAL)
 
     def fit_into(self, width, height):
-        scale = min(self.width / width, self.height / height)
-        return int(width * scale), int(height * scale)
+        scale = self.max_edge_size / max(width, height)
+        return int(round(width * scale)), int(round(height * scale))
 
     @timed()
     @call_log()
@@ -57,25 +55,33 @@ class VideoSubclipTensorRead(nn.Module):
         next_t = start_time
 
         for idx, frame in enumerate(container.decode(stream)):
+            if frame.pts is None:
+                continue
+
             t = frame.pts * float(stream.time_base)
-            if frame.pts is None or t < start_time:
+            if t < start_time:
                 continue
             if t >= stop_time:
                 break
 
             if t >= next_t:
                 # The frame is to be picked up.
-                if self.strict_resize and (frame.width != self.width or frame.height != self.height):
+                if self.strict_resize and (frame.width != self.max_edge_size or frame.height != self.max_edge_size):
                     # Strict resizing
-                    new_w, new_h = self.fit_into(frame.width, frame.height)
+                    scale = self.max_edge_size / min(frame.width, frame.height)
+                    new_w = int(round(frame.width * scale))
+                    new_h = int(round(frame.height * scale))
+
                     resized = frame.reformat(width=new_w, height=new_h, format="rgb24")
                     arr = resized.to_ndarray()
-                    pad_h, pad_w = self.height - new_h, self.width - new_w
-                    # H W C padding in order.
-                    pad = ((pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2), (0, 0))
-                    arr = np.pad(arr, pad, mode="constant", constant_values=0)
+                    # Center crop
+                    h, w, _ = arr.shape
+                    top = max(0, (h - self.max_edge_size) // 2)
+                    left = max(0, (w - self.max_edge_size) // 2)
 
-                elif not self.strict_resize and (frame.width > self.width or frame.height > self.height):
+                    arr = arr[top:top + self.max_edge_size, left:left + self.max_edge_size, :]
+
+                elif not self.strict_resize and (frame.width > self.max_edge_size or frame.height > self.max_edge_size):
                     # Only downscale. Padding will be handled elsewhere
                     new_w, new_h = self.fit_into(frame.width, frame.height)
                     resized = frame.reformat(width=new_w, height=new_h, format="rgb24")
