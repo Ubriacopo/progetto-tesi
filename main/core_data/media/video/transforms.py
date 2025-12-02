@@ -119,6 +119,7 @@ class UnbufferedResize(nn.Module):
         return replace(x, data=clip.resized(height=self.new_size[0]), resolution=self.new_size)
 
 
+
 class SubclipVideo(nn.Module):
     @call_log()
     # noinspection PyMethodMayBeStatic
@@ -299,6 +300,10 @@ class ViVitVideoTensorImageProcessorTransform(nn.Module):
         x.value = frames["pixel_values"]
         return x
 
+class DropBatchFromViVitProcessingTransform(nn.Module):
+    def forward(self, x:VideoTensor):
+        x.value = x.value.squeeze(0)
+        return x
 
 class ViVitImageProcessorTransform(nn.Module):
     def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", processor: VivitImageProcessor = None):
