@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import replace
 from typing import Literal, Optional, Iterable
 
@@ -17,14 +18,16 @@ from .utils import check_video_data
 from .video import Video
 
 
-# TODO Rework to go to target fps
-class VideoSubclipTensorRead(nn.Module):
-    def __init__(self, target_fps: int = 30, device="cpu",
-                 tensor_dtype: dtype = torch.float32, target_w: int = 500, target_h: int = 500):
-        super().__init__()
+@dataclasses.dataclass
+class VideoTensor:
+    value: torch.Tensor
+    fps: int
 
+
+class VideoSubclipTensorRead(nn.Module):
+    def __init__(self, target_fps: int = 30, device="cpu", target_w: int = 500, target_h: int = 500):
+        super().__init__()
         self.device = device
-        self.tensor_dtype = tensor_dtype
         self.target_fps: int = target_fps
 
         # Size
@@ -39,14 +42,14 @@ class VideoSubclipTensorRead(nn.Module):
 
     @timed()
     @call_log()
-    def forward(self, x: Video):
+    def forward(self, x: Video) -> VideoTensor:
         container = av.open(x.filepath)
         stream = container.streams.video[0]
 
         start, stop = x.interval
         offset = 0 if x.offset is None else x.offset
         duration = float(stream.duration * stream.time_base)
-        # TODO vedi se indexes are correct. FPS are different for that so it crashes
+
         start_time = max(min(duration, start - offset), 0)
         stop_time = max(min(duration, stop - offset), 0)
 
@@ -80,8 +83,7 @@ class VideoSubclipTensorRead(nn.Module):
                 next_t += frame_period
 
         container.close()
-        # TODO memory qui ineficcient
-        return torch.from_numpy(np.stack(frames)).to(self.device)
+        return VideoTensor(value=torch.from_numpy(np.stack(frames)).to(self.device), fps=min(self.target_fps, x.fps))
 
 
 class VideoToTensor(nn.Module):
@@ -130,24 +132,25 @@ class SubclipVideo(nn.Module):
 
 
 class VideoSequenceResampling(nn.Module):
-    def __init__(self, original_fps: int, sequence_duration_seconds: int | float, frames_resampler: nn.Module):
+    def __init__(self, sequence_duration_seconds: int | float, frames_resampler: nn.Module):
         super().__init__()
-        self.sequence_length = original_fps * sequence_duration_seconds
+        self.sequence_duration_seconds = sequence_duration_seconds  # 30fps * 4s -> 120 frames MA per 25fps -> 100
         self.frames_resampler = frames_resampler
 
     @timed()
     @call_log()
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        T, c, h, w = x.shape
-        segments = int(T / self.sequence_length)
+    def forward(self, x: VideoTensor) -> torch.Tensor:
+        T, c, h, w = x.value.shape
+        sequence_length = int(self.sequence_duration_seconds * x.fps)
+        segments = int(T / sequence_length)
 
-        if T % self.sequence_length != 0:
+        if T % sequence_length != 0:
             segments += 1
 
-        points = x.unbind(0)
+        points = list(x.value.unbind(0))
         y: Optional[torch.Tensor] = None
         for i in range(segments):
-            segment_points = points[i * self.sequence_length:(i + 1) * self.sequence_length]
+            segment_points = points[i * sequence_length:(i + 1) * sequence_length]
             res = self.frames_resampler(torch.stack(segment_points))
             res = res.unsqueeze(0)  # We have new dimension that records the sequence.
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
@@ -288,18 +291,12 @@ class ViVitImageProcessorTransform(nn.Module):
     @torch.inference_mode()
     @timed()
     @call_log()
-    def forward(self, x):
-        if isinstance(x, torch.Tensor) and len(x.shape) == 3:
-            x = [x]
-        elif isinstance(x, torch.Tensor) and x.count_nonzero() == 0 and x.dim() == 1:
-            return x  # Empty tensor
-        elif isinstance(x, torch.Tensor):
-            x = list(x.unbind(0))
-
-        x = self.processor.preprocess(x, return_tensors="pt")
+    def forward(self, x: VideoTensor) -> VideoTensor:
+        frames = list(x.value.unbind(0))
+        frames = self.processor.preprocess(frames, return_tensors="pt")
         if not self.force_time_seq:
-            x["pixel_values"] = x["pixel_values"].squeeze(0)
-
+            frames["pixel_values"] = frames["pixel_values"].squeeze(0)
+        x.value = frames["pixel_values"]
         return x
 
 
@@ -314,7 +311,7 @@ class ViVitEmbedderTransform(nn.Module):
         # If the device is the same we don't have to remap.
         self.map_to = map_to if map_to is not None and map_to != self.device else None
 
-        self.mini_batch_size: int = mini_batch_size
+        self.mini_batch_size: Optional[int] = mini_batch_size
 
     @timed()
     @call_log()
@@ -383,10 +380,6 @@ class ViVitPyramidPatchPooling(nn.Module):
 
     @call_log()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.count_nonzero() == 0 and x.dim() == 1:
-            # TODO REASHPE
-            return x  # Empty tensor
-
         x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
         # Average pooling over the spatial grid
         x = x.mean(dim=-2)

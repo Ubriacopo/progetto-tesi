@@ -21,11 +21,9 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
     patches = 16  # From our PyramidPatchPooling
 
     return Video.modality_code(), SequentialWithFallback(
-        VideoSubclipTensorRead(30),
+        VideoSubclipTensorRead(target_fps=30),
         ViVitImageProcessorTransform(),
-        v2.Lambda(lambda x: x.pixel_values if "pixel_values" in x else x),
         VideoSequenceResampling(
-            original_fps=config.vid_source_config.fps,
             sequence_duration_seconds=config.unit_seconds,
             # frames_resampler=RegularFrameResampling(target_config.max_frames, drop_mask=True)
             frames_resampler=RegularFrameResampling(max_length=config.vid_target_config.max_frames, drop_mask=True),
