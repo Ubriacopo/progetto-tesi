@@ -79,7 +79,7 @@ class EcgSequenceResampling(nn.Module):
     def forward(self, x: ECG) -> ECG:
         if self.channels_first:
             x.data = x.data.T
-        sequence_length = x.fs * self.sequence_duration_seconds
+        sequence_length = int(x.fs * self.sequence_duration_seconds)
         segments = int(x.data.shape[0] / sequence_length)
         if x.data.shape[0] % sequence_length != 0:
             segments += 1
