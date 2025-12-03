@@ -7,7 +7,8 @@ import torch
 import torchinfo
 from torch.utils.data import DataLoader, ConcatDataset
 
-from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
+from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey
+from main.core_data.media.assessment.assessment import Assessment
 from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
@@ -77,14 +78,35 @@ def main(cfg: KdConfig):
             ECG.modality_code()
         ],
     )
+    # todo da leggere da config
+    student_keys: list[RequiredKey] = [
+        RequiredKey(EEG.modality_code(), shape=(8, 32, 34, 256), mask_shape=(8, 32, 34), cannot_miss=True),
+        # RequiredKey("meta", ), Cannot recreate this.
+        RequiredKey(Assessment.modality_code(), shape=(4,), mask_shape=(4,)),
+        RequiredKey(Video.modality_code(), shape=(8, 16, 768), mask_shape=(8,)),
+        RequiredKey(Audio.modality_code(), shape=(8, 199, 768), mask_shape=(8,)),
+        RequiredKey(ECG.modality_code(), shape=(8, 32, 256), mask_shape=(8,)),
+        RequiredKey(Text.modality_code(), shape=(8, 384), mask_shape=(8,))
+    ]
 
     student_dataset = ConcatDataset([
-        FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, cache_in_ram=True)
+        FlexibleEmbeddingsSpecMediaDataset(
+            dataset_spec_file=file, cache_in_ram=True, required_keys=student_keys, main_key=EEG.modality_code()
+        )
         for file in cfg.student_dataset_path
     ])
 
+    # todo da leggere da config
+    teacher_keys: list[RequiredKey] = [
+        RequiredKey(Video.modality_code(), shape=(400,), mask_shape=(1,), cannot_miss=True),
+        RequiredKey(Audio.modality_code(), shape=(768,), mask_shape=(1,)),
+        RequiredKey(Text.modality_code(), shape=(768,), mask_shape=(1,))
+    ]
+
     teacher_dataset = ConcatDataset([
-        FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, cache_in_ram=True)
+        FlexibleEmbeddingsSpecMediaDataset(
+            dataset_spec_file=file, cache_in_ram=True, required_keys=teacher_keys, main_key=Video.modality_code()
+        )
         for file in cfg.teacher_dataset_path
     ])
 
