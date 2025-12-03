@@ -31,7 +31,6 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
         default_remap=EmptyObjectTransform(shape=(max_length, 199, 768), mask_shape=(max_length,)),
     )
 
-
 def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfig, fs: int, max_length: int) \
         -> tuple[str, nn.Module]:
     return Audio.modality_code(), nn.Sequential(
@@ -54,5 +53,5 @@ def aud_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module
         HubertFeatureExtractor(),
         v2.Lambda(lambda x: x.to("cpu")),
         ToSimpleMaskedObject(stop_at_dim=-1),
-        default_remap=EmptyObjectTransform(shape=(768,), mask_shape=(1,)),
+        default_remap=EmptyObjectTransform(shape=(768,), mask_shape=(1,), reduce_mask=True),
     )

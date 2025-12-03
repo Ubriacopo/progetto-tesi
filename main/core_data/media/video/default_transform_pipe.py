@@ -48,5 +48,5 @@ def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module
         ViVitForVideoClassificationEmbedderTransform(),
         v2.Lambda(lambda x: x.to("cpu")),
         ToSimpleMaskedObject(stop_at_dim=-1),
-        default_remap=EmptyObjectTransform(shape=(400,), mask_shape=(1,)),
+        default_remap=EmptyObjectTransform(shape=(400,), mask_shape=(1,), reduce_mask=True),
     )

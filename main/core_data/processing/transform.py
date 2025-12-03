@@ -152,15 +152,21 @@ class SequentialWithFallback(nn.Module):
 
 
 class EmptyObjectTransform(nn.Module):
-    def __init__(self, shape: Tuple[int, ...], mask_shape: Tuple[int, ...] = None, device=torch.device('cpu')):
+    def __init__(self, shape: Tuple[int, ...], mask_shape: Tuple[int, ...] = None, device=torch.device('cpu'),
+                 reduce_mask: bool = False):
         super().__init__()
         self.shape: Tuple[int, ...] = shape
         self.mask_shape: Tuple[int, ...] = mask_shape
+        self.reduce_mask: bool = reduce_mask
         # Where to create the new objects. Defaults to CPU
         self.device = device
 
     def forward(self) -> MaskedValue | torch.Tensor:
         data = torch.zeros(self.shape, device=self.device)
         if self.mask_shape is not None:
-            return MaskedValue(data=data, mask=torch.zeros(self.mask_shape, device=self.device))
+            mask = torch.zeros(self.mask_shape, device=self.device)
+            if self.reduce_mask:
+                mask = mask.squeeze(0)
+            return MaskedValue(data=data, mask=mask)
+
         return torch.zeros(data)
