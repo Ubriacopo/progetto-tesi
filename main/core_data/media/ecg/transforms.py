@@ -60,7 +60,7 @@ class EcgFmEmbedderTransform(nn.Module):
         return embeddings
 
 
-class EcgDataAsTensor(nn.Module):
+class EcgDataToTensor(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: ECG) -> ECG:
         x.data = torch.from_numpy(x.data.get_data())
@@ -68,10 +68,10 @@ class EcgDataAsTensor(nn.Module):
 
 
 class EcgSequenceResampling(nn.Module):
-    def __init__(self, original_fs: int, sequence_duration_seconds: int,
+    def __init__(self, sequence_duration_seconds: int,
                  resampler: nn.Module = IDENTITY, channels_first: bool = False):
         super().__init__()
-        self.sequence_length = original_fs * sequence_duration_seconds
+        self.sequence_duration_seconds = sequence_duration_seconds
         self.resampler: nn.Module = resampler
         self.channels_first = channels_first
 
@@ -79,18 +79,18 @@ class EcgSequenceResampling(nn.Module):
     def forward(self, x: ECG) -> ECG:
         if self.channels_first:
             x.data = x.data.T
-
-        segments = int(x.data.shape[0] / self.sequence_length)
-        if x.data.shape[0] % self.sequence_length != 0:
+        sequence_length = x.fs * self.sequence_duration_seconds
+        segments = int(x.data.shape[0] / sequence_length)
+        if x.data.shape[0] % sequence_length != 0:
             segments += 1
 
         y: Optional[torch.Tensor] = None
         for i in range(segments):
-            # TODO use context of previous time steps?
-            x_i = x.data[i * self.sequence_length:(i + 1) * self.sequence_length]
+            x_i = x.data[i * sequence_length:(i + 1) * sequence_length]
             res = self.resampler(x_i)
             if self.channels_first:
                 res = res.T
+
             res = res.unsqueeze(0)
             # We have new dimension that records the sequence.
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
