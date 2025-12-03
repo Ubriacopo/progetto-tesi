@@ -46,12 +46,13 @@ def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfi
 
 
 def aud_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
-    return Audio.modality_code(), nn.Sequential(
+    return Audio.modality_code(), SequentialWithFallback(
         SubclipAudio(),  # In the split interval
         AudioToTensor(),
         ToMono(),
         HubertBaseComputeFeature(original_fs=config.aud_source_config.fs),
         HubertFeatureExtractor(),
         v2.Lambda(lambda x: x.to("cpu")),
-        ToSimpleMaskedObject(stop_at_dim=-1)
+        ToSimpleMaskedObject(stop_at_dim=-1),
+        default_remap=EmptyObjectTransform(shape=(768,), mask_shape=(1,)),
     )

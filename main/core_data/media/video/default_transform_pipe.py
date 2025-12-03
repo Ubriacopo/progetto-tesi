@@ -39,7 +39,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
 
 # todo change
 def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
-    return Video.modality_code(), nn.Sequential(
+    return Video.modality_code(), SequentialWithFallback(
         VideoSubclipTensorRead(target_fps=32, max_edge_size=224),
         VateVideoResamplerTransform(min_frames=config.vid_target_config.max_frames),
         v2.Lambda(lambda x: torch.tensor(x)),
@@ -47,5 +47,6 @@ def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module
         ViVitImageProcessorTransform(),
         ViVitForVideoClassificationEmbedderTransform(),
         v2.Lambda(lambda x: x.to("cpu")),
-        ToSimpleMaskedObject(stop_at_dim=-1)
+        ToSimpleMaskedObject(stop_at_dim=-1),
+        default_remap=EmptyObjectTransform(shape=(400,), mask_shape=(1,)),
     )

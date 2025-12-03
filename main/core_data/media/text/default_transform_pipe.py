@@ -34,5 +34,5 @@ def txt_vate_basic_transform_pipe() -> tuple[str, nn.Module]:
         SubclipTextExtract(interleaved=False),
         BertEmbeddings(),
         ToSimpleMaskedObject(stop_at_dim=-1),
-        default_remap=EmptyObjectTransform(shape=(384,), mask_shape=(384,)),
+        default_remap=EmptyObjectTransform(shape=(768,), mask_shape=(1,)),
     )
