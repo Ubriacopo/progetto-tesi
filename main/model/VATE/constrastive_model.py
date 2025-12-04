@@ -36,21 +36,22 @@ class MaskedContrastiveModel(nn.Module):
     def forward(self, vid: MaskedValue, aud: MaskedValue, txt: MaskedValue, **kwargs) \
             -> MaskedContrastiveModelOutputs:
         vid_data, vid_mask = vid["data"], vid["mask"]
-        vid_data = self.embedding_video(vid_data)
-        vid_data = nn.functional.normalize(vid_data)
+        vid_emb = self.embedding_video(vid_data)
+        vid_emb = nn.functional.normalize(vid_emb)
+        vid_emb = vid_emb * vid_mask.unsqueeze(-1)
 
         aud_data, aud_mask = aud["data"], aud["mask"]
-        if aud_mask.any():
-            aud_data = self.embedding_audio(aud_data)
-            aud_data = nn.functional.normalize(aud_data)
+        aud_emb = self.embedding_audio(aud_data)
+        aud_emb = nn.functional.normalize(aud_emb)
+        aud_emb = aud_emb * aud_mask.unsqueeze(-1)
 
         txt_data, txt_mask = txt["data"], txt["mask"]
-        if txt_mask.any():
-            txt_data = self.embedding_text(txt_data)
-            txt_data = nn.functional.normalize(txt_data)
+        txt_emb = self.embedding_text(txt_data)
+        txt_emb = nn.functional.normalize(txt_emb)
+        txt_emb = txt_emb * txt_mask.unsqueeze(-1)
 
         return {
-            "vid": MaskedValue(data=vid_data, mask=vid_mask),
-            "aud": MaskedValue(data=aud_data, mask=aud_mask),
-            "txt": MaskedValue(data=txt_data, mask=txt_mask)
+            "vid": MaskedValue(data=vid_emb, mask=vid_mask),
+            "aud": MaskedValue(data=aud_emb, mask=aud_mask),
+            "txt": MaskedValue(data=txt_emb, mask=txt_mask)
         }

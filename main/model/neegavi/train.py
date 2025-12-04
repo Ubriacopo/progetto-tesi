@@ -109,32 +109,44 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         base_loss = torch.tensor(0.0, device=fused_output.device)
         for key, value in modality_outputs.items():
             self.verbose and print(f"\nFor key {key}:")
-            y_before, mask_before = value["data"], value["mask"].unsqueeze(-1)
+            # Trova righe valide, le altre possiamo lasciarle perdere.
+            valid_rows = value["mask"].sum(dim=1) > 0
+            if not valid_rows.any():
+                continue
 
-            y_before = (y_before * mask_before).sum(dim=1) / mask_before.sum(dim=1)
-            mod_loss = self.siglip_losses[key](fused_output, y_before)
+            # Take only valid rows
+            y_before = value["data"][valid_rows]
+            modality_output = fused_output[valid_rows]
+            mask = value["mask"][valid_rows].unsqueeze(-1).float()
+
+            y_mean = (y_before * mask).sum(dim=1) / mask.sum(dim=1)
+            mod_loss = self.siglip_losses[key](modality_output, y_mean)
             self.log("siglip_" + key, mod_loss, on_epoch=True, on_step=False, prog_bar=True)
             base_loss = base_loss + mod_loss
 
         # Cumulative loss between all modalities non normalized
         return base_loss
 
-    def compute_supervised_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def compute_supervised_loss(self, pred: torch.Tensor, target: MaskedValue) -> torch.Tensor:
         # Compute concordance correlation coefficient that measures the agreement between two variables.
         # In emotion regression (valence, arousal, dominance), this is the standard metric and loss used in benchmarks.
         #
         # Correlation and agreement rather than absolute distance.
 
         tol = 1e-8
-
         T = 2  # warmup length (epochs) – tune this
 
-        t_std = target.std(dim=0, unbiased=False)
-        p_std = pred.std(dim=0, unbiased=False)
-        mask = (t_std > tol) & (p_std > tol)
+        mask = target["mask"].any(dim=-1)
+        # Drop missing rows.
+        y = target["data"][mask]
+        pred = pred[mask]
 
-        if mask.any():
-            pred, target = pred[:, mask].float(), target[:, mask].float()
+        t_std = y.std(dim=0, unbiased=False)
+        p_std = pred.std(dim=0, unbiased=False)
+        std_mask = (t_std > tol) & (p_std > tol)
+
+        if std_mask.any():
+            pred, target = pred[:, std_mask].float(), y[:, std_mask].float()
             pearson = pearson_corrcoef(pred, target).mean().float()
             concordance = concordance_corrcoef(pred, target).mean().float()
             w = min(1.0, float(self.current_epoch) / T)  # or cosine ramp
@@ -144,7 +156,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log("supervised (CCC & Pearson)", loss, on_epoch=True, on_step=False, prog_bar=True)
             loss = loss.to(pred.dtype)
             return loss
-        else:
-            loss = F.mse_loss(pred, target).float()
+
+        elif mask.any():
+            loss = F.mse_loss(pred, y).float()
             self.log("supervised", loss, on_epoch=True, on_step=False, prog_bar=True)
             return loss
+
+        return torch.tensor(.0, device=pred.device, dtype=pred.dtype)

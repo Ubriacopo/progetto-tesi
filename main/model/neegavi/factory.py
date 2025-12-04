@@ -18,7 +18,7 @@ class EegInterAviFactory:
         return EegInterAviModel(output_size, pivot, supports, xattn_blocks, drop_p, use_modality_encoder)
 
     @staticmethod
-    def default(target_size: int, supports_latent_size: int, channels: int = 32,
+    def default(target_size: int, supports_latent_size: int, channels: int = 34,
                 teacher_out_shape: Tuple[int, ...] = (1, 100),
                 # Further settings:
                 use_modality_encoder: bool = True, xattn_blocks: int = 2):
@@ -136,7 +136,7 @@ class EegInterAviFactory:
     @staticmethod
     def weak_supervised_interleaved(output_size: int,
                                     base_model_target_size: int, supports_latent_size: int,
-                                    channels: int = 32,
+                                    channels: int = 34,
                                     teacher_out_shape: Tuple[int, ...] = (1, 100),
                                     # Further settings:
                                     use_modality_encoder: bool = True,

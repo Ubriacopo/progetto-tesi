@@ -26,6 +26,9 @@ class ModalityStream(nn.Module):
         self.kd_head: Optional[KDHead] = kd_head
 
     def forward(self, x: torch.Tensor, mask=None, use_kd=True, **kwargs) -> MaskedValue | KdMaskedValue:
+        if mask is not None and isinstance(mask, torch.Tensor):
+            mask = mask.bool()
+
         output = {"data": x, "mask": mask}
         y: MaskedValue = self.adapter(x, mask=mask)
         if use_kd and self.use_kd:

@@ -108,6 +108,9 @@ class EegInterAviModel(nn.Module):
         t = x["data"].shape[1]
 
         mask = x.get("mask", None)
+        if mask is not None and isinstance(mask, torch.Tensor):
+            mask = mask.bool()
+
         # For the moment ignore idx
         y: MaskedValue | KdMaskedValue = modality(x["data"], mask=x.get("mask", None), use_kd=use_kd)
         if "kd" in y:
