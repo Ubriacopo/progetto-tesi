@@ -38,7 +38,15 @@ class EavPointsLoader(DataPointsLoader):
                 subject_id = i.stem.split('subject')[1]
                 matlab_file = loadmat(f"{i}/EEG/subject{subject_id}_eeg.mat")
 
-                eeg = matlab_file["seg"]
+                if "seg" in matlab_file:
+                    eeg = matlab_file["seg"]
+                elif "seg1" in matlab_file:
+                    # Questa è un vero pasticcio. Qualcuno qui ha fatto pasticci suppongo.
+                    eeg = matlab_file["seg1"]
+                else:
+                    raise ValueError("The matlab file is missing the correct column to elaborate the data."
+                                     f"File has: {matlab_file.keys()} and not 'seg'")
+
                 eeg = rearrange(eeg, "d c b -> b c d")
                 # Video files for this dataset are the double of audio files
                 for video_file in Path(str(i) + "/Video").iterdir():
