@@ -7,6 +7,7 @@ from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.eeg import EEG
 from main.core_data.sampler import Segmenter
+from main.utils.logging import make_logger
 
 
 class Extractor(ABC):
@@ -28,12 +29,14 @@ class SegmentBasedExtractionProcessor:
         for file in Path(self.base_path).glob("*-segments.csv"):
             self.seen.append(str(file.name).replace("-segments.csv", ""))
 
+        self.logger = make_logger(self.__class__.__name__)
+
     def extract_segments(self) -> list[list[str]]:
         outs = []
         for x in self.points_loader.scan():
             key = x.get_identifier()
-            if x[key] in self.seen:
-                print(f"Skipping {x[key]} as it was already extracted")
+            if str(x[key]) in self.seen:
+                self.logger.info(f"Skipping {x[key]} as it was already extracted")
                 continue
             # We want the number of segments to depend on the length. Bounding at least 20 segments:
             # min: 20 max: 100 ?
