@@ -157,7 +157,7 @@ class FlexibleDatasetTransformWrapper:
                             if expand_key in y[key]:
                                 y[expand_key] = y[key].pop(expand_key)
 
-                except ValueError as error:
+                except Exception as error:
                     self.logger.error(error, exc_info=True)
                     y[key] = torch.zeros(1)  # We set a single vector for failed operations
         return y

@@ -108,6 +108,8 @@ class VideoSubclipTensorRead(nn.Module):
                 next_t += frame_period
 
         container.close()
+        if len(frames) == 0:
+            raise ValueError(f"No frames found for {x.eid} in range {start} to {stop} while applying offset of {offset}.")
         return VideoTensor(value=torch.from_numpy(np.stack(frames)).to(self.device), fps=min(self.target_fps, x.fps))
 
 
