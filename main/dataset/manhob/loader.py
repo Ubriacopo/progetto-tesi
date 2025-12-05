@@ -38,14 +38,17 @@ class ManhobPointsLoader(DataPointsLoader):
                 raw: Optional[RawEDF] = None
                 clip: Optional[VideoFileClip] = None
 
+                offset = 30  # Delay of videocamera start
                 for file in i.iterdir():
                     if file.suffix == ".bdf":
                         raw: RawEDF = mne.io.read_raw_bdf(str(file), preload=True)
-                        # TODO mne.find_events(raw) mi trova eventi coerenti.
-                        #       Problema non posso essere certo su quale dei due sia start di video.
-                        #       Dovrei farmi dare resources
                         data, info = raw.get_data(), raw.info
+                        events = mne.find_events(raw)
+                        if len(events) > 0:
+                            # First event should always match to the delay of videocamera start.
+                            offset = (events[0] / info['sfreq'])[0]
                         raw: RawArray = mne.io.RawArray(data, info)
+
 
                     elif file.suffix == ".avi":
                         clip = VideoFileClip(str(file))
@@ -63,9 +66,9 @@ class ManhobPointsLoader(DataPointsLoader):
                     ECG(eid=experiment_id, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS),
                         fs=raw.info['sfreq'], leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
                     # All MANHOB videos have 30s offset
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id, offset=30).as_mod_tuple(),
+                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id,
+                          offset=offset, filepath=clip.filename).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
-                    # No assessment! TODO Vedi se rompe objective
                 )
             except Exception as e:
                 self.logger.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
