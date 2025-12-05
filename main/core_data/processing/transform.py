@@ -72,13 +72,13 @@ class Branch(nn.Module):
 
 
 class MultimediaPadding(nn.Module):
-    def __init__(self, max_length: int, drop_mask: bool = False, padding: Literal['zero', 'none', 'last'] = 'zero'):
+    def __init__(self, max_length: int, drop_mask: bool = False, padding: Literal['zero'] = 'zero'):
         super(MultimediaPadding, self).__init__()
         self.max_length = max_length
         self.drop_mask = drop_mask
         self.padding: Literal['zero', 'last', 'none'] = padding
 
-    def forward(self, x: torch.Tensor) -> dict | torch.Tensor:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor] | torch.Tensor:
         # Base case
         T = x.shape[0]
         if T > self.max_length:
@@ -87,14 +87,14 @@ class MultimediaPadding(nn.Module):
 
         # The input x is okay so we can just return it.
         if T == self.max_length:
-            mask = torch.ones(T).bool()
+            mask = torch.ones(T, device=x.device, dtype=torch.bool)
             return {"data": x, "mask": mask} if not self.drop_mask else x
 
         # We have to pad
         if self.padding == 'zero':
-            pad = torch.zeros_like(x[0]).unsqueeze(0).repeat_interleave(self.max_length - T, dim=0)
+            pad = x.new_zeros(self.max_length - T, *x.shape[1:])
             x = torch.cat([x, pad])
-            mask = torch.zeros(self.max_length).bool()
+            mask = torch.zeros(self.max_length, device=x.device, dtype=torch.bool)
             mask[:T] = True
             return {"data": x, "mask": mask} if not self.drop_mask else x
 

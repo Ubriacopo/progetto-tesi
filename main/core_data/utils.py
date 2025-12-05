@@ -156,11 +156,12 @@ def debug_exceptional_catch(func):
 
 def call_log(before: bool = True, after: bool = False, suppress: bool = BaseConfig.SUPPRESS_ENTER_LEAVE_LOG):
     def decorator(fn):
+        # Disable the function entirely
+        if suppress:
+            return fn
+
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            if suppress:
-                return fn(*args, **kwargs)
-
             name = fn.__name__
             classname = "[function]"
             if args and hasattr(args[0], "__class__"):
@@ -179,14 +180,13 @@ def call_log(before: bool = True, after: bool = False, suppress: bool = BaseConf
 
 def timed(label: str = None, longer_than: float = 0.5, suppress: bool = BaseConfig.SUPPRESS_TIMED):
     def decorator(fn):
-        logger = make_logger("timed")
+        # Disable the function entirely
+        if suppress:
+            return fn
 
+        logger = make_logger("timed")
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            # Disable the function entirely
-            if suppress:
-                return fn(*args, **kwargs)
-
             start = time.perf_counter()
             result = fn(*args, **kwargs)
             end = time.perf_counter()

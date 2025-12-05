@@ -8,28 +8,37 @@ from transformers import AutoFeatureExtractor, BatchFeature, WavLMModel
 
 from main.core_data.media.audio.audio import Audio
 from main.core_data.processing.transform import IDENTITY
-from main.core_data.utils import timed
+from main.core_data.utils import timed, call_log
 from main.utils.logging import make_logger
 
 
 class AudioToTensor(nn.Module):
+    def __init__(self, map_to=None):
+        super().__init__()
+        self.map_to = map_to
+
     # noinspection PyMethodMayBeStatic
     @timed()
+    @call_log()
     def forward(self, x: Audio):
         aud: AudioFileClip = x.data
         x = aud.to_soundarray()
         x = torch.from_numpy(x).float()
+
+        if self.map_to is not None:
+            x = x.to(self.map_to)
+
         aud.close()  # Close the process we are done with it
         return x
 
 
 class SubclipAudio(nn.Module):
-    def __init__(self, verbose: bool = True):
+    def __init__(self):
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
 
-    # noinspection PyMethodMayBeStatic
     @timed()
+    @call_log()
     def forward(self, x: Audio):
         x.data = AudioFileClip(x.filepath)
         aud: AudioFileClip = x.data
@@ -51,25 +60,22 @@ class ToMono(nn.Module):
         self.keepdim: bool = keepdim
         self.dim: int = dim
 
+    @call_log()
     def forward(self, x: torch.Tensor):
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Expected a torch.Tensor")
+            raise TypeError(f"Expected a torch.Tensor, got {type(x)}")
         return torch.mean(x, dim=self.dim, keepdim=self.keepdim)
 
 
-class AudioSequencePartitioning(nn.Module):
-    def __init__(self, fs: int, sequence_duration_seconds: float,
-                 resampler: nn.Module = IDENTITY, channels_first: bool = False):
+class MonoAudioSequencePartitioning(nn.Module):
+    def __init__(self, fs: int, sequence_duration_seconds: float, resampler: nn.Module = IDENTITY):
         super().__init__()
         self.sequence_length = round(fs * sequence_duration_seconds)
         self.resampler: nn.Module = resampler
-        self.channels_first = channels_first
 
+    @call_log()
     @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.channels_first:
-            x = x.T
-
         segments = int(x.shape[0] / self.sequence_length)
         if x.shape[0] % self.sequence_length != 0:
             segments += 1
@@ -78,32 +84,10 @@ class AudioSequencePartitioning(nn.Module):
         for i in range(segments):
             x_i = x[i * self.sequence_length:(i + 1) * self.sequence_length]
             res = self.resampler(x_i)
-            if self.channels_first:
-                res = res.T
             # We have new dimension that records the sequence.
             y: torch.Tensor = torch.cat((y, res)) if y is not None else res
 
         return y
-
-
-def check_audio_data(x, data_type: type):
-    if not isinstance(x, Audio):
-        raise TypeError("Given object is not of required type Audio")
-
-    if x.data is None:
-        raise ValueError("Audio has to be loaded first.")
-
-    if not isinstance(x.data, data_type):
-        raise TypeError("Given audio object is not valid")
-
-
-class FlattenFeatureExtractorOutput(nn.Module):
-    # noinspection PyMethodMayBeStatic
-    def forward(self, x):
-        x.input_values = x.input_values.squeeze()
-        if hasattr(x, "attention_mask"):
-            x.attention_mask = x.attention_mask.squeeze()
-        return x
 
 
 class WavLmFeatureExtractorTransform(nn.Module):

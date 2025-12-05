@@ -37,11 +37,12 @@ class SubclipMneRaw(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Signal) -> Signal:
         if not isinstance(x.data, mne.io.RawArray):
-            raise TypeError("Raw array must be a mne.io.Arrawy")
+            raise TypeError("Expected mne.io.RawArray")
 
         tmin, tmax = x.interval
-        tmin = max(min(x.data.times[-1], tmin), 0)
-        tmax = max(min(x.data.times[-1], tmax), 0)
+        duration = x.data.times[-1]
+        tmin = min(max(tmin, 0), duration)
+        tmax = min(max(tmax, 0), duration)
         x.fs = x.data.info["sfreq"]
         x.data = x.data.crop(tmin=tmin, tmax=tmax)
 
@@ -100,7 +101,8 @@ class SignalZeroMasking(nn.Module):
             return x if not transposed else x.T
 
         if x_points < self.max_data_points:
-            x = torch.cat([x, torch.zeros(x.shape[0], self.max_data_points - x_points)], dim=-1)
+            pad = torch.zeros(x.shape[0], self.max_data_points - x_points, device=x.device, dtype=x.dtype)
+            x = torch.cat([x, pad], dim=-1)
             return x if not transposed else x.T
 
         raise ValueError("Somehow you got here how can that be!")

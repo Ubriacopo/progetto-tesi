@@ -7,7 +7,7 @@ from torchvision.transforms import v2
 from main.core_data.media.video import Video
 from main.core_data.media.video.transforms import ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
-    UnbufferedResize, ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, VideoSubclipTensorRead, \
+    ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, VideoSubclipTensorRead, \
     ViVitVideoTensorImageProcessorTransform, DropBatchFromViVitProcessingTransform
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
     EmptyObjectTransform
@@ -27,7 +27,6 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         DropBatchFromViVitProcessingTransform(),
         VideoSequenceResampling(
             sequence_duration_seconds=config.unit_seconds,
-            # frames_resampler=RegularFrameResampling(target_config.max_frames, drop_mask=True)
             frames_resampler=RegularFrameResampling(max_length=config.vid_target_config.max_frames, drop_mask=True),
         ),
         ViVitEmbedderTransform(map_to="cpu"),

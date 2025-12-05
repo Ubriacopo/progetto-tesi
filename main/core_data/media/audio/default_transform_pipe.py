@@ -6,7 +6,7 @@ from torchvision.transforms import v2
 
 from main.core_data.media.audio import AudTargetConfig
 from main.core_data.media.audio import Audio
-from main.core_data.media.audio.transforms import SubclipAudio, AudioToTensor, ToMono, AudioSequencePartitioning, \
+from main.core_data.media.audio.transforms import SubclipAudio, AudioToTensor, ToMono, MonoAudioSequencePartitioning, \
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform, HubertBaseComputeFeature, HubertFeatureExtractor
 from main.core_data.media.signal.transforms import SignalZeroMasking
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
@@ -21,7 +21,7 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
         AudioToTensor(),
         ToMono(),
         Resample(orig_freq=config.aud_source_config.fs, new_freq=config.aud_target_config.fs),
-        AudioSequencePartitioning(
+        MonoAudioSequencePartitioning(
             fs=config.aud_target_config.fs, sequence_duration_seconds=config.unit_seconds,
             resampler=SignalZeroMasking(max_length=config.unit_seconds, fs=config.aud_target_config.fs),
         ),

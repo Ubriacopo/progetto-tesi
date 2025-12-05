@@ -11,6 +11,7 @@ from main.core_data.media.eeg.eeg import EEG
 from main.core_data.utils import timed
 from main.dataset.channel_canonical_order import EegCanonicalOrder
 from main.utils.data import MaskedValue
+from main.utils.logging import make_logger
 
 
 class EEGToTensor(nn.Module):
@@ -68,23 +69,36 @@ class EEGResample(nn.Module):
 
 class EEGToTimePatches(nn.Module):
     def __init__(self, points_per_patch: int, max_segments: int):
+        """
+        Partitions the input EEG in small time patches matching the fs
+
+        :param points_per_patch: How many points are stored inside a patch.
+        :param max_segments: Maximum number of time patches that can be extracted
+        """
         super().__init__()
         self.points_per_patch = points_per_patch
         self.max_segments = max_segments
 
         self.max_points = self.points_per_patch * self.max_segments
+        self.logger = make_logger(self.__class__.__name__)
 
     @timed()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 2:
+            raise ValueError(f"Expected 2D tensor (channels, time), got shape {x.shape}")
+
         c, d = x.shape
         T = d / self.points_per_patch
+
+        if d == 0:
+            raise ValueError("Got empty time axis in EEGToTimePatches")
 
         # Special case in which the extracted time sequence is longer than allowed
         # (This should never occur)
         if T > self.max_segments:
             # Center crop. Alternative would be sliding window.
-            print(f"Warning: Somehow you got more T than allowed ({T} > {self.max_segments}).\n"
-                  "Center-cropping is applied but investigate if this behaviour is desired.")
+            self.logger.warning(f"Warning: Somehow you got more T than allowed ({T} > {self.max_segments}).\n"
+                                "Center-cropping is applied but investigate if this behaviour is desired.")
             pad = int((d - self.max_points) / 2)
             x = x[:, pad:d - pad]
             x = x[:, :self.max_points]  # To be sure we took the correct number of points
@@ -109,39 +123,48 @@ class EegTimePadding(nn.Module):
         self.drop_mask: bool = drop_mask
 
     @timed()
-    def forward(self, x: MaskedValue | torch.Tensor) -> dict | torch.Tensor:
+    def forward(self, x: MaskedValue) -> dict | torch.Tensor:
         # If masking enabled I expect the mask to be of the shape [c, T].
-        mask = None
-        if isinstance(x, dict):
-            x, mask = x['data'], x['mask']
-        if mask is None:
-            mask = torch.zeros(self.max_length, x.shape[0]).bool()
+        data: torch.Tensor = x['data']
+        mask: torch.Tensor = x['mask']
 
-        if self.first_dim_batch:
-            x = x.squeeze(0)
-            mask = mask.squeeze(0)
+        # Optional batch dim (expect batch size 1)
+        if self.first_dim_batch and data.ndim == 4:
+            if data.shape[0] != 1 or mask.shape[0] != 1:
+                raise ValueError(f"Expected batch size 1, got data {data.shape[0]}, mask {mask.shape[0]}")
+            data, mask = data.squeeze(0), mask.squeeze(0)
 
-        if not len(x.shape) == 3:
-            raise ValueError(f"Expected 3D tensor, got {x.shape}. We want (c, T, D)")
+        if data.ndim != 3:
+            raise ValueError(f"Expected 3D tensor, got {data.shape} but we wanted (c, T, D)")
+        if mask.ndim != 2:
+            raise ValueError(f"Expected mask shape (c, T), got {mask.shape}")
 
-        T = x.shape[-2]
-        if self.max_length > T:
-            x = torch.nn.functional.pad(x, (0, 0, 0, self.max_length - T))
+        c, T, d = data.shape
+        if mask.shape != (c, T):
+            raise ValueError(f"Mask shape {mask.shape} incompatible with data shape {(c, T, d)}")
+
+        if T > self.max_length:
+            # Center crop
+            padding = (T - self.max_length) // 2
+            data = data[:, padding: padding + self.max_length, :]
+            mask = mask[:, padding: padding + self.max_length]
+
+        elif T < self.max_length:
+            padding = self.max_length - T
+            data = torch.nn.functional.pad(data, (0, 0, 0, padding))  # (C, T_max, D)
+            mask = torch.nn.functional.pad(mask, (0, padding))  # (C, T_max)
+
         # Set time steps first. We get a simpler MASK like this.
-        x = rearrange(x, 'c t d -> t c d')
-
-        mask = mask.T  # Mask is supposed to be 2D so i cant jus transpose
-        missing_elements = torch.zeros((self.max_length - T, *mask.shape[1:]), device=x.device)
-        mask = torch.cat((mask, missing_elements.bool()))
-
-        return x if self.drop_mask else {"data": x, "mask": mask}
+        data = rearrange(data, "c t d -> t c d")  # (T, C, D)
+        mask = rearrange(mask, "c t -> t c")      # (T, C)
+        return data if self.drop_mask else {"data": data, "mask": mask}
 
 
 class CBraModEmbedderTransform(nn.Module):
     def __init__(self, weights_path: str, device=None, **kwargs):
         super().__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
-        self.model = CBraMod(**kwargs).to(device)
+        self.model = CBraMod(**kwargs).to(self.device)
 
         if weights_path is not None:
             self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
@@ -153,12 +176,17 @@ class CBraModEmbedderTransform(nn.Module):
             x, mask = x["data"], x["mask"]
 
         if len(x.shape) == 3:
-            x = x.unsqueeze(0)  # Add the batch
-            mask = mask.unsqueeze(0)  # Add the batch
+            # Add the batch
+            x = x.unsqueeze(0)
+            if mask is not None:
+                mask = mask.unsqueeze(0)
+
+        x = x.float().to(self.device)
+        if mask is not None:
+            mask = mask.bool().to(self.device)
 
         with torch.inference_mode():
-            # I don't know what is wrong with CBraMod. I made a mistake somewhere.
-            z = self.model(x=x.float().to("cpu"), mask=mask.bool().to("cpu"))
+            z = self.model(x=x, mask=mask)
 
         return z if mask is None else {"data": z, "mask": mask}
 
@@ -192,6 +220,7 @@ class TimePooling(nn.Module):
     def __init__(self, to_seconds: int):
         super().__init__()
         self.to_seconds: int = to_seconds
+
     # TODO VERIFICA
     def forward(self, x: MaskedValue) -> MaskedValue:
         data = rearrange(x['data'], "c (t f) d -> c t f d", f=self.to_seconds)

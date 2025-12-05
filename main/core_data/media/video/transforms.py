@@ -19,6 +19,19 @@ from .video import Video
 
 class VideoSubclipTensorRead(nn.Module):
     def __init__(self, target_fps: int = 32, device="cpu", max_edge_size: int = 224, strict_resize: bool = True):
+        """
+        Takes an input Video. It loads the videofile from filepath via av and elaborates it.
+        It makes the subclip from (start, stop) and takes the frames with target fps by downsampling to target.
+        It then resizes each rame to match the max_edge_size.
+        
+        
+        :param target_fps: To what fps to map the source video. If the source fps are lower than given
+            the mapping simply goes for the lowest of the two.
+        :param device: On what device the tensor should be on.
+        :param max_edge_size: We assume as most video/img models that the inputs are box sized.
+            In case that ain't true this simply is the largest edge for resize.
+        :param strict_resize: If resize has to be box-like
+        """""
         super().__init__()
         self.device = device
         self.target_fps: int = target_fps
@@ -113,7 +126,7 @@ class VideoToTensor(nn.Module):
         return frames.type(dtype=self.tensor_dtype)
 
 
-class UnbufferedResize(nn.Module):
+class VideoFileClipUnbufferedResize(nn.Module):
     def __init__(self, new_size: tuple[int, int] | int):
         super().__init__()
         self.new_size = new_size
@@ -121,12 +134,10 @@ class UnbufferedResize(nn.Module):
     @call_log()
     def forward(self, x: Video):
         clip: VideoFileClip = x.data
-        check_video_data(x, VideoFileClip)
         return replace(x, data=clip.resized(height=self.new_size[0]), resolution=self.new_size)
 
 
-
-class SubclipVideo(nn.Module):
+class SubclipVideoFileClip(nn.Module):
     @call_log()
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Video):
@@ -146,6 +157,13 @@ class SubclipVideo(nn.Module):
 
 class VideoSequenceResampling(nn.Module):
     def __init__(self, sequence_duration_seconds: int | float, frames_resampler: nn.Module):
+        """
+        Partitions the input in clips of fixed duration. Each clip is resampled to fit a set number of frames.
+        As long as ViVit is being used, the target max length will be set to 32.
+
+        :param sequence_duration_seconds: How long each subclip should be
+        :param frames_resampler: The frame resampler to use
+        """
         super().__init__()
         self.sequence_duration_seconds = sequence_duration_seconds  # 30fps * 4s -> 120 frames MA per 25fps -> 100
         self.frames_resampler = frames_resampler
@@ -154,9 +172,10 @@ class VideoSequenceResampling(nn.Module):
     @call_log()
     def forward(self, x: VideoTensor) -> torch.Tensor:
         T, c, h, w = x.value.shape
+        # How many frames to take for single sequence.
         sequence_length = int(self.sequence_duration_seconds * x.fps)
+        # Segments we create.
         segments = int(T / sequence_length)
-
         if T % sequence_length != 0:
             segments += 1
 
@@ -180,16 +199,17 @@ class RegularFrameResampling(nn.Module):
         # Possible padding choices
         self.padding: Literal['zero', 'last', 'none'] = padding
         self.drop_mask: bool = drop_mask
+        self.logger = make_logger(self.__class__.__name__)
 
     @timed()
     @call_log()
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor | None]:
         T, c, h, w = x.shape
 
         if T > self.max_length:
-            i = torch.arange(self.max_length, device=self.device)
+            i = torch.arange(self.max_length, device=x.device)
             idx = torch.div(i * (T - 1), (self.max_length - 1), rounding_mode="floor").to(torch.long)
-            mask = torch.ones(T, dtype=torch.bool, device=x.device)
+            mask = torch.ones(self.max_length, dtype=torch.bool, device=x.device)
             return (x[idx], mask) if not self.drop_mask else x[idx]
 
         if T == self.max_length:
@@ -198,7 +218,7 @@ class RegularFrameResampling(nn.Module):
 
         if self.padding == "zero":
             # Video is not long enough so we need to pad
-            pad = torch.zeros(self.max_length - T, c, h, w)
+            pad = torch.zeros(self.max_length - T, c, h, w, device=x.device, dtype=x.dtype)
             # Add the missing frames
             x = torch.cat([x, pad])
             mask = torch.zeros(self.max_length, dtype=torch.bool, device=x.device)
@@ -213,8 +233,8 @@ class RegularFrameResampling(nn.Module):
             return (x, mask) if not self.drop_mask else x
 
         if self.padding == "none":
-            print("Warning this is plain sequence with 'non' padding rule while required for the current"
-                  " sequence. (", str(T), " > ", self.max_length, "). This might cause problems later.")
+            self.logger.warning("Warning this is plain sequence with 'none' padding rule while required for the current"
+                                " sequence. (", str(T), " > ", self.max_length, "). This might cause problems later.")
             return (x, None) if not self.drop_mask else x
 
         raise NotImplementedError("Given padding modality is invalid and input requires one.")
@@ -306,10 +326,13 @@ class ViVitVideoTensorImageProcessorTransform(nn.Module):
         x.value = frames["pixel_values"]
         return x
 
+
 class DropBatchFromViVitProcessingTransform(nn.Module):
-    def forward(self, x:VideoTensor):
+    # noinspection PyMethodMayBeStatic
+    def forward(self, x: VideoTensor):
         x.value = x.value.squeeze(0)
         return x
+
 
 class ViVitImageProcessorTransform(nn.Module):
     def __init__(self, model_name: str = "google/vivit-b-16x2-kinetics400", processor: VivitImageProcessor = None):
@@ -342,9 +365,6 @@ class ViVitEmbedderTransform(nn.Module):
     @timed()
     @call_log()
     def forward(self, x) -> torch.Tensor:
-        if x.count_nonzero() == 0 and x.dim() == 1:
-            return x  # Empty tensor
-
         if len(x.shape) == 4:
             # Add a virtual batch
             x = x.unsqueeze(0)
