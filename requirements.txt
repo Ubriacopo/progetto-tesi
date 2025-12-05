@@ -43,3 +43,4 @@ jedi~=0.19.2
 tensordict~=0.10.0
 openpyxl
 colorlog
+hydra_colorlog
