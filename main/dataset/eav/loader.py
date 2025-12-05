@@ -29,7 +29,7 @@ class EavPointsLoader(DataPointsLoader):
 
     def scan(self):
         # In Manhob we have folders that are experiments.
-        processed_data = Path(self.base_path)
+        processed_data = Path(self.base_path + "EAV/")
         for i in processed_data.iterdir():
             if not "subject" in i.stem:
                 continue
