@@ -1,10 +1,8 @@
 import json
-import logging
 import re
 
 import torch
 import torchaudio
-
 from sentence_transformers import SentenceTransformer
 from torch import nn
 from torchaudio.transforms import Resample
@@ -212,9 +210,19 @@ class SubclipTextExtract(nn.Module):
     @staticmethod
     def chunk_extract(chunk, start, stop):
         ch_start, ch_stop = chunk["timestamp"]
-        start_valid = ch_start >= start if ch_start is not None else start >= ch_stop >= stop
-        stop_valid = ch_stop <= stop if ch_stop is not None else start <= ch_start <= stop
-        return chunk["text"] if start_valid and stop_valid else ""
+
+        # If no stop is given the interval is dropped.
+        if ch_stop is None:
+            return ""
+
+        # For flexible start, if ch_start is None, treat as "starts very early"
+        if ch_start is None:
+            ch_start = float("-inf")
+
+        if ch_stop <= start or ch_start >= stop:
+            return ""
+
+        return chunk["text"]
 
     def forward(self, x: Text) -> list[str]:
         start, stop = x.interval
