@@ -1,8 +1,7 @@
----
 defaults:
   - base
 
 dataset_name: manhob
 out_folder_name: vate
 # In case we override
-preprocessing_pipeline: main.dataset.${dataset_name}.preprocessing.vate_preprocessor
+preprocessing_pipeline: main.dataset.${.dataset_name}.preprocessing.vate_preprocessor
