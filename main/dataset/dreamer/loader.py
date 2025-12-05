@@ -11,6 +11,9 @@ class DreamerPointsLoader(DataPointsLoader):
         super().__init__(dataset_uid_store)
         self.base_path = base_path
 
+    def __len__(self) -> int:
+        pass
+
     # TODO finish
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "data_preprocessed_python/")

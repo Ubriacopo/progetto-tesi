@@ -24,6 +24,14 @@ class ManhobPointsLoader(DataPointsLoader):
         super().__init__(dataset_uid_store)
         self.base_path: str = base_path
         self.config: ManhobConfig = config
+        self.length: int = 0
+
+    def __len__(self) -> int:
+        if self.length == 0:
+            folder = Path(self.base_path)
+            self.length = sum(1 for _ in folder.iterdir())
+
+        return self.length
 
     def scan(self):
         # In Manhob we have folders that are experiments.

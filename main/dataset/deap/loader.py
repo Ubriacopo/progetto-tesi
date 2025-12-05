@@ -18,6 +18,15 @@ class DeapPointsLoader(DataPointsLoader):
         super().__init__(dataset_uid_store)
         self.base_path = base_path
 
+        self.length: int = 0
+
+    def __len__(self) -> int:
+        if self.length == 0:
+            folder = Path(self.base_path + "data_preprocessed_python/")
+            self.length = sum(1 for _ in folder.iterdir()) * 40 # 40 Videos
+
+        return self.length
+
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "data_preprocessed_python/")
 

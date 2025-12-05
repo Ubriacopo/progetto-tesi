@@ -27,6 +27,18 @@ class EavPointsLoader(DataPointsLoader):
         self.base_path: str = base_path
         self.config: EavConfig = config
 
+        self.data_folder: str = self.base_path + "EAV/"
+        self.length: int = 0
+
+    def __len__(self) -> int:
+        if self.length == 0:
+            folder = Path(self.data_folder)
+            for p in folder.iterdir():
+                if "subject" in p.stem:
+                    self.length += sum(1 for _ in Path(str(p) + "/Video").iterdir())
+
+        return self.length
+
     def scan(self):
         # In Manhob we have folders that are experiments.
         processed_data = Path(self.base_path + "EAV/")
@@ -41,7 +53,7 @@ class EavPointsLoader(DataPointsLoader):
                 if "seg" in matlab_file:
                     eeg = matlab_file["seg"]
                 elif "seg1" in matlab_file:
-                    # Questa è un vero pasticcio. Qualcuno qui ha fatto pasticci suppongo.
+                    # Questo è un vero pasticcio. Qualcuno qui ha fatto pasticci suppongo.
                     eeg = matlab_file["seg1"]
                 else:
                     raise ValueError("The matlab file is missing the correct column to elaborate the data."

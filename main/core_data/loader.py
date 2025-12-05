@@ -18,3 +18,7 @@ class DataPointsLoader(ABC):
     @abstractmethod
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         pass
+
+    @abstractmethod
+    def __len__(self) -> int:
+        pass

@@ -27,6 +27,11 @@ class AmigosPointsLoader(DataPointsLoader):
         self.base_path: str = base_path
         self.config = AmigosConfig()
 
+        self.face_video_folder: str = self.base_path + "face/"
+
+    def __len__(self) -> int:
+        return len(list(Path(self.face_video_folder).iterdir()))
+
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         processed_data = Path(self.base_path + "pre_processed_py/")
         if not processed_data.exists():
@@ -36,9 +41,7 @@ class AmigosPointsLoader(DataPointsLoader):
         participant_data = load_participant_data(Path(self.base_path + "pre_processed_py/"))
         participant_metadata = pd.read_excel(self.base_path + "Metadata_xlsx/Participant_Questionnaires.xlsx")
 
-        face_video_folder = self.base_path + "face/"
-        face_folder = Path(face_video_folder)
-
+        face_folder = Path(self.face_video_folder)
         for v in face_folder.iterdir():
             try:
                 pat = re.compile(r'^P\(\d+(?:,\d+)*\)_\w\d+_face$')
@@ -86,7 +89,7 @@ class AmigosPointsLoader(DataPointsLoader):
                         patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
                     Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id,
                           filepath=media_path).as_mod_tuple(),
-                    Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id,filepath=media_path).as_mod_tuple(),
+                    Audio(data=clip.audio, fs=clip.audio.fps, eid=experiment_id, filepath=media_path).as_mod_tuple(),
                     Text(eid=experiment_id, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
                     Assessment(data=assessments[0][0], eid=experiment_id).as_mod_tuple(),
                     Metadata(data=metadata, eid=experiment_id).as_mod_tuple()

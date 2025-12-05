@@ -1,11 +1,10 @@
-import logging
+import math
 from abc import abstractmethod, ABC
 from concurrent.futures import ThreadPoolExecutor
 from itertools import batched
 from pathlib import Path
 from typing import Optional, TypeVar, Generic
 
-import colorlog
 import numpy as np
 import pandas as pd
 from tensordict import TensorDict, stack
@@ -18,18 +17,6 @@ from main.utils.logging import make_logger
 SPEC_FILE_NAME: str = "spec.csv"
 
 T = TypeVar("T")
-
-
-def setup_logging():
-    logger = logging.getLogger()  # root
-    logger.handlers.clear()
-    logger.setLevel(logging.INFO)
-
-    handler = colorlog.StreamHandler()
-    handler.setFormatter(colorlog.ColoredFormatter(
-        '%(log_color)s%(asctime)s %(levelname)s:%(name)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S',
-    ))
-    logger.addHandler(handler)
 
 
 class Preprocessor(ABC, Generic[T]):
@@ -58,6 +45,10 @@ class Preprocessor(ABC, Generic[T]):
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
 
+            # How many items will be processed
+            total_elements = len(loader)
+            leading = math.ceil(math.log(total_elements, 10))
+            current_element = 0
             if workers > 1:
                 with ThreadPoolExecutor(max_workers=workers) as executor:
                     for block in batched(loader.scan(), workers):
@@ -87,8 +78,12 @@ class Preprocessor(ABC, Generic[T]):
                 return True
 
             for i in loader.scan():
+                current_element += 1
+                self.logger.info(f"({current_element:0{leading}}/{total_elements}) "
+                                 f"Processing element with eid {i.eid}")
                 key = i.get_identifier()
                 if existing_df is not None and (existing_df[key] == i.eid).any():
+                    self.logger.info(f"Element {key} will be skipped as it was already processed.")
                     continue  # This element was already processed.
 
                 docs = [e for e in self.preprocess(i)]
