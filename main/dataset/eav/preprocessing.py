@@ -44,5 +44,9 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Eav
             aud_vate_basic_transform_pipe(config),
             txt_vate_basic_transform_pipe(),
             (Metadata.modality_code(), MetadataToTensor())
+        ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_vate_preprocessor",
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
         )
     )

@@ -74,23 +74,3 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Ami
             (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder))
         ),
     )
-
-
-def preprocessing(config: PreprocessingConfig):
-    # Build configuration from the one provided prior to call
-    amigos_config = AmigosConfig(
-        aud_target_config=config.aud_config,
-        vid_target_config=config.vid_config,
-        txt_target_config=config.txt_config,
-        ecg_target_config=config.ecg_config,
-        eeg_target_config=config.eeg_config,
-        max_length=config.output_max_length
-    )
-
-    preprocessing_fn = get_object(config.preprocessing_pipeline)
-    # Either way I expect the same signature.
-    preprocessor = preprocessing_fn(config.output_path, config.extraction_data_folder, amigos_config)
-
-    uid_store = DatasetUidStore(config.uid_store_path)
-    loader = AmigosPointsLoader(base_path=config.data_path, dataset_uid_store=uid_store)
-    preprocessor.run(loader=loader)
