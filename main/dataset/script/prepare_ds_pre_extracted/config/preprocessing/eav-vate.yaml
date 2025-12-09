@@ -1,5 +1,5 @@
 defaults:
-  - local
+  - base
 
 dataset_name: eav
 out_folder_name: vate
