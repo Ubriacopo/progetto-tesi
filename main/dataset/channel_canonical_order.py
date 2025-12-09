@@ -19,7 +19,7 @@ class EegCanonicalOrder:
         "F8",
         "AF4",
         # DEAP rest
-        "Fp1",
+        "FP1",
         "FC1",
         "C3",
         "CP5",

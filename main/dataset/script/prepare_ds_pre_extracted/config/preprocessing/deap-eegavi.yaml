@@ -1,8 +1,7 @@
 ---
 defaults:
-  - base
+  - local
 
 dataset_name: deap
-config_classpath: main.deap.amigos.config.DeapConfig
 out_folder_name: interleaved
-preprocessing_pipeline: main.core.dataset.${.dataset_name}.preprocessing.interleaved_preprocessor
+preprocessing_pipeline: main.dataset.${.dataset_name}.preprocessing.interleaved_preprocessor
