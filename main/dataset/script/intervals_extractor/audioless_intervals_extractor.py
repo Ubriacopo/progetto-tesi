@@ -12,7 +12,7 @@ OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
 OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
 
-@hydra.main(config_path="conf", config_name="config")
+@hydra.main(config_path="conf", config_name="config.local")
 def main(cfg: Config):
     print(OmegaConf.to_yaml(cfg))
     uid_store = DatasetUidStore(cfg.uid_store_path)

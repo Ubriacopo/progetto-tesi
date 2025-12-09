@@ -19,6 +19,6 @@ class DeapEegSourceConfig(EegSourceConfig):
 
 
 class DeapConfig(DatasetConfig):
-    eeg_source_configL: DeapEegSourceConfig = dataclasses.field(default_factory=DeapEegSourceConfig)
+    eeg_source_config: DeapEegSourceConfig = dataclasses.field(default_factory=DeapEegSourceConfig)
     # aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100)) Deap has no audio
     vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=24))
