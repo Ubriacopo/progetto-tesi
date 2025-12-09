@@ -4,7 +4,7 @@ from main.core_data.media.eeg.config import EegSourceConfig
 from main.core_data.media.video.config import VidSourceConfig
 from main.dataset.base_config import DatasetConfig
 
-
+@dataclasses.dataclass
 class DeapEegSourceConfig(EegSourceConfig):
     fs: int = 128
     EEG_CHANNELS: list[str] = dataclasses.field(default_factory=lambda: [
