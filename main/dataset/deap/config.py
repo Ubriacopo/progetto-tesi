@@ -17,7 +17,7 @@ class DeapEegSourceConfig(EegSourceConfig):
         "hEOG", "vEOG", "zEMG", "tEMG", "GSR", "Respiration belt", "Plethysmograph", "Temperature"
     ])
 
-
+@dataclasses.dataclass
 class DeapConfig(DatasetConfig):
     eeg_source_config: DeapEegSourceConfig = dataclasses.field(default_factory=DeapEegSourceConfig)
     # aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100)) Deap has no audio
