@@ -1,6 +1,6 @@
 ---
 defaults:
-  - local
+  - base
 
 dataset_name: amigos
 out_folder_name: vate
