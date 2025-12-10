@@ -1,6 +1,6 @@
 ---
 defaults:
-  - local
+  - base
 
 dataset_name: deap
 out_folder_name: interleaved

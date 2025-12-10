@@ -8,6 +8,7 @@ import numpy as np
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.media.eeg import EEG
 from main.core_data.media.eeg.saliency_extractor import EEGFeatureExtractor
+from main.utils.logging import make_logger
 
 
 class Segmenter(ABC):
@@ -125,6 +126,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         self.extraction_jitter: float = extraction_jitter
 
         self.verbose: bool = verbose
+        self.logger = make_logger(self.__class__.__name__)
 
     def sample_duration_log_uniform(self):
         uniform = np.random.uniform(0., 1.)
@@ -142,7 +144,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         t = sample.data.duration
 
         num_segments: int = num_segments or self.num_segments
-        print(f"For media with duration: {t} we try {num_segments} segments")
+        self.logger.info(f"For media with duration: {t} we try {num_segments} segments")
 
         extractor = EEGFeatureExtractor(sample.data)
         candidate_anchors = extractor.pick_segments(
@@ -172,7 +174,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
             )
 
             if not ok:
-                print(f"Something went wrong for interval {duration} and duration will be discarded")
+                self.logger.warning(f"Something went wrong for interval {duration} and duration will be discarded")
 
         current_ratio = self._coverage_ratio(global_coverage)
         coverage_attempts = 0
@@ -198,9 +200,9 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
             if ok:
                 current_ratio = self._coverage_ratio(global_coverage)
             if not ok:
-                self.verbose and print("Coverage expansion attempt failed; retrying")
+                self.logger.warning("Coverage expansion attempt failed; retrying")
 
-        print(f"Current coverage ration is: {current_ratio}")
+        self.logger.info(f"Current coverage ration is: {current_ratio}")
         if self.return_seconds:
             return [(bucket.start / sample.fs, bucket.stop / sample.fs) for bucket in buckets]
         return [(bucket.start, bucket.stop) for bucket in buckets]
@@ -336,7 +338,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         ok_iou = self.ok_iou(start, stop, base_feature, segments)
         if not ok_iou or not self.check_coverage(eeg, start, stop, coverage):
-            self.verbose and print(
+            self.logger.info(
                 f"Check failed for ({start}-{stop}) ({base_feature.key}).\n"
                 f"Problem was: {'IoU' if not ok_iou else 'coverage'}.\n"
                 f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.\n\n")
@@ -349,7 +351,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
-            self.verbose and print(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
+            self.logger.info(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
                                    f"candidate_anchors: {candidate_anchors}.\n\n")
             candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
         if reference_anchor is not None:
