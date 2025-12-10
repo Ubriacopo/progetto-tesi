@@ -3,6 +3,8 @@ from typing import Mapping
 from tensordict import TensorDict
 from torch.utils.data import Dataset
 
+from main.utils.logging import make_logger
+
 
 class KdDatasetWrapper(Dataset):
     def __init__(self, **datasets: Dataset):
@@ -13,6 +15,7 @@ class KdDatasetWrapper(Dataset):
         :param datasets: The datasets to aggregate together.
         """
         self.datasets = datasets
+        self.logger = make_logger(self.__class__.__name__)
 
         try:
             lengths = {key: len(dataset) for key, dataset in datasets.items()}
@@ -22,6 +25,7 @@ class KdDatasetWrapper(Dataset):
         first_len = next(iter(lengths.values()))
         if any(L != first_len for L in lengths.values()):
             raise ValueError(f"All datasets must have the same length: {lengths}")
+
 
         self.datasets: Mapping[str, Dataset] = datasets
         self.length = first_len

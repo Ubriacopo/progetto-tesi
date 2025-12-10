@@ -1,0 +1,18 @@
+defaults:
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
+
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/
+student_dataset_path: ${.base_path}data/EEGAVI/EAV/interleaved/spec.csv
+teacher_dataset_path: ${.base_path}data/EEGAVI/EAV/vate/spec.csv
+
+hydra:
+  job_logging:
+    root:
+      handlers: [ console, file ]   # make sure both are used
+
+    handlers:
+      file:
+        class: logging.FileHandler
+        formatter: simple         # or "colorlog" if you really want ANSI codes in file
+        filename: ${hydra.runtime.output_dir}/job.log

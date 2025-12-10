@@ -17,6 +17,7 @@ from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.utils.data import MaskedValue
+from main.utils.logging import make_logger
 
 
 class AgnosticProcessingPdMediaDataset(torch.utils.data.Dataset, ABC):
@@ -55,6 +56,9 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
         :param selected_device:
         :param cache_in_ram:
         """
+
+        self.logger = make_logger(self.__class__.__name__)
+
         self.device = selected_device
         if selected_device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

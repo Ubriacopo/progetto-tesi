@@ -44,8 +44,7 @@ class EegAdapter(nn.Module):
         if mask is not None:
             # (b, T) - which time steps have ANY valid channel
             mask = mask.any(dim=-1) if mask is not None else None
-
-        return {"data": x, "mask": mask}
+        return MaskedValue(data=x, mask=mask)
 
 
 class PerceiverResamplerAdapter(nn.Module):
