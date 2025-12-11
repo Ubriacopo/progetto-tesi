@@ -203,6 +203,7 @@ class EegInterAviModel(nn.Module):
         t_mod = torch.cat(t_mods, dim=1) if len(t_mods) != 0 else torch.zeros(b, 1, device=device)
 
         allow = self.build_allow_mask(t_pivot, t_mod)
+        # todo reshape for time aligment. Decidi strategia
         z: torch.Tensor = pivot_output["data"]
         for gated_x_attn in self.gatedXAttn_layers:
             z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_output["mask"], kv_mask=masks)
