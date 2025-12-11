@@ -20,24 +20,23 @@ class EegInterAviModel(nn.Module):
                  drop_p: float = 0.0, use_modality_encoder: bool = True,
                  fusion_pooling: nn.Module = MaskedPooling()):
         """
-        :param pivot: Main modality pipeline that acts as receptor is xattn (q), It is always required
+        :param pivot: Main modality pipeline that acts as receptor is xattn (q), It is always required.
         :param supports: Other modalities and their pipeline. Once set for a model you can't of course change them.
-                         During inference and training they all are optional.
+        During inference and training they all are optional.
         :param xattn_blocks: Number of xattn blocks to apply after each modality has been processed.
-                             Can also be a list of different configurations for the GatedXAttention blocks.
+        Can also be a list of different configurations for the GatedXAttention blocks.
         :param drop_p: Drop probability for each modality for each sample in batch
-
         :param use_modality_encoder: Whether to use modality encoder or not. IF flagged to true a weight vector is
-                                     added to each supporting modality before making concat of the embeddings for xattn.
+        added to each supporting modality before making concat of the embeddings for xattn.
         :param fusion_pooling: Pooling logic to get to output shape. Optional. By default, is norm over mask.
         """
         super().__init__()
-        self.output_size = output_size
-        if len(supports) == 0:
-            raise ValueError("For EegBaseModel, supports must not be empty")
-
         self.logger = make_logger(self.__class__.__name__)
-        self.latent_output_size = supports[0].output_size
+        self.output_size: int = output_size
+        if len(supports) == 0:
+            raise ValueError("For EegBaseModel, supports cannot be empty")
+
+        self.latent_output_size: int = supports[0].output_size
         for i in supports:
             if i.output_size != self.latent_output_size:
                 error_msg = (
@@ -50,26 +49,12 @@ class EegInterAviModel(nn.Module):
 
         self.pivot: ModalityStream = pivot
         self.supports: nn.ModuleList[ModalityStream] = nn.ModuleList(supports)
+
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(supports)}
             self.modality_encoder = ModalContextEncoder(supports[0].output_size, modality_mappings)
 
-        self.gatedXAttn_layers = nn.ModuleList(self.build_xattn_blocks(xattn_blocks))
-
-        self.drop_p = drop_p
-        self.allow_modality: Literal['window', 'causal'] = 'window'
-        # TODO Window units (each block has same unit of measurement)
-        self.past_window_units = 2
-
-        self.fusion_pooling: nn.Module = fusion_pooling
-
-    def build_xattn_blocks(self, xattn_blocks: int | list[GatedXAttentionCustomArgs]) -> list[nn.Module]:
-        """
-        For how GatedXAttention works the dim and dim_latent are fixed (they do not change).
-        :param xattn_blocks:
-        :return:
-        """
         modules: list[nn.Module] = []
         if isinstance(xattn_blocks, list):
             for config in xattn_blocks:
@@ -81,7 +66,14 @@ class EegInterAviModel(nn.Module):
                 xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size)
                 modules.append(xattn_block)
 
-        return modules
+        self.gatedXAttn_layers = nn.ModuleList(modules)
+
+        self.drop_p: float = drop_p
+        self.allow_modality: Literal['window', 'causal'] = 'window'
+        # TODO Window units (each block has same unit of measurement)
+        self.past_window_units: int = 2
+
+        self.fusion_pooling: nn.Module = fusion_pooling
 
     def select_keep_modality_rows(self, batch_size: int, device):
         num_modalities = len(self.supports)
@@ -177,12 +169,12 @@ class EegInterAviModel(nn.Module):
             kd_outputs[self.pivot.get_code()] = pivot_output.pop("kd")
 
         multimodal_outs[self.pivot.get_code()] = pivot_output
+
         # Pre-compute indices of what modalities to keep and drop
         keep = self.select_keep_modality_rows(b, device)
 
         supports, masks, t_mods = [], [], []
         modality: ModalityStream
-
         for idx, modality in enumerate(self.supports):
             code = modality.get_code()
             filtered_idx = keep[:, idx].nonzero(as_tuple=True)[0]

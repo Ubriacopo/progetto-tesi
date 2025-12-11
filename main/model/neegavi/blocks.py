@@ -10,7 +10,7 @@ from main.utils.data import MaskedValue, KdMaskedValue
 
 
 class ModalityStream(nn.Module):
-    def __init__(self, code: str, output_size: int, adapter: nn.Module,
+    def __init__(self, code: str, output_size: int, adapter: nn.Module, timestep_seconds: int,
                  kd_head: KDHead = None, post_kd_adapter: nn.Module = None):
         super().__init__()
 
@@ -24,6 +24,7 @@ class ModalityStream(nn.Module):
 
         self.use_kd: bool = kd_head is not None
         self.kd_head: Optional[KDHead] = kd_head
+        self.timestep_seconds: int = timestep_seconds
 
     def forward(self, x: torch.Tensor, mask=None, use_kd=True, **kwargs) -> MaskedValue | KdMaskedValue:
         if mask is not None and isinstance(mask, torch.Tensor):
