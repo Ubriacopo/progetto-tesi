@@ -19,3 +19,15 @@ weakly_supervised_weight: 0.5
 ecg_correction_weight: 0.2
 kd_temperature: 0.2
 epochs: 10
+
+
+hydra:
+  job_logging:
+    root:
+      handlers: [ console, file ]   # make sure both are used
+
+    handlers:
+      file:
+        class: logging.FileHandler
+        formatter: simple         # or "colorlog" if you really want ANSI codes in file
+        filename: ${hydra.runtime.output_dir}/job.log
