@@ -1,30 +1,60 @@
+import dataclasses
 from abc import abstractmethod, ABC
 from dataclasses import asdict
 from typing import Optional
 
 import torch
-from einops import repeat
+from einops import repeat, rearrange
 from torch import nn
 
-from main.model.neegavi.blocks import ModalityStream
+from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder
 from main.model.neegavi.utils import EegBaseModelOutputs
-from main.utils.data import MaskedValue
+from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAttentionBlock
+from main.utils.data import MaskedValue, KdMaskedValue
 from main.utils.logging import make_logger
+
+
+@dataclasses.dataclass
+class EegInterAviModelConfiguration:
+    drop_p: float = .0
+    use_modality_encoder: bool = True
+    xattn_blocks: int | list[GatedXAttentionCustomArgs] | list[nn.Module] = 4
 
 
 class EegInterAviModel(nn.Module, ABC):
     KD_KEY = "kd"
 
-    def __init__(self, pivot: ModalityStream, supports: list[ModalityStream], drop_p: float = .0):
+    def __init__(self, pivot: ModalityStream, supports: list[ModalityStream], config=EegInterAviModelConfiguration()):
         super(EegInterAviModel, self).__init__()
         self.logger = make_logger(self.__class__.__name__)
 
         self.pivot: ModalityStream = pivot
         self.supports: list[ModalityStream] = supports
-        self.supports_feature_size: Optional[int] = None
+        # Declaration beforehand. Check will assign its true value
+        self.supports_feature_size: int = -1
         self.check_supports()
 
-        self.drop_p: float = drop_p
+        self.drop_p: float = config.drop_p
+        self.modality_encoder: Optional[ModalContextEncoder] = None
+        if config.use_modality_encoder:
+            modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
+            self.modality_encoder = ModalContextEncoder(self.supports_feature_size, modality_mappings)
+
+        modules: list[nn.Module] = []
+        if isinstance(config.xattn_blocks, list):
+            if isinstance(config.xattn_blocks[0], GatedXAttentionCustomArgs):
+                for block_config in config.xattn_blocks:
+                    xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size, *asdict(block_config))
+                    modules.append(xattn_block)
+            elif isinstance(config.xattn_blocks[0], nn.Module):
+                modules = config.xattn_blocks
+
+        elif isinstance(config.xattn_blocks, int):
+            for _ in range(config.xattn_blocks):
+                xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size)
+                modules.append(xattn_block)
+
+        self.gatedXAttn_layers = nn.ModuleList(modules)
 
     def check_supports(self):
         if len(self.supports) == 0:
@@ -33,12 +63,24 @@ class EegInterAviModel(nn.Module, ABC):
             raise ValueError(error_message)
 
         self.supports_feature_size: int = self.supports[0].output_size
+        base_timestep = self.supports[0].timestep_second
+        check_code: str = self.supports[0].code
+
         for support in self.supports:
+            code = support.code
+            current_timestep = support.timestep_seconds
             if support.output_size != self.supports_feature_size:
-                error_msg = (f"Output size of support {support.code} ({support.output_size}) does not "
-                             f"match extracted size of {self.supports[0].code} ({self.latent_output_size})")
+                error_msg = (f"Output size of support {code} ({support.output_size}) does not "
+                             f"match extracted size of {check_code} ({self.latent_output_size})")
                 self.logger.error(error_msg)
                 raise ValueError(error_msg)
+
+            # Assumption of the model is that all supporting modalities are aligned to same timestep size.
+            # This can be either true by default or a result of the ModalityStream. We just assume it to be.
+            if current_timestep != base_timestep or current_timestep != self.pivot.timestep_seconds:
+                msg = f"Timesteps do not match for {code}-{check_code}. Timesteps {current_timestep}!={base_timestep}"
+                self.logger.error(msg)
+                raise ValueError(msg)
 
     def rand_select_keep_modality_rows(self, batch_size: int, device, ensure_one: bool = False):
         if (not self.training) or self.drop_p <= 0:
@@ -48,7 +90,7 @@ class EegInterAviModel(nn.Module, ABC):
         dead = ~keep.any(1)
         # TODO decidi se fare ensure di one
         if ensure_one and dead:
-            summed_dead = dead.sum().item()
+            summed_dead = int(dead.sum().item())
             keep[dead, torch.randint(0, len(self.supports), (summed_dead,), device=device)] = True
 
         return keep
@@ -56,18 +98,65 @@ class EegInterAviModel(nn.Module, ABC):
     def process_pivot(self):
         pass
 
-    @abstractmethod
-    def align_pivot_time_to_support_time(self):
-        pass
+    # TODO extend to make alignemnt
+    def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
+        # By multipliyng by the timestep seconds we reshape so that alignemnt works correctly.
+        tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
+        tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
+
+        if self.allow_modality == "window":
+            return (tk - tq).abs() <= self.past_window_units
+        if self.allow_modality == "causal":
+            return tk <= tq
+        raise ValueError(f"Unknown mode: {self.allow_modality}")
+
+    @staticmethod
+    def pad_to_batch(data: torch.Tensor, mask: Optional[torch.Tensor], idx: torch.Tensor, b: int):
+        # Pad to same batch size (This happens when we drop some elements from modality)
+        # Pad the data
+        pad_y = torch.zeros(b, *data.shape[1:], device=data.device)
+        pad_y[idx] = data
+
+        # Pad the mask. If non-existent we generate one matching the data tensor.
+        if mask is not None:
+            pad_mask = torch.zeros(b, *mask.shape[1:], device=mask.device).bool()
+            pad_mask[idx] = mask
+        else:
+            pad_mask = torch.zeros(b, data.size(1), dtype=torch.bool, device=data.device)
+            pad_mask[idx] = True
+
+        return MaskedValue(data=pad_y, mask=pad_mask)
 
     def process_modality(self, x: MaskedValue, idx: torch.Tensor, b: int, modality: ModalityStream, use_kd: bool):
         output = dict()
-        modality_data, modality_mask = x["data"], x.get("mask", None)
-        _, t = modality_data.shape[0:2]
+        data, mask = x["data"], x.get("mask", None)
+        _, t = data.shape[0:2]
 
-        if modality_mask is not None:
-            modality_mask = modality_mask.bool()
+        if mask is not None:
+            mask = mask.bool()
 
+        y: MaskedValue | KdMaskedValue = modality(data, mask, use_kd=use_kd)
+        if self.KD_KEY in y:
+            kd = y.pop(self.KD_KEY)
+            output[self.KD_KEY] = self.pad_to_batch(kd["data"], kd["mask"], idx, b)
+
+        # We dropped the KD key so the object no longer is a KdMaskedValue if it was
+        y: MaskedValue
+
+        z = y["data"]
+        if self.modality_encoder is not None:
+            z = self.modality_encoder(z, modality=modality.get_code())
+
+        time_mask = torch.arange(t, device=data.device)
+        _, _, m, d = z.shape
+        # Reshape so that we flatten T x M
+        z = rearrange(z, "b t m d -> b (t m) d")
+        time_mask = repeat(time_mask, "t -> b (t m)", b=b, m=m)
+        if mask is not None:
+            mask = repeat(mask, "b t -> b (t m)", m=m)
+
+        res = self.pad_to_batch(z, mask, idx, b)
+        return output | {"data": res["data"], "mask": res["mask"], "t_mod": time_mask}
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
         # Where outputs are partitioned for later use.
@@ -103,25 +192,27 @@ class EegInterAviModel(nn.Module, ABC):
 
             if self.KD_KEY in modality_out:
                 out.kd_outs[modality_code] = modality_out.pop(self.KD_KEY)
-            out.multimodal_outs[modality_out] = modality_out
+            mod_data, mod_mask = modality_out["data"], modality_out.get("mask", None)
+            out.multimodal_outs[modality_code] = MaskedValue(data=mod_data, mask=mod_mask)
 
-            supports.append(modality_out["data"])
-            masks.append(modality_out["mask"])
+            # For later fusion
+            supports.append(mod_data)
+            masks.append(mod_mask)
             t_mods.append(modality_out["t_mod"])
 
-            out_size: int = self.supports_feature_size
-            # In case no modality passes through we have to still create an empty vector
-            support = torch.cat(supports, dim=1) if len(supports) != 0 else torch.zeros(b, 1, out_size, device=device)
-            masks = torch.cat(masks, dim=1) if len(masks) != 0 else torch.zeros(b, 1, device=device)
-            time_modality = torch.cat(t_mods, dim=1) if len(t_mods) != 0 else torch.zeros(b, 1, device=device)
+        out_size: int = self.supports_feature_size
+        # In case no modality passes through we have to still create an empty vector
+        support = torch.cat(supports, dim=1) if len(supports) != 0 else torch.zeros(b, 1, out_size, device=device)
+        masks = torch.cat(masks, dim=1) if len(masks) != 0 else torch.zeros(b, 1, device=device)
+        time_modality = torch.cat(t_mods, dim=1) if len(t_mods) != 0 else torch.zeros(b, 1, device=device)
 
-            allow = self.build_allow_mask(time_pivot, time_modality)
-            z: torch.Tensor = pivot_out["data"]
-            for gated_x_attn in self.gatedXAttn_layers:
-                z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_out["mask"], kv_mask=masks)
+        allow = self.build_allow_mask(time_pivot, time_modality)
+        z: torch.Tensor = pivot_out["data"]
+        for gated_x_attn in self.gatedXAttn_layers:
+            z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_out["mask"], kv_mask=masks)
 
-            if self.fusion_pooling is not None:
-                z = self.fusion_pooling(z, mask=pivot_out["mask"])
+        if self.fusion_pooling is not None:
+            z = self.fusion_pooling(z, mask=pivot_out["mask"])
 
-            out.embeddings = z
-            return out if not return_dict else asdict(out)
+        out.embeddings = z
+        return out if not return_dict else asdict(out)
