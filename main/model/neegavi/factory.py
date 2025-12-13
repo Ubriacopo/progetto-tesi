@@ -11,7 +11,10 @@ from main.model.neegavi.base_model import EegInterAviModel, WeaklySupervisedNEEE
 from main.model.neegavi.blocks import ModalityStream
 from main.model.neegavi.kd import KDHead
 
+
+
 class EegInterAviFactory:
+
     @staticmethod
     def build(output_size: int, pivot: ModalityStream, supports: list[ModalityStream],
               use_modality_encoder: bool, xattn_blocks: int, drop_p: float):
@@ -22,10 +25,7 @@ class EegInterAviFactory:
                 teacher_out_shape: Tuple[int, ...] = (1, 100),
                 # Further settings:
                 use_modality_encoder: bool = True, xattn_blocks: int = 2):
-        perceiver_resampler_config = PerceiverResamplerConfig(
-            dim=768, depth=2, dim_head=64, heads=12, num_latents=64,
-            max_num_time_steps=34  # Dipenda da modality (Non piu visto che passiamo a tutti sesso fs)
-        )
+        perceiver_resampler_config = PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=12, num_latents=64)
         return EegInterAviModel(
             output_size=target_size,
             pivot=ModalityStream(
@@ -35,17 +35,17 @@ class EegInterAviFactory:
             supports=[
                 ModalityStream(
                     Audio.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
                     adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
                 ),
                 ModalityStream(
                     Video.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
                     adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
                 ),
                 ModalityStream(
                     Text.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
                     adapter=TemporalEncoderAdapter(p=64, dim=384, ),
                 )
             ],
@@ -66,19 +66,19 @@ class EegInterAviFactory:
             # Audio
             ModalityStream(
                 Audio.modality_code(), output_size,
-                kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
                 adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
             ),
             # Video
             ModalityStream(
                 Video.modality_code(), output_size,
-                kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
                 adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
             ),
             # Text
             ModalityStream(
                 Text.modality_code(), output_size,
-                kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
+                kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
                 # adapter=PMAAudioAdapter(project_out_size=target_size),
                 adapter=TemporalEncoderAdapter(p=64, dim=384, ),
             )
@@ -109,7 +109,7 @@ class EegInterAviFactory:
             supports=[
                 ModalityStream(
                     Audio.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape,
+                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape,
                                    # transform=nn.Sequential(
                                    #    nn.Linear(supports_latent_size, 128),
                                    #    nn.GELU(),

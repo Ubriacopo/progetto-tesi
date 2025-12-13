@@ -1,5 +1,4 @@
 import dataclasses
-from abc import abstractmethod, ABC
 from dataclasses import asdict
 from typing import Optional
 
@@ -7,9 +6,8 @@ import torch
 from einops import repeat, rearrange
 from torch import nn
 
-from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder
+from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock
 from main.model.neegavi.utils import EegBaseModelOutputs
-from main.model.neegavi.xattention import GatedXAttentionCustomArgs, GatedXAttentionBlock
 from main.utils.data import MaskedValue, KdMaskedValue
 from main.utils.logging import make_logger
 
@@ -18,18 +16,25 @@ from main.utils.logging import make_logger
 class EegInterAviModelConfiguration:
     drop_p: float = .0
     use_modality_encoder: bool = True
-    xattn_blocks: int | list[GatedXAttentionCustomArgs] | list[nn.Module] = 4
 
 
-class EegInterAviModel(nn.Module, ABC):
+class EegInterAviModel(nn.Module):
     KD_KEY = "kd"
 
-    def __init__(self, pivot: ModalityStream, supports: list[ModalityStream], config=EegInterAviModelConfiguration()):
+    def __init__(self, pivot: ModalityStream, *supports: ModalityStream,
+                 attn_blocks: list[AbstractAttentionBlock], config=EegInterAviModelConfiguration(), ):
+        """
+
+        :param pivot:
+        :param supports:
+        :param config:
+        """
         super(EegInterAviModel, self).__init__()
         self.logger = make_logger(self.__class__.__name__)
 
         self.pivot: ModalityStream = pivot
-        self.supports: list[ModalityStream] = supports
+        self.supports: nn.ModuleList[ModalityStream] = nn.ModuleList(supports)
+
         # Declaration beforehand. Check will assign its true value
         self.supports_feature_size: int = -1
         self.check_supports()
@@ -39,24 +44,13 @@ class EegInterAviModel(nn.Module, ABC):
         if config.use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
             self.modality_encoder = ModalContextEncoder(self.supports_feature_size, modality_mappings)
-
-        modules: list[nn.Module] = []
-        if isinstance(config.xattn_blocks, list):
-            if isinstance(config.xattn_blocks[0], GatedXAttentionCustomArgs):
-                for block_config in config.xattn_blocks:
-                    xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size, *asdict(block_config))
-                    modules.append(xattn_block)
-            elif isinstance(config.xattn_blocks[0], nn.Module):
-                modules = config.xattn_blocks
-
-        elif isinstance(config.xattn_blocks, int):
-            for _ in range(config.xattn_blocks):
-                xattn_block = GatedXAttentionBlock(self.output_size, self.latent_output_size)
-                modules.append(xattn_block)
-
-        self.gatedXAttn_layers = nn.ModuleList(modules)
+        self.gatedXAttn_layers = nn.ModuleList(attn_blocks)
 
     def check_supports(self):
+        """
+
+        :return:
+        """
         if len(self.supports) == 0:
             error_message = "Supports cannot be empty. At least one support must be provided."
             self.logger.error(error_message)
@@ -83,6 +77,13 @@ class EegInterAviModel(nn.Module, ABC):
                 raise ValueError(msg)
 
     def rand_select_keep_modality_rows(self, batch_size: int, device, ensure_one: bool = False):
+        """
+
+        :param batch_size:
+        :param device:
+        :param ensure_one:
+        :return:
+        """
         if (not self.training) or self.drop_p <= 0:
             return torch.ones(batch_size, len(self.supports), device=device)
         keep = torch.bernoulli(torch.full((batch_size, len(self.supports)), 1 - self.drop_p, device=device)).bool()
@@ -98,8 +99,13 @@ class EegInterAviModel(nn.Module, ABC):
     def process_pivot(self):
         pass
 
-    # TODO extend to make alignemnt
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
+        """
+
+        :param t_q:
+        :param t_kv:
+        :return:
+        """
         # By multipliyng by the timestep seconds we reshape so that alignemnt works correctly.
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
         tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
@@ -112,6 +118,14 @@ class EegInterAviModel(nn.Module, ABC):
 
     @staticmethod
     def pad_to_batch(data: torch.Tensor, mask: Optional[torch.Tensor], idx: torch.Tensor, b: int):
+        """
+
+        :param data:
+        :param mask:
+        :param idx:
+        :param b:
+        :return:
+        """
         # Pad to same batch size (This happens when we drop some elements from modality)
         # Pad the data
         pad_y = torch.zeros(b, *data.shape[1:], device=data.device)
@@ -128,6 +142,15 @@ class EegInterAviModel(nn.Module, ABC):
         return MaskedValue(data=pad_y, mask=pad_mask)
 
     def process_modality(self, x: MaskedValue, idx: torch.Tensor, b: int, modality: ModalityStream, use_kd: bool):
+        """
+
+        :param x:
+        :param idx:
+        :param b:
+        :param modality:
+        :param use_kd:
+        :return:
+        """
         output = dict()
         data, mask = x["data"], x.get("mask", None)
         _, t = data.shape[0:2]
@@ -159,6 +182,13 @@ class EegInterAviModel(nn.Module, ABC):
         return output | {"data": res["data"], "mask": res["mask"], "t_mod": time_mask}
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
+        """
+
+        :param x:
+        :param use_kd:
+        :param return_dict:
+        :return:
+        """
         # Where outputs are partitioned for later use.
         out = EegBaseModelOutputs(torch.empty(), {}, {})
 

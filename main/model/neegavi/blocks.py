@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Optional
 
 import torch
@@ -101,3 +102,9 @@ class TemporalEncoder(nn.Module):
         x = x + self.pos[:, :T]
         kpm = ~mask if mask is not None else None
         return self.enc(x, src_key_padding_mask=kpm)  # -> (B,T,D)
+
+
+class AbstractAttentionBlock(nn.Module, ABC):
+    @abstractmethod
+    def forward(self, q: torch.Tensor, kv: torch.Tensor, attn_mask=None, q_mask=None, kv_mask=None):
+        pass

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from dataclasses import asdict
 from typing import Optional
 
 import torch
@@ -8,7 +9,7 @@ from einops import rearrange
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from main.model.neegavi.blocks import SimpleFeedForward
+from main.model.neegavi.blocks import SimpleFeedForward, AbstractAttentionBlock
 
 
 @dataclasses.dataclass
@@ -18,7 +19,7 @@ class GatedXAttentionCustomArgs:
     ff_mult: int = 4
 
 
-class GatedXAttentionBlock(nn.Module):
+class GatedXAttentionBlock(AbstractAttentionBlock):
     def __init__(self, dim: int, dim_latent: int, dim_head: int = 64, heads: int = 6, ff_mult: int = 4,
                  with_self_attn: bool = True):
         """
@@ -63,26 +64,6 @@ class GatedXAttentionBlock(nn.Module):
 
         norm_q = self.norm_ff(q)
         q = q + self.ff(norm_q) * self.ff_gate.tanh()
-
-        return q
-
-    def old_forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
-        # Pre-LN
-        norm_q = self.norm_q(q)
-        norm_kv = self.norm_kv(kv)
-
-        # Cross modality attention
-        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
-        norm_q = self.norm_ff(q)
-        q = q + self.ff(norm_q) * self.ff_gate.tanh()
-
-        if self.self_attn is not None:
-            # Similar to how Flamingo works just that this self attn is not frozen but learnt.
-            # Also respect the convention of torch of passing mask with True where ignore.
-            norm_q = self.norm_self_attn(q)
-            out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
-            q = q + self.self_attn_gate.tanh() * out
-
         return q
 
 
@@ -155,3 +136,25 @@ class MaskedCrossAttention(nn.Module):
         out = rearrange(out, "b h n d -> b n (h d)")
 
         return self.out(out)
+
+
+class GatedXAttentionFactory:
+    def __init__(self, dim: int, latent_dim: int):
+        """
+        This factory creates Gated XAttention layers based on given configurations.
+
+        :param dim: The output size of the gated XAttention layer
+        :param latent_dim: The input size of the latent dim (KV)
+        """
+        self.dim: int = dim
+        self.latent_dim: int = latent_dim
+        self.default_configuration = GatedXAttentionCustomArgs()
+
+    def build(self, layers: int = None, overrides: list[GatedXAttentionCustomArgs] = None) \
+            -> list[GatedXAttentionBlock]:
+        if overrides is not None:
+            return [GatedXAttentionBlock(self.dim, self.latent_dim, *asdict(c)) for c in overrides]
+        if layers is not None:
+            config = asdict(self.default_configuration)
+            return [GatedXAttentionBlock(self.dim, self.latent_dim, *config) for _ in range(layers)]
+        raise ValueError("Either layers or overrides must be specified")
