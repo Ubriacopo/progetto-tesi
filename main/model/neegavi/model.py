@@ -14,6 +14,10 @@ from main.utils.logging import make_logger
 
 @dataclasses.dataclass
 class EegInterAviModelConfiguration:
+    # Shapes
+    pivot_dim: int
+    support_dim: int
+    # Configuration variables
     drop_p: float = .0
     use_modality_encoder: bool = True
 
@@ -22,7 +26,7 @@ class EegInterAviModel(nn.Module):
     KD_KEY = "kd"
 
     def __init__(self, pivot: ModalityStream, *supports: ModalityStream,
-                 attn_blocks: list[AbstractAttentionBlock], config=EegInterAviModelConfiguration(), ):
+                 attn_blocks: list[AbstractAttentionBlock], config: EegInterAviModelConfiguration):
         """
 
         :param pivot:

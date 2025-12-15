@@ -52,7 +52,7 @@ class PerceiverResamplerAdapter(nn.Module):
     def __init__(self, perceiver_config: PerceiverResamplerConfig,
                  project_out_size: int = None, post_resample_module: nn.Module = None):
         super().__init__()
-        self.resampler = PerceiverResampler(**perceiver_config.__dict__)
+        self.resampler = PerceiverResampler(**perceiver_config)
         self.post_resample_module: Optional[nn.Module] = post_resample_module
         self.logger = make_logger(self.__class__.__name__)
         # We have to adapt

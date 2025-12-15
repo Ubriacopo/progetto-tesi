@@ -150,11 +150,12 @@ class GatedXAttentionFactory:
         self.latent_dim: int = latent_dim
         self.default_configuration = GatedXAttentionCustomArgs()
 
-    def build(self, layers: int = None, overrides: list[GatedXAttentionCustomArgs] = None) \
+    def build(self, layers: int | list[GatedXAttentionCustomArgs]) \
             -> list[GatedXAttentionBlock]:
-        if overrides is not None:
-            return [GatedXAttentionBlock(self.dim, self.latent_dim, *asdict(c)) for c in overrides]
-        if layers is not None:
+        if isinstance(layers, list) and len(layers) > 1 and isinstance(layers[0], GatedXAttentionCustomArgs):
+            return [GatedXAttentionBlock(self.dim, self.latent_dim, **asdict(c)) for c in layers]
+        if isinstance(layers, int):
             config = asdict(self.default_configuration)
-            return [GatedXAttentionBlock(self.dim, self.latent_dim, *config) for _ in range(layers)]
+            return [GatedXAttentionBlock(self.dim, self.latent_dim, **config) for _ in range(layers)]
+
         raise ValueError("Either layers or overrides must be specified")

@@ -1,0 +1,61 @@
+# Config for perceiver resampler blocks.
+# Defaults to equal for everyone for the moment.
+classpath: main.model.neegavi.new_factory.DefaultEegInterAviFactory
+perceiver_resampler_config:
+  dim: 768
+  depth: 2
+  dim_head: 64
+  heads: 12
+  num_latents: 64
+  ff_mult: 4
+
+# At the moment we only support the same timestep size for supports
+supports_timestep_seconds: 4
+
+pivot: eeg
+supports: [ vid, aud, txt, ecg ]
+
+constructor:
+  # Pivot
+  disabled_supports: [ ecg ]
+  eeg_config:
+    in_size: 200
+    channels: 34
+    out_size: ${pivot_out_size}
+    timestep_seconds: 1
+
+  # Supports
+  vid_config:
+    in_size: 768
+    out_size: ${supports_out_size}
+    timestep_seconds: ${factory.supports_timestep_seconds}
+    teacher_out_size: 100
+    perceiver_resampler_config: ${factory.perceiver_resampler_config}
+
+  aud_config:
+    in_size: 768
+    out_size: ${supports_out_size}
+    timestep_seconds: ${factory.supports_timestep_seconds}
+    teacher_out_size: 100
+    perceiver_resampler_config: ${factory.perceiver_resampler_config}
+
+  txt_config:
+    in_size: 384
+    out_size: ${supports_out_size}
+    timestep_seconds: ${factory.supports_timestep_seconds}
+    teacher_out_size: 100
+
+  ecg_config:
+    in_size: 384
+    out_size: ${supports_out_size}
+    timestep_seconds: ${factory.supports_timestep_seconds}
+    perceiver_resampler_config: ${factory.perceiver_resampler_config}
+
+  attention_config: 2
+  # Args for the construction of the EegInterAviModel. TODO: move somewhere?
+  custom_config:
+    pivot_dim: ${pivot_out_size}
+    support_dim: ${supports_out_size}
+    drop_p: 0.0
+    use_modality_encoder: True
+
