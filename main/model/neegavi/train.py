@@ -67,7 +67,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         if self.use_fusion_loss:
             loss = loss + self.compute_fusion_loss(stud_out.embeddings, stud_out.multimodal_outs) * self.beta
-
+        # TODO Drop? Solo AMIGOS ha metriche utili
         if self.use_supervised_loss:
             targets = batch["student"][Assessment.modality_code()].float()
             loss = loss + self.compute_supervised_loss(pred=stud_out.pred, target=targets) * self.gamma
