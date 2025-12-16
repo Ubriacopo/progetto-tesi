@@ -1,10 +1,11 @@
 #
 defaults:
   - template
-  - factory: default_eeg_inter_avi
+  - factory: default_weakly_supervised_eeg_inter_avi
   - pivot: eeg_default
   # Supports mappings
   - supports@supports.vid: vid_default
   - supports@supports.aud: aud_default
   - supports@supports.txt: txt_default
   - supports@supports.ecg: ecg_default
+  - supports@supports.assessment: assessment_default

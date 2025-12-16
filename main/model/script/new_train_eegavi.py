@@ -109,7 +109,7 @@ def main(cfg: KdConfig):
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
 
-    fusion_metrics_codes = [s.code for s in cfg.model.supports]
+    fusion_metrics_codes = [cfg.model.supports[s].code for s in cfg.model.supports]
     fusion_metrics_codes.append(cfg.model.pivot.code)
 
     module = EegAviKdVateMaskedSemiSupervisedModule(
@@ -126,7 +126,16 @@ def main(cfg: KdConfig):
 
     student_keys: list[RequiredKey] = []
     teacher_keys: list[RequiredKey] = []
-    for c in [cfg.model.pivot] + cfg.model.supports:
+
+    # Pivot
+    c = cfg.model.pivot
+    student_keys.append(RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss))
+    if c.is_teacher_key:
+        teacher_keys.append(RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss))
+
+    # Supports
+    for key in cfg.model.supports:
+        c = cfg.model.supports[key]
         student_keys.append(RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss))
         if c.is_teacher_key:
             teacher_keys.append(RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss))
@@ -142,14 +151,17 @@ def main(cfg: KdConfig):
     teacher_dataset = []
     for file in cfg.teacher_dataset_path:
         pivot_key = cfg.teacher.pivot
-        ds = FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, required_keys=student_keys, main_key=pivot_key)
+        ds = FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, required_keys=teacher_keys, main_key=pivot_key)
         teacher_dataset.append(ds)
 
     teacher_dataset = ConcatDataset(teacher_dataset)
 
+    def collate_fn(batch):
+        return tensordict.stack(batch)
+
     dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
     train_dataloader = DataLoader(
-        dataset_wrapper, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=lambda x: tensordict.stack(x)
+        dataset_wrapper, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_fn
     )
 
     for n, p in student.named_parameters():

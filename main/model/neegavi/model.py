@@ -1,13 +1,14 @@
 import dataclasses
 from dataclasses import asdict
-from typing import Optional
+from typing import Optional, Literal
 
 import torch
 from einops import repeat, rearrange
 from torch import nn
 
 from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock
-from main.model.neegavi.utils import EegBaseModelOutputs
+from main.model.neegavi.pooling import MaskedPooling
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
 from main.utils.data import MaskedValue, KdMaskedValue
 from main.utils.logging import make_logger
 
@@ -17,9 +18,18 @@ class EegInterAviModelConfiguration:
     # Shapes
     pivot_dim: int
     support_dim: int
+
+    output_size: int  # End size of the model (Output).
+
     # Configuration variables
     drop_p: float = .0
     use_modality_encoder: bool = True
+
+
+@dataclasses.dataclass
+class WeaklySupervisedWrapperModelConfiguration:
+    hidden_size: int
+    output_size: int
 
 
 class EegInterAviModel(nn.Module):
@@ -43,12 +53,18 @@ class EegInterAviModel(nn.Module):
         self.supports_feature_size: int = -1
         self.check_supports()
 
+        self.allow_modality: Literal['window', 'causal'] = 'window'
+        self.past_window_units: int = 1  # How much past can be seen
+
         self.drop_p: float = config.drop_p
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if config.use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
             self.modality_encoder = ModalContextEncoder(self.supports_feature_size, modality_mappings)
         self.gatedXAttn_layers = nn.ModuleList(attn_blocks)
+
+        self.fusion_pooling = MaskedPooling()
+        self.config = config
 
     def check_supports(self):
         """
@@ -194,7 +210,7 @@ class EegInterAviModel(nn.Module):
         :return:
         """
         # Where outputs are partitioned for later use.
-        out = EegBaseModelOutputs(torch.empty(), {}, {})
+        out = EegBaseModelOutputs(torch.empty(1), {}, {})
 
         # Pivot modality elaboration
 
@@ -250,3 +266,21 @@ class EegInterAviModel(nn.Module):
 
         out.embeddings = z
         return out if not return_dict else asdict(out)
+
+
+class WeaklySupervisedEegInterAviModel(nn.Module):
+    def __init__(self, base_model: EegInterAviModel, base_model_out_size: int, hidden_size: int, output_size: int):
+        super().__init__()
+        self.base_model = base_model
+        self.prediction_head = nn.Sequential(
+            nn.Linear(base_model_out_size, hidden_size),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, output_size)
+        )
+
+    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
+        outs: EegBaseModelOutputs = self.base_model(x, use_kd=use_kd, return_dict=False)
+        pred = self.prediction_head(outs.embeddings)
+        o = WeaklySupervisedEegBaseModelOutputs(pred=pred, **vars(outs))
+        return o if not return_dict else asdict(o)

@@ -1,5 +1,5 @@
 # This configuration serves to decide the student-teacher keys.
-code: aud
+code: ecg
 cannot_miss: False
 
 shape: [ 8, 32, 256 ]

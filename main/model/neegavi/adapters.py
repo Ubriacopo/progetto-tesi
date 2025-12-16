@@ -92,10 +92,10 @@ class SimpleFeedForwardAdapter(nn.Module):
 
 
 class TemporalEncoderAdapter(nn.Module):
-    def __init__(self, p: int, dim: int, project_out_size: int = None):
+    def __init__(self, p: int, dim: int, max_length: int, timestep_duration: int, project_out_size: int = None):
         super().__init__()
         self.p: int = p
-        self.temporal_encoder = TemporalEncoder(dim=dim)
+        self.temporal_encoder = TemporalEncoder(dim=dim, max_length=max_length, timestep_duration=timestep_duration)
         self.projection: Optional[nn.Module] = None
         if project_out_size is not None and project_out_size != dim:
             self.projection = nn.Linear(dim, project_out_size)
