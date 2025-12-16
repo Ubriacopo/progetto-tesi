@@ -47,7 +47,7 @@ class RequiredKey:
 
 class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, required_keys: list[RequiredKey], main_key: str,
-                 selected_device: device = None, cache_in_ram: bool = False):
+                 squeeze_mask: bool = False, selected_device: device = None, cache_in_ram: bool = False):
         """"
 
 
@@ -68,6 +68,8 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
         # TODO In futuro supportare l'opzione
         self.cache_in_ram: bool = cache_in_ram
         self.ram_cache = dict()
+
+        self.squeeze_mask = squeeze_mask
 
         self.required_keys: list[RequiredKey] = required_keys
         self.main_key: str = main_key
@@ -96,6 +98,9 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
                                     mask=torch.zeros((*batch_size, *k.mask_shape), dtype=torch.bool)),
                         batch_size=batch_size
                     )
+
+                    if self.squeeze_mask:
+                        default['mask'] = default['mask'].squeeze()
 
                     o.setdefault(k.key, default)
 

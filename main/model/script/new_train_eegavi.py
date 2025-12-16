@@ -151,7 +151,9 @@ def main(cfg: KdConfig):
     teacher_dataset = []
     for file in cfg.teacher_dataset_path:
         pivot_key = cfg.teacher.pivot
-        ds = FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, required_keys=teacher_keys, main_key=pivot_key)
+        ds = FlexibleEmbeddingsSpecMediaDataset(
+            dataset_spec_file=file, required_keys=teacher_keys, main_key=pivot_key, squeeze_mask=True
+        )
         teacher_dataset.append(ds)
 
     teacher_dataset = ConcatDataset(teacher_dataset)
