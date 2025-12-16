@@ -46,6 +46,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.alpha: float = kd_loss_weight
         self.beta: float = fusion_loss_weight
         self.gamma: float = weakly_supervised_weight
+
     # todo ramp up per other losses than supervised? Or just use supervised as aux
     def configure_optimizers(self) -> OptimizerLRScheduler:
         siglip_common_optim_configs = [
@@ -67,6 +68,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         if self.use_fusion_loss:
             loss = loss + self.compute_fusion_loss(stud_out.embeddings, stud_out.multimodal_outs) * self.beta
+
         # TODO Drop? Solo AMIGOS ha metriche utili
         if self.use_supervised_loss:
             targets = batch["student"][Assessment.modality_code()].float()

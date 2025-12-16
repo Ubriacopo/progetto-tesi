@@ -18,7 +18,7 @@ from main.dataset.utils import DatasetUidStore
 
 
 class ManhobPointsLoader(DataPointsLoader):
-    DATASET_ID: int = 2
+    DATASET_ID: int = 4
 
     def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore, config: ManhobConfig = ManhobConfig()):
         super().__init__(dataset_uid_store)

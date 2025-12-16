@@ -87,9 +87,9 @@ class KdConfig:
     student_dataset_path: list[str]
     teacher_dataset_path: list[str]
     teacher_weights_path: str
+# 83 108 175 119 for 42
 
-
-SEED = 42
+SEED = 96
 
 
 @hydra.main(config_path="config", config_name="new_train_kd")
@@ -168,7 +168,7 @@ def main(cfg: KdConfig):
         print(n, p.requires_grad, p.grad is None)
 
     torchinfo.summary(module)
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24, overfit_batches=1)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24, limit_train_batches=1)
     #trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
 

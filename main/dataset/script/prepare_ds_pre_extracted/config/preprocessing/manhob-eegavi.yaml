@@ -1,7 +1,7 @@
 # @package preprocessing
 ---
 defaults:
-  - local
+  - base
 
 dataset_name: manhob
 out_folder_name: interleaved

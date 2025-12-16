@@ -3,7 +3,8 @@ from main.core_data.media.ecg.default_transform_pipe import ecg_interleaved_tran
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
-from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
+from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
+    vid_vate_basic_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.dataset.manhob.config import ManhobConfig
 
@@ -18,7 +19,6 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
             eeg_transform_pipe(config),
             ecg_interleaved_transform_pipe(config),
             (Metadata.modality_code(), MetadataToTensor())
-
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "MANHOB-sample-pipeline",
@@ -33,7 +33,7 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Man
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "MANHOB-vate-processor",
-            vid_vivit_interleaved_transform_pipe(config),
+            vid_vate_basic_transform_pipe(config),
             (Metadata.modality_code(), MetadataToTensor())
         ),
 
