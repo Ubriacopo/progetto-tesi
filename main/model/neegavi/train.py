@@ -31,7 +31,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         self.siglip_losses: nn.ModuleDict = nn.ModuleDict()
         for fusion_metric in fusion_metrics:
-            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
+            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=True, verbose=self.verbose)
             self.siglip_losses.add_module(fusion_metric, loss_fn)
 
         # Just to debug atm
@@ -116,10 +116,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             if not valid_rows.any():
                 continue
 
-            # Take only valid rows
+            # Take only valid rows.
+            #
             y_before = value["data"][valid_rows]
             modality_output = fused_output[valid_rows]
-            mask = value["mask"][valid_rows].unsqueeze(-1).float()
+            mask = value["mask"][valid_rows].detach().unsqueeze(-1).float()
 
             y_mean = (y_before * mask).sum(dim=1) / mask.sum(dim=1)
             mod_loss = self.siglip_losses[key](modality_output, y_mean)
