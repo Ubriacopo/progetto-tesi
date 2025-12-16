@@ -46,7 +46,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.alpha: float = kd_loss_weight
         self.beta: float = fusion_loss_weight
         self.gamma: float = weakly_supervised_weight
-
+    # todo ramp up per other losses than supervised? Or just use supervised as aux
     def configure_optimizers(self) -> OptimizerLRScheduler:
         siglip_common_optim_configs = [
             {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
