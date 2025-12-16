@@ -1,0 +1,18 @@
+pivot_out_size: 384
+supports_out_size: 384
+
+# Construction factory
+factory: ???
+
+# Modalities
+pivot: ???
+supports: ???
+
+# EegInterAviModelConfiguration implementation
+custom_config:
+  pivot_dim: ${model.pivot_out_size}
+  support_dim: ${model.supports_out_size}
+  # Drop probability for modalities during training. (Each is evaluated on its own.)
+  drop_p: 0.0
+  # If we want to add a modality embedding to vectors before doing fusion.
+  use_modality_encoder: True

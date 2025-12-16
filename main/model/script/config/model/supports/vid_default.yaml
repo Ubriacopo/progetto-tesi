@@ -1,0 +1,17 @@
+# This configuration serves to decide the student-teacher keys.
+code: vid
+cannot_miss: False
+
+shape: [ 8, 16, 768 ]
+mask_shape: [ 8, ]
+
+is_teacher_key: True
+teacher_shape: [ 400, ]
+teacher_mask_shape: [ 1, ]
+
+config:
+  in_size: 768
+  out_size: ${model.supports_out_size}
+  teacher_out_size: ${teacher.out_channels}
+  perceiver_resampler_config: ${model.factory.perceiver_resampler_config}
+  timestep_seconds: 4

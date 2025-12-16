@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Tuple, Optional
 
 import hydra
 import lightning as L
@@ -18,6 +19,7 @@ from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
+from main.model.neegavi.model import EegInterAviModelConfiguration
 from main.model.neegavi.new_factory import AbstractEegInterAviFactory
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
 
@@ -35,18 +37,52 @@ class TrainerConfig:
 
 
 @dataclasses.dataclass
+class ModalityPresenceInformation:
+    code: str  # Identification code for the modality
+    cannot_miss: bool  # If it cannot miss the moment we miss it we raise an error.
+    is_teacher_key: bool  # If it participates in kd process
+    # Shapes of the inputs
+    shape: Tuple[int, ...]
+    mask_shape: Optional[Tuple[int, ...]]
+
+    # In case it also appears in KD process
+    teacher_shape: Optional[Tuple[int, ...]]
+    teacher_mask_shape: Optional[Tuple[int, ...]]
+
+    # This one is passed to the factory?
+    additional_config: dict
+
+
+@dataclasses.dataclass
 class ModelFactoryConfig:
     classpath: str
-    constructor: dict
+    constructor_args: dict
 
-    pivot_code: str
-    supports_codes: list[str]
+
+@dataclasses.dataclass
+class ModelConfig:
+    factory: ModelFactoryConfig
+
+    pivot: ModalityPresenceInformation
+    supports: list[ModalityPresenceInformation]
+
+    custom_config: EegInterAviModelConfiguration
+
+
+@dataclasses.dataclass
+class TeacherConfig:
+    hidden_channels: int
+    out_channels: int
+
+    pivot: str  # Main key of the teacher
 
 
 @dataclasses.dataclass
 class KdConfig:
     trainer: TrainerConfig
-    factory: ModelFactoryConfig  # TODO vedi se riesci a fare type hints
+
+    model: ModelConfig
+    teacher: TeacherConfig
 
     student_dataset_path: list[str]
     teacher_dataset_path: list[str]
@@ -60,18 +96,21 @@ SEED = 42
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     torch.manual_seed(SEED)  # Reproducibility
-    factory_constructor = get_class(cfg.factory.classpath)
-    factory = factory_constructor(**cfg.factory.constructor)
+    factory_constructor = get_class(cfg.model.factory.classpath)
+    factory = factory_constructor(**cfg.model.factory.constructor_args)
 
     if not isinstance(factory, AbstractEegInterAviFactory):
         raise ValueError("We need an AbstractEegInterAviFactory. Given factory is not of such type.")
     factory: AbstractEegInterAviFactory
 
     student = factory.build()
-    teacher = MaskedContrastiveModel(hidden_channels=200, out_channels=100)
+    teacher = MaskedContrastiveModel(hidden_channels=cfg.teacher.hidden_channels, out_channels=cfg.teacher.out_channels)
 
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
+
+    fusion_metrics_codes = [s.code for s in cfg.model.supports]
+    fusion_metrics_codes.append(cfg.model.pivot.code)
 
     module = EegAviKdVateMaskedSemiSupervisedModule(
         student=student,
@@ -82,43 +121,35 @@ def main(cfg: KdConfig):
         lr=cfg.trainer.lr,
         kd_temperature=cfg.trainer.kd_temperature,
         # All modalities contribute to fusion
-        fusion_metrics=cfg.factory.supports_codes + [cfg.factory.pivot_code],
+        fusion_metrics=fusion_metrics_codes,
     )
-    # todo da leggere da config
-    student_keys: list[RequiredKey] = [
-        RequiredKey(EEG.modality_code(), shape=(8, 32, 34, 256), mask_shape=(8, 32, 34), cannot_miss=True),
-        # RequiredKey("meta", ), Cannot recreate this.
-        RequiredKey(Assessment.modality_code(), shape=(4,), mask_shape=(4,)),
-        RequiredKey(Video.modality_code(), shape=(8, 16, 768), mask_shape=(8,)),
-        RequiredKey(Audio.modality_code(), shape=(8, 199, 768), mask_shape=(8,)),
-        RequiredKey(ECG.modality_code(), shape=(8, 32, 256), mask_shape=(8,)),
-        RequiredKey(Text.modality_code(), shape=(8, 384), mask_shape=(8,))
-    ]
 
-    student_dataset = ConcatDataset([
-        FlexibleEmbeddingsSpecMediaDataset(
-            dataset_spec_file=file, cache_in_ram=True, required_keys=student_keys, main_key=EEG.modality_code()
-        )
-        for file in cfg.student_dataset_path
-    ])
+    student_keys: list[RequiredKey] = []
+    teacher_keys: list[RequiredKey] = []
+    for c in [cfg.model.pivot] + cfg.model.supports:
+        student_keys.append(RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss))
+        if c.is_teacher_key:
+            teacher_keys.append(RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss))
 
-    # todo da leggere da config
-    teacher_keys: list[RequiredKey] = [
-        RequiredKey(Video.modality_code(), shape=(400,), mask_shape=(1,), cannot_miss=True),
-        RequiredKey(Audio.modality_code(), shape=(768,), mask_shape=(1,)),
-        RequiredKey(Text.modality_code(), shape=(768,), mask_shape=(1,))
-    ]
+    student_dataset = []
+    for file in cfg.student_dataset_path:
+        pivot_key = cfg.model.pivot.code
+        ds = FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, required_keys=student_keys, main_key=pivot_key)
+        student_dataset.append(ds)
 
-    teacher_dataset = ConcatDataset([
-        FlexibleEmbeddingsSpecMediaDataset(
-            dataset_spec_file=file, cache_in_ram=True, required_keys=teacher_keys, main_key=Video.modality_code()
-        )
-        for file in cfg.teacher_dataset_path
-    ])
+    student_dataset = ConcatDataset(student_dataset)
+
+    teacher_dataset = []
+    for file in cfg.teacher_dataset_path:
+        pivot_key = cfg.teacher.pivot
+        ds = FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, required_keys=student_keys, main_key=pivot_key)
+        teacher_dataset.append(ds)
+
+    teacher_dataset = ConcatDataset(teacher_dataset)
 
     dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
     train_dataloader = DataLoader(
-        dataset_wrapper, batch_size=cfg.batch_size, shuffle=True, collate_fn=lambda x: tensordict.stack(x)
+        dataset_wrapper, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=lambda x: tensordict.stack(x)
     )
 
     for n, p in student.named_parameters():
@@ -126,7 +157,7 @@ def main(cfg: KdConfig):
 
     torchinfo.summary(module)
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24, overfit_batches=1)
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.epochs, log_every_n_steps=24)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
 
 

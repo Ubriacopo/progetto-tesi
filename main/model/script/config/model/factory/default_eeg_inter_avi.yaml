@@ -1,0 +1,32 @@
+# Config for perceiver resampler blocks.
+# Defaults to equal for everyone for the moment.
+perceiver_resampler_config:
+  dim: 768
+  depth: 2
+  dim_head: 64
+  heads: 12
+  num_latents: 64
+  ff_mult: 4
+
+# At the moment we only support the same timestep size for supports
+supports_timestep_seconds: 4 # todo vedi se puoi togliere
+
+pivot: eeg
+supports: [ vid, aud, txt, ecg ]
+
+classpath: main.model.neegavi.new_factory.DefaultEegInterAviFactory
+constructor_args:
+  # Pivot
+  disabled_supports: [ ecg ]
+  eeg_config: ${...pivot.config}
+
+  # Supports
+  vid_config: ${...supports.vid.config}
+  aud_config: ${...supports.aud.config}
+  txt_config: ${...supports.txt.config}
+  ecg_config: ${...supports.ecg.config}
+
+  attention_config: 2
+  # Args for the construction of the EegInterAviModel
+  custom_config: ${model.custom_config}
+

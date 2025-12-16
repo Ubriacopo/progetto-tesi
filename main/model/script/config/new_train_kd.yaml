@@ -1,12 +1,10 @@
-pivot_out_size: 384
-supports_out_size: 384
-
 defaults:
-  - factory: default_eeg_inter_avi
-  - trainer: default_trainer
+  - model: default
+  - trainer: default
+  - teacher: default
 
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
-teacher_weights_path: ${base_path}dependencies/VATE/best_model_contrastive.pt
+teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
 student_dataset_path: [
   "${base_path}data/EEGAVI/AMIGOS/interleaved/spec.csv",

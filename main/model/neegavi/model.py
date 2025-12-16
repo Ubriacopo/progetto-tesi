@@ -61,7 +61,7 @@ class EegInterAviModel(nn.Module):
             raise ValueError(error_message)
 
         self.supports_feature_size: int = self.supports[0].output_size
-        base_timestep = self.supports[0].timestep_second
+        base_timestep = self.supports[0].timestep_seconds
         check_code: str = self.supports[0].code
 
         for support in self.supports:
@@ -75,7 +75,7 @@ class EegInterAviModel(nn.Module):
 
             # Assumption of the model is that all supporting modalities are aligned to same timestep size.
             # This can be either true by default or a result of the ModalityStream. We just assume it to be.
-            if current_timestep != base_timestep or current_timestep != self.pivot.timestep_seconds:
+            if current_timestep != base_timestep:
                 msg = f"Timesteps do not match for {code}-{check_code}. Timesteps {current_timestep}!={base_timestep}"
                 self.logger.error(msg)
                 raise ValueError(msg)

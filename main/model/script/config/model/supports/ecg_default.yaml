@@ -1,0 +1,14 @@
+# This configuration serves to decide the student-teacher keys.
+code: aud
+cannot_miss: False
+
+shape: [ 8, 32, 256 ]
+mask_shape: [ 8, ]
+
+is_teacher_key: False
+
+config:
+  in_size: 384
+  out_size: ${model.supports_out_size}
+  perceiver_resampler_config: ${model.factory.perceiver_resampler_config}
+  timestep_seconds: 4

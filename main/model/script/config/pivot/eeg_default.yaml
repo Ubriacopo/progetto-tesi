@@ -1,6 +1,0 @@
-code: eeg
-config:
-  in_size: 200
-  channels: 34
-  out_size: ${pivot_out_size}
-  timestep_seconds: 1
