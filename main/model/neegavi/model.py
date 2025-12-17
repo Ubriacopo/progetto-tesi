@@ -54,7 +54,7 @@ class EegInterAviModel(nn.Module):
         self.check_supports()
 
         self.allow_modality: Literal['window', 'causal'] = 'window'
-        self.past_window_units: int = 1  # How much past can be seen
+        self.past_window_units: int = 2  # How much past can be seen
 
         self.drop_p: float = config.drop_p
         self.modality_encoder: Optional[ModalContextEncoder] = None
@@ -126,12 +126,11 @@ class EegInterAviModel(nn.Module):
         :param t_kv:
         :return:
         """
-        # By multipliyng by the timestep seconds we reshape so that alignemnt works correctly.
+        # By multiplying by the timestep seconds we reshape so that alignemnt works correctly.
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
         tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
-
         if self.allow_modality == "window":
-            return (tk - tq).abs() <= self.past_window_units
+            return (tk - tq).abs() <= self.past_window_units + 1
         if self.allow_modality == "causal":
             return tk <= tq
         raise ValueError(f"Unknown mode: {self.allow_modality}")
@@ -234,7 +233,6 @@ class EegInterAviModel(nn.Module):
         supports, masks, t_mods = [], [], []
         for idx, modality in enumerate(self.supports):
             modality_code = modality.get_code()
-            # TODO why [0]?
             filtered_idx = keep[:, idx].nonzero(as_tuple=True)[0]
             modality_out = self.process_modality(
                 x[modality_code], idx=filtered_idx, modality=modality, use_kd=use_kd, b=b
