@@ -14,7 +14,7 @@ supports_timestep_seconds: 4 # todo vedi se puoi togliere
 pivot: eeg
 supports: [ vid, aud, txt, ecg ]
 
-classpath: main.model.neegavi.new_factory.WeaklySupervisedDefaultEegInterAviFactory
+classpath: main.model.neegavi.factory.WeaklySupervisedDefaultEegInterAviFactory
 constructor_args:
   # Pivot
   disabled_supports: [ ecg ]

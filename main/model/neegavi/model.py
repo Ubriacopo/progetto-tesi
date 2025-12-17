@@ -61,6 +61,7 @@ class EegInterAviModel(nn.Module):
         if config.use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
             self.modality_encoder = ModalContextEncoder(self.supports_feature_size, modality_mappings)
+
         self.gatedXAttn_layers = nn.ModuleList(attn_blocks)
 
         self.fusion_pooling = MaskedPooling()
@@ -106,8 +107,8 @@ class EegInterAviModel(nn.Module):
         """
         if (not self.training) or self.drop_p <= 0:
             return torch.ones(batch_size, len(self.supports), device=device)
-        keep = torch.bernoulli(torch.full((batch_size, len(self.supports)), 1 - self.drop_p, device=device)).bool()
 
+        keep = torch.bernoulli(torch.full((batch_size, len(self.supports)), 1 - self.drop_p, device=device)).bool()
         dead = ~keep.any(1)
         # TODO decidi se fare ensure di one
         if ensure_one and dead:
@@ -121,10 +122,11 @@ class EegInterAviModel(nn.Module):
 
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         """
-
-        :param t_q:
-        :param t_kv:
-        :return:
+        Allowance mask aligns the same timesteps and previous ones.
+        If modality is window only a limited amount of past is preserved as context.
+        :param t_q: Time map for query vector
+        :param t_kv: Time map for kv vectory
+        :return: Allowance mask signaling what one can attend to.
         """
         # By multiplying by the timestep seconds we reshape so that alignemnt works correctly.
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]

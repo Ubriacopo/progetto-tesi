@@ -1,149 +1,164 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+
+from torch import nn
 
 from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
-from main.model.neegavi.adapters import PerceiverResamplerAdapter, \
-    TemporalEncoderAdapter, PerceiverResamplerConfig, EegAdapter
-from main.model.neegavi.base_model import EegInterAviModel, WeaklySupervisedNEEEGBaseModel
+from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter
 from main.model.neegavi.blocks import ModalityStream
+from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, PerceiverModalityConfig
 from main.model.neegavi.kd import KDHead
+from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration, WeaklySupervisedEegInterAviModel, \
+    WeaklySupervisedWrapperModelConfiguration
+from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 
 
+def supporting(function):
+    function._is_supporting = True
+    function._is_pivot = False
+    return function
 
-class EegInterAviFactory:
 
-    @staticmethod
-    def build(output_size: int, pivot: ModalityStream, supports: list[ModalityStream],
-              use_modality_encoder: bool, xattn_blocks: int, drop_p: float):
-        return EegInterAviModel(output_size, pivot, supports, xattn_blocks, drop_p, use_modality_encoder)
+def pivot(function):
+    function._is_pivot = True
+    function._is_supporting = False
+    return function
 
-    @staticmethod
-    def default(target_size: int, supports_latent_size: int, channels: int = 34,
-                teacher_out_shape: Tuple[int, ...] = (1, 100),
-                # Further settings:
-                use_modality_encoder: bool = True, xattn_blocks: int = 2):
-        perceiver_resampler_config = PerceiverResamplerConfig(dim=768, depth=2, dim_head=64, heads=12, num_latents=64)
+
+class AbstractEegInterAviFactory(ABC):
+    def __init__(self, disabled_supports: list[str], custom_config: EegInterAviModelConfiguration):
+        self.config: EegInterAviModelConfiguration = custom_config
+        self.disabled_supports: list[str] = disabled_supports
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.supporting_methods = cls._collect_marked("_is_supporting")
+        pivot_methods = cls._collect_marked("_is_pivot")
+        if len(pivot_methods) != 1:
+            raise ValueError(f"Expected exactly 1 pivot, found {len(pivot_methods)}.")
+
+        cls.pivot_name = pivot_methods[0].__name__  # store name, not function
+
+    @classmethod
+    def _collect_marked(cls, attr_name: str):
+        out = {}
+        # Base -> Subclass, so subclass overrides win
+        for c in reversed(cls.mro()):
+            if c is object:
+                continue
+            for name, obj in c.__dict__.items():
+                if callable(obj) and getattr(obj, attr_name, False):
+                    out[name] = obj
+        return list(out.values())
+
+    def build(self):
         return EegInterAviModel(
-            output_size=target_size,
-            pivot=ModalityStream(
-                EEG.modality_code(), target_size,
-                adapter=EegAdapter(channels, latent_input_size=200, output_size=target_size),
-            ),
-            supports=[
-                ModalityStream(
-                    Audio.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
-                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
-                ),
-                ModalityStream(
-                    Video.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
-                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
-                ),
-                ModalityStream(
-                    Text.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
-                    adapter=TemporalEncoderAdapter(p=64, dim=384, ),
-                )
-            ],
-
-            use_modality_encoder=use_modality_encoder,
-            xattn_blocks=xattn_blocks,
+            getattr(self, self.pivot_name)(),
+            # Suppress not wanted supports via disabled_supports. They have to match the methodname
+            *[i(self) for i in self.supporting_methods if i.__name__ not in self.disabled_supports],
+            attn_blocks=self.attention(), config=self.config
         )
 
-    @staticmethod
-    def eeg_pooled(output_size: int, supports_latent_size: int,
-                   perceiver_resampler_config: PerceiverResamplerConfig,
-                   eeg_channels: int = 32,
-                   teacher_out_shape: Tuple[int, ...] = (1, 100),
-                   # Further settings:
-                   use_modality_encoder: bool = True, xattn_blocks: int = 2):
-        pivot = ModalityStream(EEG.modality_code(), output_size, adapter=None)  # TODO
-        supports = [
-            # Audio
-            ModalityStream(
-                Audio.modality_code(), output_size,
-                kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
-                adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
-            ),
-            # Video
-            ModalityStream(
-                Video.modality_code(), output_size,
-                kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
-                adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384)
-            ),
-            # Text
-            ModalityStream(
-                Text.modality_code(), output_size,
-                kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape),
-                # adapter=PMAAudioAdapter(project_out_size=target_size),
-                adapter=TemporalEncoderAdapter(p=64, dim=384, ),
-            )
-            # ECG todo
-        ]
+    @abstractmethod
+    def attention(self):
+        pass
 
-        return EegInterAviFactory.build(
-            output_size, pivot, supports, use_modality_encoder, xattn_blocks
+
+class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
+    def __init__(self,
+                 # Configs for each different modality
+                 eeg_config: EegModalityConfig,
+                 vid_config: KdPerceiverModalityConfig,
+                 aud_config: KdPerceiverModalityConfig,
+                 txt_config: KdPerceiverModalityConfig,
+                 ecg_config: PerceiverModalityConfig,
+                 disabled_supports: list[str],
+                 # Attention config
+                 attention_config: int | list[GatedXAttentionCustomArgs],
+                 # Model wide configuration
+                 custom_config: EegInterAviModelConfiguration = None):
+        # If custom config does not exist make it based on known information.
+        if custom_config is None:
+            custom_config = EegInterAviModelConfiguration(eeg_config.out_size, vid_config.out_size)
+        super().__init__(disabled_supports, custom_config)
+        self.eeg_modality_config: EegModalityConfig = eeg_config
+        self.vid_modality_config: KdPerceiverModalityConfig = vid_config
+        self.aud_modality_config: KdPerceiverModalityConfig = aud_config
+        self.txt_modality_config: KdPerceiverModalityConfig = txt_config
+        self.ecg_modality_config: PerceiverModalityConfig = ecg_config
+        self.attention_config = attention_config
+
+    def attention(self):
+        attention = GatedXAttentionFactory(self.config.pivot_dim, self.config.support_dim)
+        return attention.build(self.attention_config)
+
+    @pivot
+    def eeg(self) -> ModalityStream:
+        config = self.eeg_modality_config  # Specific configuration
+        adapter = EegAdapter(config.channels, latent_input_size=config.in_size, output_size=config.out_size)
+
+        return ModalityStream(EEG.modality_code(), output_size=config.out_size,
+                              timestep_seconds=config.timestep_seconds, adapter=adapter)
+
+    @supporting
+    def vid(self) -> ModalityStream:
+        config = self.vid_modality_config  # Specific configuration
+        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
+        adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
+
+        return ModalityStream(Video.modality_code(), output_size=config.out_size,
+                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+
+    @supporting
+    def aud(self) -> ModalityStream:
+        config = self.aud_modality_config  # Specific configuration
+        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
+        adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
+
+        return ModalityStream(Audio.modality_code(), output_size=config.out_size,
+                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+
+    @supporting
+    def txt(self) -> ModalityStream:
+        config = self.txt_modality_config
+        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
+        # todo parametrizza correttamente
+        adapter = TemporalEncoderAdapter(
+            p=64, dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds,
         )
 
-    @staticmethod
-    def debug(target_size: int, supports_latent_size: int, channels: int = 32,
-              teacher_out_shape: Tuple[int, ...] = (1, 100),
-              # Further settings:
-              use_modality_encoder: bool = True, xattn_blocks: int = 2
-              ):
-        # TODO Is this problem? Config of PerceiverResampler? TODO mi manca memoria?
-        perceiver_resampler_config = PerceiverResamplerConfig(
-            dim=768, depth=2, dim_head=64, heads=12, num_latents=64, max_num_time_steps=34  # dipenda da modality
-        )
+        return ModalityStream(Text.modality_code(), output_size=config.out_size,
+                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
 
-        return EegInterAviModel(
-            output_size=target_size,
-            pivot=ModalityStream(
-                EEG.modality_code(), target_size,
-                adapter=EegAdapter(channels, latent_input_size=200, output_size=target_size),
-            ),
-            supports=[
-                ModalityStream(
-                    Audio.modality_code(), target_size,
-                    kd_head=KDHead(input_size=supports_latent_size, target_size=teacher_out_shape,
-                                   # transform=nn.Sequential(
-                                   #    nn.Linear(supports_latent_size, 128),
-                                   #    nn.GELU(),
-                                   #    nn.LayerNorm(128),
-                                   #    nn.Linear(128, teacher_out_shape[-1]),
-                                   # )
-                                   ),
-                    # adapter=PMAAudioAdapter(project_out_size=target_size),
-                    adapter=PerceiverResamplerAdapter(perceiver_resampler_config, project_out_size=384),
-                    # adapter=SimpleAudioAdapter(input_size=768, project_out_size=target_size),
-                ),
-                # ModalityStream(
-                #    Text.modality_code(), target_size,
-                #    kd_head=KDHead(input_size=supports_latent_size, target_shape=teacher_out_shape),
-                #    # adapter=PMAAudioAdapter(project_out_size=target_size),
-                #   adapter=TextAdapter(p=64, perceiver_config=perceiver_resampler_config),
-                # )
-            ],
+    # TODO Finish this
+    @supporting
+    def ecg(self) -> ModalityStream:
+        config = self.ecg_modality_config
+        return ModalityStream(ECG.modality_code(), output_size=config.out_size,
+                              timestep_seconds=config.timestep_seconds, adapter=nn.Identity())
 
-            use_modality_encoder=use_modality_encoder,
-            xattn_blocks=xattn_blocks,
-        )
 
-    @staticmethod
-    def weak_supervised_interleaved(output_size: int,
-                                    base_model_target_size: int, supports_latent_size: int,
-                                    channels: int = 34,
-                                    teacher_out_shape: Tuple[int, ...] = (1, 100),
-                                    # Further settings:
-                                    use_modality_encoder: bool = True,
-                                    xattn_blocks: int = 2
-                                    ):
-        return WeaklySupervisedNEEEGBaseModel(
-            EegInterAviFactory.default(base_model_target_size, supports_latent_size, channels,
-                                       teacher_out_shape, use_modality_encoder, xattn_blocks),
-            hidden_size=100, output_size=4,
+class WeaklySupervisedDefaultEegInterAviFactory(DefaultEegInterAviFactory):
+
+    def __init__(self,
+                 wrapper_config: WeaklySupervisedWrapperModelConfiguration,
+                 eeg_config: EegModalityConfig,
+                 vid_config: KdPerceiverModalityConfig,
+                 aud_config: KdPerceiverModalityConfig,
+                 txt_config: KdPerceiverModalityConfig,
+                 ecg_config: PerceiverModalityConfig,
+                 disabled_supports: list[str],
+                 attention_config: int | list[GatedXAttentionCustomArgs],
+                 custom_config: EegInterAviModelConfiguration = None):
+        super().__init__(eeg_config, vid_config, aud_config, txt_config, ecg_config, disabled_supports,
+                         attention_config, custom_config)
+        self.wrapper_config: WeaklySupervisedWrapperModelConfiguration = wrapper_config
+
+    def build(self):
+        return WeaklySupervisedEegInterAviModel(
+            super().build(), base_model_out_size=self.eeg_modality_config.out_size,
+            hidden_size=self.wrapper_config.hidden_size, output_size=self.wrapper_config.output_size,
         )
