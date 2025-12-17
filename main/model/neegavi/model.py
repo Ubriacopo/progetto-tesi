@@ -130,7 +130,8 @@ class EegInterAviModel(nn.Module):
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
         tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
         if self.allow_modality == "window":
-            # Window size compels us to explode the sun
+            # Window size compels us to explode the sun.
+            # It's written like this to avoid symmetry
             return (tq >= (tk - self.past_window_units)) & (tq < tk + self.supports[0].timestep_seconds)
 
         if self.allow_modality == "causal":
