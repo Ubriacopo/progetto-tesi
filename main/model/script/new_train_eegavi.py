@@ -140,7 +140,9 @@ def main(cfg: KdConfig):
         pivot_key = cfg.model.pivot.code
         dataset_pairs.append(KdDatasetWrapper(
             student=FlexibleEmbeddingsSpecMediaDataset(student_file, student_keys, main_key=pivot_key),
-            teacher=FlexibleEmbeddingsSpecMediaDataset(teacher_file, teacher_keys, main_key=cfg.teacher.pivot)
+            teacher=FlexibleEmbeddingsSpecMediaDataset(
+                teacher_file, teacher_keys, main_key=cfg.teacher.pivot,squeeze_mask=True
+            )
         ))
 
     train_dataset = MultiDataset(dataset_pairs)
@@ -150,7 +152,7 @@ def main(cfg: KdConfig):
     batch_sampler = DatasetFirstBatchSampler(
         multi=train_dataset,
         batch_size=cfg.trainer.batch_size,
-        batches_per_epoch=100,  # you choose
+        batches_per_epoch=10,  # you choose
         alpha=0.0,
         generator=g,
     )
