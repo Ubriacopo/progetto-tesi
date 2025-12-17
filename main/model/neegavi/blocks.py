@@ -103,6 +103,32 @@ class TemporalEncoder(nn.Module):
         kpm = ~mask if mask is not None else None
         return self.enc(x, src_key_padding_mask=kpm)  # -> (B,T,D)
 
+# todo vedi se fa a caso nostro
+class SlotMLPExpander(nn.Module):
+    def __init__(self, dim: int, p: int, hidden_mult: int = 4):
+        super().__init__()
+        self.p: int = p
+        self.slots = nn.Parameter(torch.randn(p, dim) * 0.02)
+        h = hidden_mult * dim
+        self.mlp = nn.Sequential(
+            nn.Linear(2 * dim, h),
+            nn.GELU(),
+            nn.Linear(h, dim),
+        )
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x, mask=None):
+        # x: (B,T,D)
+        B, T, D = x.shape
+        x = self.norm(x)
+
+        s = self.slots[None, None, :, :].expand(B, T, self.p, D)  # (B,T,P,D)
+        xr = x[:, :, None, :].expand(B, T, self.p, D)  # (B,T,P,D)
+        y = self.mlp(torch.cat([xr, s], dim=-1))  # (B,T,P,D)
+
+        mask_p = mask[:, :, None].expand(B, T, self.p) if mask is not None else None
+        return y, mask_p
+
 
 class AbstractAttentionBlock(nn.Module, ABC):
     @abstractmethod
