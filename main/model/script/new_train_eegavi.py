@@ -7,16 +7,10 @@ import tensordict
 import torch
 import torchinfo
 from hydra.utils import get_class
-from omegaconf import OmegaConf
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader
 
-from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey
-from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.audio import Audio
-from main.core_data.media.ecg import ECG
-from main.core_data.media.eeg import EEG
-from main.core_data.media.text import Text
-from main.core_data.media.video import Video
+from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
+    DatasetFirstBatchSampler
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.neegavi.model import EegInterAviModelConfiguration
@@ -87,6 +81,8 @@ class KdConfig:
     student_dataset_path: list[str]
     teacher_dataset_path: list[str]
     teacher_weights_path: str
+
+
 # 83 108 175 119 for 42
 
 SEED = 96
@@ -105,7 +101,6 @@ def main(cfg: KdConfig):
 
     student = factory.build()
     teacher = MaskedContrastiveModel(hidden_channels=cfg.teacher.hidden_channels, out_channels=cfg.teacher.out_channels)
-
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
 
@@ -140,38 +135,37 @@ def main(cfg: KdConfig):
         if c.is_teacher_key:
             teacher_keys.append(RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss))
 
-    student_dataset = []
-    for file in cfg.student_dataset_path:
+    dataset_pairs = []
+    for student_file, teacher_file in zip(cfg.student_dataset_path, cfg.teacher_dataset_path):
         pivot_key = cfg.model.pivot.code
-        ds = FlexibleEmbeddingsSpecMediaDataset(dataset_spec_file=file, required_keys=student_keys, main_key=pivot_key)
-        student_dataset.append(ds)
+        dataset_pairs.append(KdDatasetWrapper(
+            student=FlexibleEmbeddingsSpecMediaDataset(student_file, student_keys, main_key=pivot_key),
+            teacher=FlexibleEmbeddingsSpecMediaDataset(teacher_file, teacher_keys, main_key=cfg.teacher.pivot)
+        ))
 
-    student_dataset = ConcatDataset(student_dataset)
+    train_dataset = MultiDataset(dataset_pairs)
 
-    teacher_dataset = []
-    for file in cfg.teacher_dataset_path:
-        pivot_key = cfg.teacher.pivot
-        ds = FlexibleEmbeddingsSpecMediaDataset(
-            dataset_spec_file=file, required_keys=teacher_keys, main_key=pivot_key, squeeze_mask=True
-        )
-        teacher_dataset.append(ds)
-
-    teacher_dataset = ConcatDataset(teacher_dataset)
+    g = torch.Generator().manual_seed(SEED)
+    # todo parameterize
+    batch_sampler = DatasetFirstBatchSampler(
+        multi=train_dataset,
+        batch_size=cfg.trainer.batch_size,
+        batches_per_epoch=100,  # you choose
+        alpha=0.0,
+        generator=g,
+    )
 
     def collate_fn(batch):
         return tensordict.stack(batch)
 
-    dataset_wrapper = KdDatasetWrapper(student=student_dataset, teacher=teacher_dataset)
-    train_dataloader = DataLoader(
-        dataset_wrapper, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_fn
-    )
-
+    train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     for n, p in student.named_parameters():
         print(n, p.requires_grad, p.grad is None)
 
     torchinfo.summary(module)
-    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24, limit_train_batches=1)
-    #trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
+    trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24,
+                        limit_train_batches=1)
+    # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
 
 

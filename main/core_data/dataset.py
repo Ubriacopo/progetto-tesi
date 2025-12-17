@@ -1,4 +1,5 @@
 import dataclasses
+import random
 from abc import ABC
 from pathlib import Path
 from typing import Tuple
@@ -8,6 +9,7 @@ import tensordict
 import torch
 from tensordict import TensorDict
 from torch import device
+from torch.utils.data import Sampler
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
 from main.core_data.media.assessment.assessment import Assessment
@@ -45,6 +47,11 @@ class RequiredKey:
     cannot_miss: bool = False
 
 
+# TODO change sampling instead of Sample uniformly from all samples across all datasets to
+#       First choose a dataset, then sample a batch from it
+# Single-dataset batches (simplest, very effective)
+# Each batch comes from one dataset only, dataset chosen uniformly.
+# This is often best with contrastive / SigLIP losses.
 class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, required_keys: list[RequiredKey], main_key: str,
                  squeeze_mask: bool = False, selected_device: device = None, cache_in_ram: bool = False):
@@ -110,3 +117,69 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.df)
+
+# So we did it to make the fusion/KD training signal cleaner and more stable, and to reduce unintended bias from batch composition
+class MultiDataset(torch.utils.data.Dataset):
+    def __init__(self, datasets: list[torch.utils.data.Dataset]):
+        super().__init__()
+        self.datasets: list[torch.utils.data.Dataset] = datasets
+        self.dataset_offsets: list[int] = []
+
+        current_offset = 0
+        for dataset in self.datasets:
+            self.dataset_offsets.append(current_offset)
+            current_offset += len(dataset)
+
+        self.total_len = current_offset
+
+    def __len__(self):
+        return self.dataset_offsets[-1]
+
+    def __getitem__(self, idx: int):
+        # Iterate backards
+        for ds_id in range(len(self.datasets) - 1, -1, -1):
+            if idx >= self.dataset_offsets[ds_id]:
+                return self.datasets[ds_id][idx - self.dataset_offsets[ds_id]]
+
+        raise IndexError("Element not found in datasets collection")
+
+    @property
+    def dataset_ranges(self):
+        # Returns list of (start, length) global index ranges per dataset
+        return [(self.dataset_offsets[i], len(self.datasets[i])) for i in range(len(self.dataset_offsets))]
+
+
+class DatasetFirstBatchSampler(Sampler[list[int]]):
+    def __init__(self, multi: MultiDataset, batch_size: int,
+                 batches_per_epoch: int, alpha=.0, generator: torch.Generator | None = None):
+        super().__init__()
+        # Initialize the parameters
+        self.dataset: MultiDataset = multi
+        self.batch_size: int = batch_size
+        self.batches_per_epoch: int = batches_per_epoch
+        self.gen = generator if generator is not None else torch.Generator()
+
+        ranges = multi.dataset_ranges
+        self.starts = torch.tensor([s for s, l in ranges], dtype=torch.long)
+        self.lengths = torch.tensor([l for s, l in ranges], dtype=torch.long)
+
+        weights = (self.lengths.float() ** alpha)
+        self.probs = weights / weights.sum()
+
+    def __len__(self):
+        return self.batches_per_epoch
+
+    def __iter__(self):
+        for _ in range(self.batches_per_epoch):
+            dataset_id = torch.multinomial(self.probs, 1, replacement=True, generator=self.gen).item()
+            start = self.starts[dataset_id].item()
+            length = self.lengths[dataset_id].item()
+
+            if length < self.batch_size:
+                raise ValueError(
+                    f"Dataset {dataset_id} has length {length}, " f"which is smaller than batch_size={self.batch_size}."
+                    f"Thus we cannot sample a unique batch."
+                )
+
+            local = torch.randperm(length, generator=self.gen)[:self.batch_size].tolist()
+            yield [start + j for j in local]

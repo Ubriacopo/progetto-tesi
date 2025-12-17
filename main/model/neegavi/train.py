@@ -109,15 +109,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]) -> torch.Tensor:
         base_loss = torch.tensor(0.0, device=fused_output.device)
+        count_present = 0
         for key, value in modality_outputs.items():
             self.verbose and print(f"\nFor key {key}:")
-            # Trova righe valide, le altre possiamo lasciarle perdere.
+            # Invalid rows are discarded
             valid_rows = value["mask"].sum(dim=1) > 0
             if not valid_rows.any():
                 continue
 
-            # Take only valid rows.
-            #
+            count_present += 1
             y_before = value["data"][valid_rows]
             modality_output = fused_output[valid_rows]
             mask = value["mask"][valid_rows].detach().unsqueeze(-1).float()
@@ -127,8 +127,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log("siglip_" + key, mod_loss, on_epoch=True, on_step=False, prog_bar=True)
             base_loss = base_loss + mod_loss
 
-        # Cumulative loss between all modalities non normalized
-        return base_loss
+        # Average loss between all modalities non normalized.
+        # When all modalities are present, do I want a stronger learning signal?
+        # -> Ideally yes but there is one downside: The model becomes biased towards datasets with most modalities
+        #    Thus we need to rescale to expected amount of supporting modalities.
+        #    Problem: In batch I might not have all modalities
+        #    Thus we decide to assume the following:
+        #       When more modalities are present, the sample contains more information and should influence training more
+        return base_loss / count_present
 
     def compute_supervised_loss(self, pred: torch.Tensor, target: MaskedValue) -> torch.Tensor:
         # Compute concordance correlation coefficient that measures the agreement between two variables.
