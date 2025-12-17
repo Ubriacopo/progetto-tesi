@@ -130,7 +130,9 @@ class EegInterAviModel(nn.Module):
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
         tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
         if self.allow_modality == "window":
-            return (tk - tq).abs() <= self.past_window_units + 1
+            # Window size compels us to explode the sun
+            return (tq >= (tk - self.past_window_units)) & (tq < tk + self.supports[0].timestep_seconds)
+
         if self.allow_modality == "causal":
             return tk <= tq
         raise ValueError(f"Unknown mode: {self.allow_modality}")
