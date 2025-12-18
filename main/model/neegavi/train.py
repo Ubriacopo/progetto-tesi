@@ -1,4 +1,4 @@
-from typing import Literal, Any
+from typing import Literal, Any, Optional
 
 import lightning as L
 import torch
@@ -19,6 +19,7 @@ from main.utils.logging import make_logger
 
 class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     FUSED_KEY: str = "fused"
+    PIVOT_KEY: str = 'eeg'
 
     def __init__(
             self,
@@ -135,10 +136,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     @staticmethod
     def _get_y_valid(y: MaskedValue) -> torch.Tensor:
-        valid_rows = y["mask"].sum(dim=1) > 0
-        if not valid_rows.any():
-            return torch.empty(device=valid_rows.device)
-        return valid_rows
+        return y["mask"].sum(dim=1) > 0
 
     @staticmethod
     def _y_mean(y: MaskedValue, valid_rows: torch.Tensor) -> torch.Tensor:
@@ -214,69 +212,64 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         return torch.tensor(.0, device=pred.device, dtype=pred.dtype)
 
+    @staticmethod
+    def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:
+        similarity = x @ y.T
+
+        pred = similarity.argmax(dim=1)
+
+        gt = torch.arange(similarity.size(0), device=similarity.device)
+        return (pred == gt).float().mean()
+
+    def observe_xattn_gates(self):
+        xattn_layer: GatedXAttentionBlock
+        for idx, xattn_layer in enumerate(self.student.base_model.gatedXAttn_layers):
+            self.log(f"model/attn_gate_{idx}", xattn_layer.attn_gate, on_step=False, on_epoch=True, prog_bar=True)
+            self.log(f"model/ff_gate_{idx}", xattn_layer.ff_gate, on_step=False, on_epoch=True, prog_bar=True)
+
     def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
         _ = outputs.pop("loss")  # We have to ignore it
 
-        l: GatedXAttentionBlock
-        i = 0
-        for l in self.student.base_model.gatedXAttn_layers:
-            self.log(f"model/attn_gate_{i}", l.attn_gate, on_step=False, on_epoch=True, prog_bar=True)
-            self.log(f"model/ff_gate_{i}", l.ff_gate, on_step=False, on_epoch=True, prog_bar=True)
-            i += 1
-
+        # todo memory bank?
         if self.FUSED_KEY in outputs:
-            fused_loss = outputs.pop(self.FUSED_KEY)
+            fused_z = outputs.pop(self.FUSED_KEY)
+            pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
 
-            eeg_loss = outputs["eeg"]
-            valid_rows = self._get_y_valid(eeg_loss)
-            eeg_loss = self._y_mean(eeg_loss, valid_rows)
-
-            dist = torch.dist(eeg_loss, fused_loss)
+            # Euclidean distance between the two embedding spaces.
+            dist = (pivot_z - fused_z).norm(dim=1).mean()
             self.log("train/||eeg-fused||", dist, on_step=False, on_epoch=True, prog_bar=True)
 
             for key, z in outputs.items():
-                # todo fn
                 self.verbose and self.inner_logger.info(f"For key {key} we are computing Top-k retrival")
-
+                # Get only the valid rows and mask
                 valid_rows = self._get_y_valid(z)
                 if not valid_rows.any():
+                    # This modality cannot do anything about it
                     continue
 
                 z = self._y_mean(z, valid_rows)
-                similarity = fused_loss[valid_rows] @ z.T
 
-                pred = similarity.argmax(dim=1)
-                gt = torch.arange(similarity.size(0), device=similarity.device)
-
-                top1 = (pred == gt).float().mean()
-                self.log(f"train/top1_fused_{key}", top1, prog_bar=True, on_step=True, logger=True, )
-
+                top_1_fused = self._top_1(fused_z[valid_rows], z)
+                self.log(f"train/top1_fused_{key}", top_1_fused,
+                         prog_bar=True, on_step=True, logger=True, )
+                top_1_fused_reverse = self._top_1(z, fused_z[valid_rows])
                 # Not symmetric so now we do opposite direction
-                similarity = z @ fused_loss[valid_rows].T
-                pred = similarity.argmax(dim=1)
-                gt = torch.arange(similarity.size(0), device=similarity.device)
+                self.log(f"train/top1_{key}_fused", top_1_fused_reverse,
+                         prog_bar=True, on_step=True, logger=True, )
 
-                top1 = (pred == gt).float().mean()
-                self.log(f"train/top1_{key}_fused", top1, prog_bar=True, on_step=True, logger=True, )
-
-                # Pivot compared to others
-                if key == "eeg":
+                # Pivot compared to others so we ignore itself
+                if key == self.PIVOT_KEY:
                     continue
 
-                similarity = eeg_loss[valid_rows] @ z.T
-                pred = similarity.argmax(dim=1)
-                gt = torch.arange(similarity.size(0), device=similarity.device)
+                top_1_pivot = self._top_1(pivot_z[valid_rows], z)
+                self.log(f"train/top1_{self.PIVOT_KEY}_{key}", top_1_pivot,
+                         prog_bar=True, on_step=True, logger=True, )
+                top_1_pivot_reverse = self._top_1(z, pivot_z[valid_rows])
+                self.log(f"train/top1_{key}_{self.PIVOT_KEY}", top_1_pivot_reverse,
+                         prog_bar=True, on_step=True, logger=True, )
 
-                top1 = (pred == gt).float().mean()
-                self.log(f"train/top1_eeg_{key}", top1, prog_bar=True, on_step=True, logger=True, )
-
-                # Not symmetric so now we do opposite direction
-                similarity = z @ eeg_loss[valid_rows].T
-                pred = similarity.argmax(dim=1)
-                gt = torch.arange(similarity.size(0), device=similarity.device)
-
-                top1 = (pred == gt).float().mean()
-                self.log(f"train/top1_{key}_eeg", top1, prog_bar=True, on_step=True, logger=True, )
+                delta = top_1_fused - top_1_pivot
+                self.log(f"train/delta_{key}", delta, prog_bar=True, on_step=True, logger=True, )
 
     def on_validation_batch_end(
             self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, dataloader_idx: int = 0

@@ -163,15 +163,15 @@ def main(cfg: KdConfig):
         return tensordict.stack(batch)
 
     # In case overfit experiment
-    train_dataloader = DataLoader(train_dataset, batch_sampler=[indices], collate_fn=collate_fn)
-    # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
+    # train_dataloader = DataLoader(train_dataset, batch_sampler=[indices], collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     for n, p in student.named_parameters():
         print(n, p.requires_grad, p.grad is None)
 
     torchinfo.summary(module)
     trainer = L.Trainer(
         accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24,
-        limit_train_batches=1
+    #    limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloader)
