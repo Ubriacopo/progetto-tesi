@@ -102,7 +102,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             targets = batch["student"][Assessment.modality_code()].float()
             loss = loss + self.compute_supervised_loss(pred=stud_out.pred, target=targets) * self.gamma
 
-        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         return {"loss": loss} | return_object
 
     @staticmethod
@@ -123,15 +123,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             # modality_loss = self.siglip_losses[key](student_out[key]["data"], teacher_out[key]['data'])
             modality_loss = self.kd_losses[key](student_out[key]["data"], teacher_out[key]['data'])
             self.log(
-                f"kd_rand_{key}",
+                f"kd/{key}/rand",
                 self.siglip_random_baseline(self.kd_losses[key], student_out[key]["data"], teacher_out[key]['data'], ),
-                on_epoch=True, on_step=False, prog_bar=True
+                on_epoch=True, on_step=True, prog_bar=True
             )
 
-            self.log(f"kd_loss_{key}", modality_loss, on_epoch=True, on_step=False, prog_bar=True)
+            self.log(f"kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=True)
             loss = loss + modality_loss
 
-        self.log("kd_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
+        self.log("kd/loss", loss, on_epoch=True, on_step=True, prog_bar=True)
         return loss
 
     @staticmethod
@@ -163,7 +163,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             y_mean = self._y_mean(value, valid_rows)
             mod_loss = self.siglip_losses[key](modality_output, y_mean)
 
-            self.log("siglip_" + key, mod_loss, on_epoch=True, on_step=False, prog_bar=True)
+            self.log("fusion/" + key, mod_loss, on_epoch=True, on_step=True, prog_bar=True)
             base_loss = base_loss + mod_loss
 
         # Average loss between all modalities non normalized.
@@ -201,13 +201,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             one = pred.new_tensor(1.0)  # ensures dtype/device match
 
             loss = (1 - w) * (one - pearson) + w * (one - concordance)
-            self.log("supervised (CCC & Pearson)", loss, on_epoch=True, on_step=False, prog_bar=True)
+            self.log("supervised (CCC & Pearson)", loss, on_epoch=True, on_step=True, prog_bar=True)
             loss = loss.to(pred.dtype)
             return loss
 
         elif mask.any():
             loss = F.mse_loss(pred, y).float()
-            self.log("supervised", loss, on_epoch=True, on_step=False, prog_bar=True)
+            self.log("supervised", loss, on_epoch=True, on_step=True, prog_bar=True)
             return loss
 
         return torch.tensor(.0, device=pred.device, dtype=pred.dtype)
@@ -251,11 +251,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
                 top_1_fused = self._top_1(fused_z[valid_rows], z)
                 self.log(f"train/top1_fused_{key}", top_1_fused,
-                         prog_bar=True, on_step=True, logger=True, )
+                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
                 top_1_fused_reverse = self._top_1(z, fused_z[valid_rows])
                 # Not symmetric so now we do opposite direction
                 self.log(f"train/top1_{key}_fused", top_1_fused_reverse,
-                         prog_bar=True, on_step=True, logger=True, )
+                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
 
                 # Pivot compared to others so we ignore itself
                 if key == self.PIVOT_KEY:
@@ -263,13 +263,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
                 top_1_pivot = self._top_1(pivot_z[valid_rows], z)
                 self.log(f"train/top1_{self.PIVOT_KEY}_{key}", top_1_pivot,
-                         prog_bar=True, on_step=True, logger=True, )
+                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
                 top_1_pivot_reverse = self._top_1(z, pivot_z[valid_rows])
                 self.log(f"train/top1_{key}_{self.PIVOT_KEY}", top_1_pivot_reverse,
-                         prog_bar=True, on_step=True, logger=True, )
+                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
 
                 delta = top_1_fused - top_1_pivot
-                self.log(f"train/delta_{key}", delta, prog_bar=True, on_step=True, logger=True, )
+                self.log(f"train/delta_{key}", delta,
+                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
 
     def on_validation_batch_end(
             self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, dataloader_idx: int = 0
