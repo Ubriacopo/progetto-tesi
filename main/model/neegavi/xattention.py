@@ -33,9 +33,9 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         super().__init__()
         # First call
         self.attn = MaskedCrossAttention(dim=dim, dim_latent=dim_latent, dim_head=dim_head, heads=heads)
-        self.attn_gate = nn.Parameter(torch.tensor([0.]))
+        self.attn_gate = nn.Parameter(torch.tensor([1.]))
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
-        self.ff_gate = nn.Parameter(torch.tensor([0.]))
+        self.ff_gate = nn.Parameter(torch.tensor([1.]))
 
         self.norm_q = nn.LayerNorm(dim)
         self.norm_kv = nn.LayerNorm(dim)

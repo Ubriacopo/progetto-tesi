@@ -107,18 +107,6 @@ def main(cfg: KdConfig):
     fusion_metrics_codes = [cfg.model.supports[s].code for s in cfg.model.supports]
     fusion_metrics_codes.append(cfg.model.pivot.code)
 
-    module = EegAviKdVateMaskedSemiSupervisedModule(
-        student=student,
-        teacher=teacher,
-        kd_loss_weight=cfg.trainer.kd_loss_weight,
-        fusion_loss_weight=cfg.trainer.fusion_loss_weight,
-        weakly_supervised_weight=cfg.trainer.weakly_supervised_weight,
-        lr=cfg.trainer.lr,
-        kd_temperature=cfg.trainer.kd_temperature,
-        # All modalities contribute to fusion
-        fusion_metrics=fusion_metrics_codes,
-    )
-
     student_keys: list[RequiredKey] = []
     teacher_keys: list[RequiredKey] = []
 
@@ -134,6 +122,19 @@ def main(cfg: KdConfig):
         student_keys.append(RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss))
         if c.is_teacher_key:
             teacher_keys.append(RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss))
+
+    module = EegAviKdVateMaskedSemiSupervisedModule(
+        student=student,
+        teacher=teacher,
+        kd_loss_weight=cfg.trainer.kd_loss_weight,
+        fusion_loss_weight=cfg.trainer.fusion_loss_weight,
+        weakly_supervised_weight=cfg.trainer.weakly_supervised_weight,
+        lr=cfg.trainer.lr,
+        kd_temperature=cfg.trainer.kd_temperature,
+        # All modalities contribute to fusion
+        fusion_metrics=fusion_metrics_codes,
+        kd_keys=list(map(lambda o: o.key, teacher_keys))
+    )
 
     dataset_pairs = []
     for student_file, teacher_file in zip(cfg.student_dataset_path, cfg.teacher_dataset_path):
@@ -160,6 +161,7 @@ def main(cfg: KdConfig):
 
     def collate_fn(batch):
         return tensordict.stack(batch)
+
     # In case overfit experiment
     train_dataloader = DataLoader(train_dataset, batch_sampler=[indices], collate_fn=collate_fn)
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)

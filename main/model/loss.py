@@ -3,6 +3,8 @@ from torch import Tensor, nn
 from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with_logits
 import torch.nn.functional as F
 
+from main.utils.logging import make_logger
+
 
 def lightweight_whitening(z: torch.Tensor):
     """
@@ -66,7 +68,10 @@ class SiglipLoss(nn.Module):
         self.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float32))
         # self.bias = torch.tensor([init_bias], device="cuda")
         self.verbose = verbose
+        self.logger = make_logger(self.__class__.__name__)
         self.stop_grad_target: bool = stop_grad_target
+        if self.stop_grad_target:
+            self.logger.info("Heads will be detached for forward pass in this class instance")
 
     def forward(self, za: torch.Tensor, zb: torch.Tensor, ignore_mask=None):
         """
@@ -93,7 +98,6 @@ class SiglipLoss(nn.Module):
         # Normalization
         za = lightweight_whitening(za)
         if self.stop_grad_target:
-            self.verbose and print("Head has been detached")
             zb = zb.detach()
 
         zb = lightweight_whitening(zb)
@@ -114,7 +118,9 @@ class SiglipLoss(nn.Module):
         diag_mean = torch.diag(logits).mean().item()
         ey = torch.eye(logits.size(-1), dtype=torch.bool, device=logits.device)
         off_mean = logits.masked_fill(ey, 0).mean().item()
-        self.verbose and print("\nT=", T, "\nb=", b, "\ndiag", diag_mean, "\noff", off_mean, "\nloss=", loss, "\n")
+        self.verbose and self.logger.debug(
+            "\nT=", T, "\nb=", b, "\ndiag", diag_mean, "\noff", off_mean, "\nloss=", loss, "\n"
+        )
 
         return loss
 
@@ -170,6 +176,7 @@ class InfoNCE(nn.Module):
     def forward(self, query, positive_key, negative_keys=None):
         return info_nce(query, positive_key, negative_keys, temperature=self.temperature,
                         reduction=self.reduction, negative_mode=self.negative_mode)
+
 
 def normalize(*xs):
     return [None if x is None else F.normalize(x, dim=-1) for x in xs]
@@ -236,6 +243,7 @@ def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction
 
 def transpose(x):
     return x.transpose(-2, -1)
+
 
 def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .05) \
         -> tuple[Tensor, int]:

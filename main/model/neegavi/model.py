@@ -117,9 +117,6 @@ class EegInterAviModel(nn.Module):
 
         return keep
 
-    def process_pivot(self):
-        pass
-
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         """
         Allowance mask aligns the same timesteps and previous ones.
@@ -236,6 +233,7 @@ class EegInterAviModel(nn.Module):
         # Supporting modalities elaboration
         keep = self.rand_select_keep_modality_rows(b, device)
         supports, masks, t_mods = [], [], []
+        modality: ModalityStream
         for idx, modality in enumerate(self.supports):
             modality_code = modality.get_code()
             filtered_idx = keep[:, idx].nonzero(as_tuple=True)[0]
