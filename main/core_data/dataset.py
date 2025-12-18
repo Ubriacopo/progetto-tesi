@@ -133,7 +133,7 @@ class MultiDataset(torch.utils.data.Dataset):
         self.total_len = current_offset
 
     def __len__(self):
-        return self.dataset_offsets[-1]
+        return self.total_len
 
     def __getitem__(self, idx: int):
         # Iterate backards

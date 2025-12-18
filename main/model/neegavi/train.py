@@ -60,50 +60,108 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     # todo ramp up per other losses than supervised? Or just use supervised as aux
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        params = ([]
-                  + [
-                      # siglip_common_optim_configs for Fusion
-                      {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
-                      for i in self.siglip_losses.values()
-                  ]
-                  + [
-                      # siglip_common_optim_configs for KD
-                      {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
-                      for i in self.kd_losses.values()
-                  ]
-                  + [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
-                  )
+        params = []
 
+        params += [
+            # siglip_common_optim_configs for Fusion
+            {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+            for i in self.siglip_losses.values()
+        ]
+
+        params += [
+            # siglip_common_optim_configs for KD
+            {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+            for i in self.kd_losses.values()
+        ]
+
+        params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
         return torch.optim.Adam(weight_decay=.01, params=params)
 
-    def training_step(self, batch, batch_idx):
-        return_object = {}
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
-        with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
-
-        loss = .0
-
+    def _compute_step_metrics(self, stud: WeaklySupervisedEegBaseModelOutputs, teacher: MaskedContrastiveModelOutputs,
+                              batch, step_type: Literal['train', 'val', 'test']):
+        return_object: dict[str, torch.Tensor | MaskedValue] = dict(loss=torch.tensor(0, device=stud.pred.device))
         if self.use_kd_loss:
-            loss = loss + self.compute_kd_loss(student_out=stud_out.kd_outs, teacher_out=teacher_out) * self.alpha
+            kd_loss = self.compute_kd_loss(student_out=stud.kd_outs, teacher_out=teacher, step_type=step_type)
+            return_object["loss"] = return_object["loss"] + kd_loss * self.alpha
 
         if self.use_fusion_loss:
-            fusion_loss = self.compute_fusion_loss(stud_out.embeddings, stud_out.multimodal_outs)
-            loss = loss + fusion_loss * self.beta
-
-            return_object[self.FUSED_KEY] = stud_out.embeddings.detach()
-            for key, masked_value in stud_out.multimodal_outs.items():
+            fusion_loss = self.compute_fusion_loss(
+                fused_output=stud.embeddings, modality_outputs=stud.multimodal_outs, step_type=step_type
+            )
+            return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
+            # For later evaluations
+            return_object[self.FUSED_KEY] = stud.embeddings.detach()
+            for key, masked_value in stud.multimodal_outs.items():
                 masked_value["data"] = masked_value["data"].detach()
                 masked_value["mask"] = masked_value["mask"].detach()
                 return_object[key] = masked_value
 
-        # TODO Drop? Solo AMIGOS ha metriche utili
         if self.use_supervised_loss:
             targets = batch["student"][Assessment.modality_code()].float()
-            loss = loss + self.compute_supervised_loss(pred=stud_out.pred, target=targets) * self.gamma
+            supervised_loss = self.compute_supervised_loss(pred=stud.pred, target=targets, step_type=step_type)
+            return_object["loss"] = return_object["loss"] + supervised_loss * self.gamma
 
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        return {"loss": loss} | return_object
+        self.log(f"{step_type}/loss", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
+        return return_object
+
+    def _compute_batch_metrics(self, fused_z, pivot_z, outputs: dict, step_type: Literal['train', 'val', 'test']):
+        # Euclidean distance between the two embedding spaces
+        dist = (pivot_z - fused_z).norm(dim=1).mean()
+        self.log("train/||eeg-fused||", dist, on_step=False, on_epoch=True, prog_bar=True)
+
+        for key, embedding in outputs.items():
+            valid = self._get_y_valid(embedding)
+            if not valid.any():
+                continue  # This modality cannot be evaluated
+
+            embedding = self._y_mean(embedding, valid)
+            # TOP-1 FUSED
+            t1_fused = self._top_1(fused_z[valid], embedding)
+            t1_fused_rev = self._top_1(embedding, fused_z[valid])
+
+            self.log(f"{step_type}/fused/top_1_{key}", t1_fused, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top1_{key}_reverse", t1_fused_rev, prog_bar=True, on_step=False, on_epoch=True)
+
+            if key == self.PIVOT_KEY:
+                continue
+
+            # PIVOT
+            t1_pivot = self._top_1(pivot_z[valid], embedding)
+            t1_pivot_rev = self._top_1(embedding, pivot_z[valid])
+
+            self.log(f"{step_type}/pivot/top_1_{key}", t1_pivot, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/pivot/top1_{key}_reverse", t1_pivot_rev, prog_bar=True, on_step=False, on_epoch=True)
+
+            delta = t1_fused - t1_pivot
+            self.log(f"{step_type}/delta_{key}", delta, prog_bar=True, on_step=False, on_epoch=True)
+
+    def training_step(self, batch, batch_idx):
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
+        return self._compute_step_metrics(stud_out, teacher_out, batch, 'train')
+
+    def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
+        return self._compute_step_metrics(stud_out, teacher_out, batch, 'val')
+
+    def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
+        _ = outputs.pop("loss")  # We have to ignore it
+        if self.FUSED_KEY in outputs:
+            fused_z = outputs.pop(self.FUSED_KEY)
+            pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
+            # Compute and log the metrics.
+            self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
+
+    def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
+        _ = outputs.pop("loss")  # We have to ignore it
+        if self.FUSED_KEY in outputs:
+            fused_z = outputs.pop(self.FUSED_KEY)
+            pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
+            # Compute and log the metrics.
+            self._compute_batch_metrics(fused_z, pivot_z, outputs, 'val')
 
     @staticmethod
     @torch.no_grad()
@@ -112,26 +170,20 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         idx = torch.randperm(b.shape[0], device=b.device)
         return loss_fn(a, b[idx])
 
-    def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs) -> float:
+    def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs,
+                        step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
         loss = .0
-
-        key: Literal['vid', 'txt', 'aud']
         for key in teacher_out.keys():
             if key not in student_out:
                 continue  # This element is not KD or is absent from teacher so we cannot learn from it
-
-            # modality_loss = self.siglip_losses[key](student_out[key]["data"], teacher_out[key]['data'])
-            modality_loss = self.kd_losses[key](student_out[key]["data"], teacher_out[key]['data'])
-            self.log(
-                f"kd/{key}/rand",
-                self.siglip_random_baseline(self.kd_losses[key], student_out[key]["data"], teacher_out[key]['data'], ),
-                on_epoch=True, on_step=True, prog_bar=True
-            )
-
-            self.log(f"kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=True)
+            student_data, teacher_data = student_out[key]["data"], teacher_out[key]['data']
+            modality_loss = self.kd_losses[key](student_data, teacher_data)
+            rand_baseline = self.siglip_random_baseline(self.kd_losses[key], student_data, teacher_data, )
+            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=True)
             loss = loss + modality_loss
 
-        self.log("kd/loss", loss, on_epoch=True, on_step=True, prog_bar=True)
+        self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=True, prog_bar=True)
         return loss
 
     @staticmethod
@@ -142,40 +194,28 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def _y_mean(y: MaskedValue, valid_rows: torch.Tensor) -> torch.Tensor:
         y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]
         mask = mask.detach().unsqueeze(-1).float()
-        y_mean = (y_before * mask).sum(dim=1) / mask.sum(dim=1)
+        return (y_before * mask).sum(dim=1) / mask.sum(dim=1)
 
-        return y_mean
-
-    def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue]) -> torch.Tensor:
+    def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue],
+                            step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
         base_loss = torch.tensor(0.0, device=fused_output.device)
         count_present = 0
         for key, value in modality_outputs.items():
             self.verbose and print(f"\nFor key {key}:")
             # Invalid rows are discarded
-
             valid_rows = self._get_y_valid(value)
             if not valid_rows.any():
                 continue
 
             count_present += 1
-
-            modality_output = fused_output[valid_rows]
-            y_mean = self._y_mean(value, valid_rows)
-            mod_loss = self.siglip_losses[key](modality_output, y_mean)
-
-            self.log("fusion/" + key, mod_loss, on_epoch=True, on_step=True, prog_bar=True)
+            mod_loss = self.siglip_losses[key](fused_output[valid_rows], self._y_mean(value, valid_rows))
+            self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=True)
             base_loss = base_loss + mod_loss
 
-        # Average loss between all modalities non normalized.
-        # When all modalities are present, do I want a stronger learning signal?
-        # -> Ideally yes but there is one downside: The model becomes biased towards datasets with most modalities
-        #    Thus we need to rescale to expected amount of supporting modalities.
-        #    Problem: In batch I might not have all modalities
-        #    Thus we decide to assume the following:
-        #       When more modalities are present, the sample contains more information and should influence training more
         return base_loss / count_present
 
-    def compute_supervised_loss(self, pred: torch.Tensor, target: MaskedValue) -> torch.Tensor:
+    def compute_supervised_loss(self, pred: torch.Tensor, target: MaskedValue,
+                                step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
         # Compute concordance correlation coefficient that measures the agreement between two variables.
         # In emotion regression (valence, arousal, dominance), this is the standard metric and loss used in benchmarks.
         #
@@ -194,6 +234,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         std_mask = (t_std > tol) & (p_std > tol)
 
         if std_mask.any():
+            # todo why never see this
             pred, target = pred[:, std_mask].float(), y[:, std_mask].float()
             pearson = pearson_corrcoef(pred, target).mean().float()
             concordance = concordance_corrcoef(pred, target).mean().float()
@@ -201,13 +242,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             one = pred.new_tensor(1.0)  # ensures dtype/device match
 
             loss = (1 - w) * (one - pearson) + w * (one - concordance)
-            self.log("supervised (CCC & Pearson)", loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/supervised (CCC & Pearson)", loss, on_epoch=True, on_step=True, prog_bar=True)
             loss = loss.to(pred.dtype)
             return loss
 
         elif mask.any():
             loss = F.mse_loss(pred, y).float()
-            self.log("supervised", loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/supervised", loss, on_epoch=True, on_step=True, prog_bar=True)
             return loss
 
         return torch.tensor(.0, device=pred.device, dtype=pred.dtype)
@@ -226,53 +267,3 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         for idx, xattn_layer in enumerate(self.student.base_model.gatedXAttn_layers):
             self.log(f"model/attn_gate_{idx}", xattn_layer.attn_gate, on_step=False, on_epoch=True, prog_bar=True)
             self.log(f"model/ff_gate_{idx}", xattn_layer.ff_gate, on_step=False, on_epoch=True, prog_bar=True)
-
-    def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
-        _ = outputs.pop("loss")  # We have to ignore it
-
-        # todo memory bank?
-        if self.FUSED_KEY in outputs:
-            fused_z = outputs.pop(self.FUSED_KEY)
-            pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
-
-            # Euclidean distance between the two embedding spaces.
-            dist = (pivot_z - fused_z).norm(dim=1).mean()
-            self.log("train/||eeg-fused||", dist, on_step=False, on_epoch=True, prog_bar=True)
-
-            for key, z in outputs.items():
-                self.verbose and self.inner_logger.info(f"For key {key} we are computing Top-k retrival")
-                # Get only the valid rows and mask
-                valid_rows = self._get_y_valid(z)
-                if not valid_rows.any():
-                    # This modality cannot do anything about it
-                    continue
-
-                z = self._y_mean(z, valid_rows)
-
-                top_1_fused = self._top_1(fused_z[valid_rows], z)
-                self.log(f"train/fused/top_1_{key}", top_1_fused,
-                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
-                top_1_fused_reverse = self._top_1(z, fused_z[valid_rows])
-                # Not symmetric so now we do opposite direction
-                self.log(f"train/fused/top1_{key}_reverse", top_1_fused_reverse,
-                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
-
-                # Pivot compared to others so we ignore itself
-                if key == self.PIVOT_KEY:
-                    continue
-
-                top_1_pivot = self._top_1(pivot_z[valid_rows], z)
-                self.log(f"train/{self.PIVOT_KEY}/top1_{key}", top_1_pivot,
-                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
-                top_1_pivot_reverse = self._top_1(z, pivot_z[valid_rows])
-                self.log(f"train/{self.PIVOT_KEY}/{key}_reverse", top_1_pivot_reverse,
-                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
-
-                delta = top_1_fused - top_1_pivot
-                self.log(f"train/delta_{key}", delta,
-                         prog_bar=True, on_step=False, logger=True, on_epoch=True)
-
-    def on_validation_batch_end(
-            self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, dataloader_idx: int = 0
-    ) -> None:
-        pass

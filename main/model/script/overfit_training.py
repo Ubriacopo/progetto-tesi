@@ -8,7 +8,7 @@ import torch
 import torchinfo
 from hydra.utils import get_class
 from lightning.pytorch.callbacks import TQDMProgressBar
-from torch.utils.data import DataLoader, random_split, Subset
+from torch.utils.data import DataLoader
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
     DatasetFirstBatchSampler
@@ -89,28 +89,6 @@ class KdConfig:
 SEED = 96
 
 
-def split_multidataset(md: MultiDataset, train=0.75, val=0.10, seed=0):
-    g = torch.Generator().manual_seed(seed)
-
-    train_parts, val_parts, test_parts = [], [], []
-    for ds in md.datasets:
-        n = len(ds)
-        perm = torch.randperm(n, generator=g).tolist()
-
-        n_train = int(train * n)
-        n_val = int(val * n)
-
-        train_idx = perm[:n_train]
-        val_idx = perm[n_train:n_train + n_val]
-        test_idx = perm[n_train + n_val:]
-
-        train_parts.append(Subset(ds, train_idx))
-        val_parts.append(Subset(ds, val_idx))
-        test_parts.append(Subset(ds, test_idx))
-
-    return MultiDataset(train_parts), MultiDataset(val_parts), MultiDataset(test_parts)
-
-
 @hydra.main(config_path="config", config_name="new_train_kd")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
@@ -169,11 +147,9 @@ def main(cfg: KdConfig):
             )
         ))
 
-    g = torch.Generator().manual_seed(SEED)
-    full_dataset = MultiDataset(dataset_pairs)
-    # Partition the dataset in 3 splits (Percentage should per parameter of Trainer)
-    train_dataset, valid_dataset, test_dataset = split_multidataset(full_dataset, seed=SEED)
+    train_dataset = MultiDataset(dataset_pairs)
 
+    g = torch.Generator().manual_seed(SEED)
     # todo parameterize
     batch_sampler = DatasetFirstBatchSampler(
         multi=train_dataset,
@@ -188,26 +164,19 @@ def main(cfg: KdConfig):
         return tensordict.stack(batch)
 
     # In case overfit experiment
-    batch_size = cfg.trainer.batch_size
     train_dataloader = DataLoader(train_dataset, batch_sampler=[indices], collate_fn=collate_fn)
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-
     for n, p in student.named_parameters():
         print(n, p.requires_grad, p.grad is None)
 
     torchinfo.summary(module)
     trainer = L.Trainer(
-        accelerator="gpu",
-        devices=1,
-        max_epochs=cfg.trainer.epochs,
-        log_every_n_steps=24,
+        accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24,
         callbacks=[TQDMProgressBar(leave=True)],
         limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
-    trainer.fit(module, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader, )
+    trainer.fit(module, train_dataloader)
 
 
 if __name__ == "__main__":
