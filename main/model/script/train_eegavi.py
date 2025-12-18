@@ -7,15 +7,15 @@ import tensordict
 import torch
 import torchinfo
 from hydra.utils import get_class
-from lightning.pytorch.callbacks import RichProgressBar, TQDMProgressBar
+from lightning.pytorch.callbacks import TQDMProgressBar
 from torch.utils.data import DataLoader
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
     DatasetFirstBatchSampler
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
-from main.model.neegavi.model import EegInterAviModelConfiguration
 from main.model.neegavi.factory import AbstractEegInterAviFactory
+from main.model.neegavi.model import EegInterAviModelConfiguration
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
 
 

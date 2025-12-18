@@ -250,11 +250,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 z = self._y_mean(z, valid_rows)
 
                 top_1_fused = self._top_1(fused_z[valid_rows], z)
-                self.log(f"train/top1_fused_{key}", top_1_fused,
+                self.log(f"train/fused/top_1_{key}", top_1_fused,
                          prog_bar=True, on_step=False, logger=True, on_epoch=True)
                 top_1_fused_reverse = self._top_1(z, fused_z[valid_rows])
                 # Not symmetric so now we do opposite direction
-                self.log(f"train/top1_{key}_fused", top_1_fused_reverse,
+                self.log(f"train/fused/top1_{key}_reverse", top_1_fused_reverse,
                          prog_bar=True, on_step=False, logger=True, on_epoch=True)
 
                 # Pivot compared to others so we ignore itself
@@ -262,10 +262,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                     continue
 
                 top_1_pivot = self._top_1(pivot_z[valid_rows], z)
-                self.log(f"train/top1_{self.PIVOT_KEY}_{key}", top_1_pivot,
+                self.log(f"train/{self.PIVOT_KEY}/top1_{key}", top_1_pivot,
                          prog_bar=True, on_step=False, logger=True, on_epoch=True)
                 top_1_pivot_reverse = self._top_1(z, pivot_z[valid_rows])
-                self.log(f"train/top1_{key}_{self.PIVOT_KEY}", top_1_pivot_reverse,
+                self.log(f"train/{self.PIVOT_KEY}/{key}_reverse", top_1_pivot_reverse,
                          prog_bar=True, on_step=False, logger=True, on_epoch=True)
 
                 delta = top_1_fused - top_1_pivot
