@@ -109,7 +109,8 @@ class VideoSubclipTensorRead(nn.Module):
 
         container.close()
         if len(frames) == 0:
-            raise ValueError(f"No frames found for {x.eid} in range {start} to {stop} while applying offset of {offset}.")
+            raise ValueError(
+                f"No frames found for {x.eid} in range {start} to {stop} while applying offset of {offset}.")
         return VideoTensor(value=torch.from_numpy(np.stack(frames)).to(self.device), fps=min(self.target_fps, x.fps))
 
 
@@ -411,6 +412,24 @@ class VateVideoResamplerTransform(nn.Module):
         y = rearrange(y, "t h w c -> t c h w")
         return y
 
+# TODO passare a questo
+class ViVit2DPooling(nn.Module):
+    def __init__(self, stride: int, kernel_size: int):
+        super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+
+        self.stride: int = stride
+        self.kernel_size: int = kernel_size
+
+    @call_log()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        t = x.shape[0]
+        x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
+        x = rearrange(x, "t P (F h) D -> (t P) D F h", h=14)
+        x = torch.nn.functional.avg_pool2d(x, self.stride, self.kernel_size)
+        x = rearrange(x, "(t P) D F h -> t P (F h) D", t=t)
+        return x
+
 
 class ViVitPyramidPatchPooling(nn.Module):
     def __init__(self, levels: Iterable[int] = (1, 2, 4, 8, 16, 33)):
@@ -427,7 +446,9 @@ class ViVitPyramidPatchPooling(nn.Module):
 
     @call_log()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # todo change stride 2d pooling
         x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
+
         # Average pooling over the spatial grid
         x = x.mean(dim=-2)
         # Do pyramid pooling over the temporal tokens

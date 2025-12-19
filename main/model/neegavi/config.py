@@ -27,6 +27,12 @@ class PerceiverModalityConfig(ModalityConfig):
 
 
 @dataclasses.dataclass(frozen=True)
+class MaskedFeedForwardConfig(ModalityConfig):
+    mult: int
+    dropout: float
+
+
+@dataclasses.dataclass(frozen=True)
 class KdPerceiverModalityConfig(PerceiverModalityConfig, KdModalityConfig):
     pass
 

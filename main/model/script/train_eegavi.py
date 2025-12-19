@@ -8,7 +8,7 @@ import torch
 import torchinfo
 from hydra.utils import get_class
 from lightning.pytorch.callbacks import TQDMProgressBar
-from torch.utils.data import DataLoader, random_split, Subset
+from torch.utils.data import DataLoader, Subset
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
     DatasetFirstBatchSampler
@@ -117,29 +117,31 @@ def main(cfg: KdConfig):
     torch.manual_seed(SEED)  # Reproducibility
     factory_constructor = get_class(cfg.model.factory.classpath)
     factory = factory_constructor(**cfg.model.factory.constructor_args)
-
     if not isinstance(factory, AbstractEegInterAviFactory):
         raise ValueError("We need an AbstractEegInterAviFactory. Given factory is not of such type.")
+
     factory: AbstractEegInterAviFactory
 
     student = factory.build()
+
+    # Teacher construction
     teacher = MaskedContrastiveModel(hidden_channels=cfg.teacher.hidden_channels, out_channels=cfg.teacher.out_channels)
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
-    teacher.eval()
+    teacher.eval()  # Set to evaluation mode as we won't be learning on teacher.
 
     fusion_metrics_codes = [cfg.model.supports[s].code for s in cfg.model.supports]
     fusion_metrics_codes.append(cfg.model.pivot.code)
 
-    student_keys: list[RequiredKey] = []
-    teacher_keys: list[RequiredKey] = []
-
-    # Pivot
     c = cfg.model.pivot
-    student_keys.append(RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss))
-    if c.is_teacher_key:
-        teacher_keys.append(RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss))
+    student_keys: list[RequiredKey] = [
+        RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss)
+    ]
 
-    # Supports
+    teacher_keys: list[RequiredKey] = []
+    if c.is_teacher_key:
+        teacher_keys = [RequiredKey(c.code, c.teacher_shape, c.teacher_mask_shape, c.cannot_miss)]
+
+    # Each support has to be registered as key in student and also at times in teacher.
     for key in cfg.model.supports:
         c = cfg.model.supports[key]
         student_keys.append(RequiredKey(c.code, c.shape, c.mask_shape, c.cannot_miss))
@@ -189,7 +191,7 @@ def main(cfg: KdConfig):
 
     # In case overfit experiment
     batch_size = cfg.trainer.batch_size
-    train_dataloader = DataLoader(train_dataset, batch_sampler=[indices], collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
@@ -204,7 +206,6 @@ def main(cfg: KdConfig):
         max_epochs=cfg.trainer.epochs,
         log_every_n_steps=24,
         callbacks=[TQDMProgressBar(leave=True)],
-        limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader, )

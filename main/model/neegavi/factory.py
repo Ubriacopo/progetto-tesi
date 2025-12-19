@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from torch import nn
+from torchvision.transforms import v2
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
@@ -8,8 +9,9 @@ from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter
-from main.model.neegavi.blocks import ModalityStream
-from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, PerceiverModalityConfig
+from main.model.neegavi.blocks import ModalityStream, SimpleFeedForward, MaskedFeedForward
+from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, PerceiverModalityConfig, \
+    MaskedFeedForwardConfig
 from main.model.neegavi.kd import KDHead
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration, WeaklySupervisedEegInterAviModel, \
     WeaklySupervisedWrapperModelConfiguration
@@ -74,7 +76,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
                  vid_config: KdPerceiverModalityConfig,
                  aud_config: KdPerceiverModalityConfig,
                  txt_config: KdPerceiverModalityConfig,
-                 ecg_config: PerceiverModalityConfig,
+                 ecg_config: MaskedFeedForwardConfig,
                  disabled_supports: list[str],
                  # Attention config
                  attention_config: int | list[GatedXAttentionCustomArgs],
@@ -88,7 +90,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         self.vid_modality_config: KdPerceiverModalityConfig = vid_config
         self.aud_modality_config: KdPerceiverModalityConfig = aud_config
         self.txt_modality_config: KdPerceiverModalityConfig = txt_config
-        self.ecg_modality_config: PerceiverModalityConfig = ecg_config
+        self.ecg_modality_config: MaskedFeedForwardConfig = ecg_config
         self.attention_config = attention_config
 
     def attention(self):
@@ -137,8 +139,13 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
     @supporting
     def ecg(self) -> ModalityStream:
         config = self.ecg_modality_config
+        adapter = nn.Sequential(
+            nn.Linear(config.in_size, config.out_size) if config.out_size != config.in_size else nn.Identity(),
+            MaskedFeedForward(config.out_size, mult=config.mult, dropout=config.dropout),
+        )
+
         return ModalityStream(ECG.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=nn.Identity())
+                              timestep_seconds=config.timestep_seconds, adapter=adapter)
 
 
 class WeaklySupervisedDefaultEegInterAviFactory(DefaultEegInterAviFactory):

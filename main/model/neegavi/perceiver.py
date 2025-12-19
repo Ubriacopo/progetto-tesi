@@ -37,7 +37,7 @@ class PerceiverAttention(nn.Module):
 
         x = self.norm_media(x)
         latents = self.norm_latents(latents)
-        kv = torch.cat((x, latents * self.kv_gate), dim=1)
+        kv = torch.cat((x, latents * torch.sigmoid(self.kv_gate)), dim=1)
 
         q = self.to_q(latents)
         k = self.to_k(kv)

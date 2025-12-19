@@ -63,8 +63,20 @@ class SimpleFeedForward(nn.Module):
             nn.Linear(y, x, bias=False),  # Rebuild the original shape
         )
 
-    def forward(self, x):
+    def forward(self, x, mask: torch.Tensor = None):
         return self.net(x)
+
+
+class MaskedFeedForward(nn.Module):
+    def __init__(self, dim: int, mult: int, dropout: float):
+        super().__init__()
+        self.net = SimpleFeedForward(dim, mult)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor, mask):
+        m = mask.unsqueeze(-1).to(x.dtype)
+        y = x * m + self.dropout(self.net(x * m))
+        return MaskedValue(data=y * m, mask=mask)
 
 
 class ModalContextEncoder(nn.Module):
@@ -102,6 +114,7 @@ class TemporalEncoder(nn.Module):
         x = x + self.pos[:, :T]
         kpm = ~mask if mask is not None else None
         return self.enc(x, src_key_padding_mask=kpm)  # -> (B,T,D)
+
 
 # todo vedi se fa a caso nostro
 class SlotMLPExpander(nn.Module):
