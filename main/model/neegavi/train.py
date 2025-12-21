@@ -10,8 +10,8 @@ from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import SiglipLoss
-from main.model.neegavi.model import WeaklySupervisedEegInterAviModel
-from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs
+from main.model.neegavi.model import WeaklySupervisedEegInterAviModel, EegInterAviModel
+from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
@@ -23,7 +23,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def __init__(
             self,
-            student: WeaklySupervisedEegInterAviModel, teacher: MaskedContrastiveModel,
+            student: EegInterAviModel, teacher: MaskedContrastiveModel,
             kd_loss_weight: float, fusion_loss_weight: float, weakly_supervised_weight: float,
             fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float
     ):
@@ -77,9 +77,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
         return torch.optim.Adam(weight_decay=.01, params=params)
 
-    def _compute_step_metrics(self, stud: WeaklySupervisedEegBaseModelOutputs, teacher: MaskedContrastiveModelOutputs,
+    def _compute_step_metrics(self, stud: EegBaseModelOutputs, teacher: MaskedContrastiveModelOutputs,
                               batch, step_type: Literal['train', 'val', 'test']):
-        return_object: dict[str, torch.Tensor | MaskedValue] = dict(loss=torch.tensor(0, device=stud.pred.device))
+        return_object: dict[str, torch.Tensor | MaskedValue] = dict(
+            loss=torch.tensor(0, device=stud.embeddings['data'].device))
         if self.use_kd_loss:
             kd_loss = self.compute_kd_loss(student_out=stud.kd_outs, teacher_out=teacher, step_type=step_type)
             return_object["loss"] = return_object["loss"] + kd_loss * self.alpha
@@ -90,13 +91,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             )
             return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
             # For later evaluations
-            return_object[self.FUSED_KEY] = stud.embeddings.detach()
+            fused_value = MaskedValue(data=stud.embeddings["data"].detach(), mask=stud.embeddings["mask"].detach())
+            return_object[self.FUSED_KEY] = fused_value
             for key, masked_value in stud.multimodal_outs.items():
                 masked_value["data"] = masked_value["data"].detach()
                 masked_value["mask"] = masked_value["mask"].detach()
                 return_object[key] = masked_value
 
-        if self.use_supervised_loss:
+        if False and self.use_supervised_loss:
             targets = batch["student"][Assessment.modality_code()].float()
             supervised_loss = self.compute_supervised_loss(pred=stud.pred, target=targets, step_type=step_type)
             return_object["loss"] = return_object["loss"] + supervised_loss * self.gamma
@@ -119,8 +121,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             t1_fused = self._top_1(fused_z[valid], embedding)
             t1_fused_rev = self._top_1(embedding, fused_z[valid])
 
-            self.log(f"{step_type}/fused/top_1_{key}", t1_fused, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top1_{key}_reverse", t1_fused_rev, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top1_{key}", t1_fused, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top1_{key}_R", t1_fused_rev, prog_bar=True, on_step=False, on_epoch=True)
 
             if key == self.PIVOT_KEY:
                 continue
@@ -129,8 +131,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             t1_pivot = self._top_1(pivot_z[valid], embedding)
             t1_pivot_rev = self._top_1(embedding, pivot_z[valid])
 
-            self.log(f"{step_type}/pivot/top_1_{key}", t1_pivot, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/pivot/top1_{key}_reverse", t1_pivot_rev, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/pivot/top1_{key}", t1_pivot, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/pivot/top1_{key}_R", t1_pivot_rev, prog_bar=True, on_step=False, on_epoch=True)
 
             delta = t1_fused - t1_pivot
             self.log(f"{step_type}/delta_{key}", delta, prog_bar=True, on_step=False, on_epoch=True)
@@ -150,7 +152,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
         _ = outputs.pop("loss")  # We have to ignore it
         if self.FUSED_KEY in outputs:
-            fused_z = outputs.pop(self.FUSED_KEY)
+            fused = outputs.pop(self.FUSED_KEY)
+            fused_z = self._y_mean(fused, self._get_y_valid(fused))
             pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
             # Compute and log the metrics.
             self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
@@ -158,7 +161,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
         _ = outputs.pop("loss")  # We have to ignore it
         if self.FUSED_KEY in outputs:
-            fused_z = outputs.pop(self.FUSED_KEY)
+            fused = outputs.pop(self.FUSED_KEY)
+            fused_z = self._y_mean(fused, self._get_y_valid(fused))
             pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
             # Compute and log the metrics.
             self._compute_batch_metrics(fused_z, pivot_z, outputs, 'val')
@@ -196,10 +200,12 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         mask = mask.detach().unsqueeze(-1).float()
         return (y_before * mask).sum(dim=1) / mask.sum(dim=1)
 
-    def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue],
+    def compute_fusion_loss(self, fused_output: MaskedValue, modality_outputs: dict[str, MaskedValue],
                             step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
-        base_loss = torch.tensor(0.0, device=fused_output.device)
+        base_loss = torch.tensor(0.0, device=fused_output['data'].device)
         count_present = 0
+
+        fused_output = self._y_mean(fused_output, self._get_y_valid(fused_output))
         for key, value in modality_outputs.items():
             self.verbose and print(f"\nFor key {key}:")
             # Invalid rows are discarded
@@ -255,6 +261,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     @staticmethod
     def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:
+        x = F.normalize(x, dim=-1)
+        y = F.normalize(y, dim=-1)
+
         similarity = x @ y.T
 
         pred = similarity.argmax(dim=1)

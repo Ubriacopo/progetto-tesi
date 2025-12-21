@@ -5,7 +5,7 @@ import torch
 from einops import repeat, rearrange
 from torch import nn
 
-from main.model.neegavi.blocks import TemporalEncoder
+from main.model.neegavi.blocks import TemporalEncoder, MaskedFeedForward
 from main.model.neegavi.perceiver import PerceiverResampler
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
@@ -71,15 +71,18 @@ class PerceiverResamplerAdapter(nn.Module):
 
 
 class SimpleFeedForwardAdapter(nn.Module):
-    def __init__(self, input_size: int, project_out_size: int = None, mult: int = 4):
+    def __init__(self, in_size: int, project_out_size: int = None, mult: int = 4, dropout: float = .0):
         assert mult > 0, "Mult has to be positive"
         super().__init__()
-        self.ff = nn.Sequential(
-            nn.Linear(input_size, input_size * mult),
-            nn.GELU(),
-            nn.LayerNorm(input_size * mult),
-            nn.Linear(input_size * mult, project_out_size),
-        )
+        self.linear_reshape: nn.Module = nn.Identity()
+
+        out_size = in_size
+
+        if project_out_size is not None and project_out_size != in_size:
+            self.linear_reshape = nn.Linear(in_size, project_out_size)
+            out_size = project_out_size
+
+        self.masked_ff = MaskedFeedForward(out_size, mult=mult, dropout=dropout)
 
     def forward(self, x: torch.Tensor, mask=None):
         """
@@ -87,8 +90,8 @@ class SimpleFeedForwardAdapter(nn.Module):
         :param mask: [b T]
         :return:
         """
-        y = self.ff(x)
-        return MaskedValue(data=y, mask=mask)
+        return self.masked_ff(self.linear_reshape(x), mask=mask)
+
 
 
 class TemporalEncoderAdapter(nn.Module):

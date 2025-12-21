@@ -8,7 +8,9 @@ mask_shape: [ 8, ]
 is_teacher_key: False
 
 config:
-  in_size: 384
+  in_size: 256
   out_size: ${model.supports_out_size}
   perceiver_resampler_config: ${model.factory.perceiver_resampler_config}
   timestep_seconds: 4
+  mult: 4
+  dropout: 0.0

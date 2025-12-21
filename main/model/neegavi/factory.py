@@ -8,7 +8,8 @@ from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
-from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter
+from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
+    SimpleFeedForwardAdapter
 from main.model.neegavi.blocks import ModalityStream, SimpleFeedForward, MaskedFeedForward
 from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, PerceiverModalityConfig, \
     MaskedFeedForwardConfig
@@ -107,12 +108,16 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
 
     @supporting
     def vid(self) -> ModalityStream:
+        # todo vedere se cosi ok altrimenti mi sento costretto a dover passare per rifare gli script.
         config = self.vid_modality_config  # Specific configuration
-        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
+        adapter = SimpleFeedForwardAdapter(config.in_size, config.out_size)
+        return ModalityStream(Video.modality_code(), config.out_size, adapter, config.timestep_seconds, )
 
-        return ModalityStream(Video.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+        # kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
+        # adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
+
+        # return ModalityStream(Video.modality_code(), output_size=config.out_size,
+        #                      timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
 
     @supporting
     def aud(self) -> ModalityStream:
@@ -135,17 +140,11 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         return ModalityStream(Text.modality_code(), output_size=config.out_size,
                               timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
 
-    # TODO Finish this
     @supporting
     def ecg(self) -> ModalityStream:
         config = self.ecg_modality_config
-        adapter = nn.Sequential(
-            nn.Linear(config.in_size, config.out_size) if config.out_size != config.in_size else nn.Identity(),
-            MaskedFeedForward(config.out_size, mult=config.mult, dropout=config.dropout),
-        )
-
-        return ModalityStream(ECG.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=adapter)
+        adapter = SimpleFeedForwardAdapter(config.in_size, config.out_size, mult=config.mult, dropout=config.dropout)
+        return ModalityStream(ECG.modality_code(), config.out_size, adapter, config.timestep_seconds, )
 
 
 class WeaklySupervisedDefaultEegInterAviFactory(DefaultEegInterAviFactory):

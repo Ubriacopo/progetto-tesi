@@ -63,7 +63,7 @@ class SimpleFeedForward(nn.Module):
             nn.Linear(y, x, bias=False),  # Rebuild the original shape
         )
 
-    def forward(self, x, mask: torch.Tensor = None):
+    def forward(self, x):
         return self.net(x)
 
 
@@ -74,8 +74,11 @@ class MaskedFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor, mask):
-        m = mask.unsqueeze(-1).to(x.dtype)
-        y = x * m + self.dropout(self.net(x * m))
+        # x [b, T, p, D]
+        # m [b, T]
+        m = mask[:, :, None, None].to(x.dtype)
+        xm = x * m
+        y = xm + self.dropout(self.net(xm))
         return MaskedValue(data=y * m, mask=mask)
 
 

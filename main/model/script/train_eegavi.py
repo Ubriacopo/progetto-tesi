@@ -191,6 +191,9 @@ def main(cfg: KdConfig):
 
     # In case overfit experiment
     batch_size = cfg.trainer.batch_size
+    if True:
+        batch_sampler = [next(iter(batch_sampler))]  # grab one batch
+
     train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
@@ -206,6 +209,7 @@ def main(cfg: KdConfig):
         max_epochs=cfg.trainer.epochs,
         log_every_n_steps=24,
         callbacks=[TQDMProgressBar(leave=True)],
+        limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader, )

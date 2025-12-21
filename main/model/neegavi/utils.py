@@ -7,7 +7,7 @@ from main.utils.data import MaskedValue
 
 @dataclasses.dataclass
 class EegBaseModelOutputs:
-    embeddings: torch.Tensor
+    embeddings: MaskedValue
     kd_outs: dict[str, MaskedValue]
     multimodal_outs: dict[str, MaskedValue]
 

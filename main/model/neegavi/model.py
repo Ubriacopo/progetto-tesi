@@ -64,7 +64,9 @@ class EegInterAviModel(nn.Module):
 
         self.gatedXAttn_layers = nn.ModuleList(attn_blocks)
 
-        self.fusion_pooling = MaskedPooling()
+        # self.fusion_pooling = MaskedPooling()
+        self.fusion_pooling = None
+
         self.config = config
 
     def check_supports(self):
@@ -265,7 +267,7 @@ class EegInterAviModel(nn.Module):
         if self.fusion_pooling is not None:
             z = self.fusion_pooling(z, mask=pivot_out["mask"])
 
-        out.embeddings = z
+        out.embeddings = MaskedValue(data=z, mask=pivot_mask.any(dim=-1)) # Because the mask was on channels, but we got rid of them
         return out if not return_dict else asdict(out)
 
 
