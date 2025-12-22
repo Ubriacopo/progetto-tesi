@@ -153,7 +153,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         return ModalityStream(ECG.modality_code(), config.out_size, adapter, config.timestep_seconds, )
 
     def pooling(self):
-        return MaskedMaxPooling()
+        return None
 
 
 class WeaklySupervisedDefaultEegInterAviFactory(DefaultEegInterAviFactory):

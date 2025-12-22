@@ -11,7 +11,7 @@ from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import SiglipLoss
 from main.model.neegavi.model import WeaklySupervisedEegInterAviModel, EegInterAviModel
-from main.model.neegavi.pooling import ClsPooling, MaskedMaxPooling
+from main.model.neegavi.pooling import ClsPooling, MaskedMaxPooling, MaskedAvgPooling
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
@@ -199,7 +199,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]
         pooling = self.student.pooling
         if isinstance(pooling, ClsPooling):
-            pooling = MaskedMaxPooling()
+            pooling = MaskedAvgPooling()
         with torch.no_grad():
             return pooling(y_before, mask)
 
