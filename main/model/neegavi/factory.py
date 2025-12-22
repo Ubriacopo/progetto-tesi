@@ -16,6 +16,7 @@ from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConf
 from main.model.neegavi.kd import KDHead
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration, WeaklySupervisedEegInterAviModel, \
     WeaklySupervisedWrapperModelConfiguration
+from main.model.neegavi.pooling import MaskedAvgPooling, MaskedMaxPooling
 from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 
 
@@ -59,11 +60,16 @@ class AbstractEegInterAviFactory(ABC):
 
     def build(self):
         return EegInterAviModel(
+            self.config,
             getattr(self, self.pivot_name)(),
             # Suppress not wanted supports via disabled_supports. They have to match the methodname
             *[i(self) for i in self.supporting_methods if i.__name__ not in self.disabled_supports],
-            attn_blocks=self.attention(), config=self.config
+            attn_blocks=self.attention(),
+            pooling=self.pooling(),
         )
+
+    def pooling(self):
+        return None  # Default to
 
     @abstractmethod
     def attention(self):
@@ -145,6 +151,9 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         config = self.ecg_modality_config
         adapter = SimpleFeedForwardAdapter(config.in_size, config.out_size, mult=config.mult, dropout=config.dropout)
         return ModalityStream(ECG.modality_code(), config.out_size, adapter, config.timestep_seconds, )
+
+    def pooling(self):
+        return MaskedMaxPooling()
 
 
 class WeaklySupervisedDefaultEegInterAviFactory(DefaultEegInterAviFactory):

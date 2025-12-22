@@ -35,7 +35,7 @@ class WeaklySupervisedWrapperModelConfiguration:
 
 
 # Utility fn
-def check_supports(supports: nn.ModuleList[ModalityStream], ) -> int:
+def check_supports(supports: nn.ModuleList) -> int:
     logger = make_logger(__name__)
 
     if len(supports) == 0:
@@ -69,13 +69,14 @@ def check_supports(supports: nn.ModuleList[ModalityStream], ) -> int:
 class EegInterAviModel(nn.Module):
     KD_KEY = "kd"
 
-    def __init__(self, pivot: ModalityStream, *supports: ModalityStream,
+    def __init__(self,
+                 config: EegInterAviModelConfiguration,
+                 pivot: ModalityStream, *supports: ModalityStream,
                  modality_dropout: Optional[ModalityDropout] = None,
                  # Attention once modalities are Streamed through their pipeline and cat
                  attn_blocks: list[AbstractAttentionBlock],
                  # Pooling strategy after attention
-                 pooling: Optional[nn.Module] = None,
-                 config: EegInterAviModelConfiguration):
+                 pooling: Optional[nn.Module] = None):
         super(EegInterAviModel, self).__init__()
         self.logger = make_logger(self.__class__.__name__)
 
@@ -247,7 +248,7 @@ class EegInterAviModel(nn.Module):
             x, self.modality_dropout(b, device), use_kd, out, device
         )
 
-        q, q_mask = pivot_out, pivot_mask.any(dim=-1)
+        q, q_mask = pivot_out, pivot_mask
 
         q = torch.cat([q, self.cls_token.expand(q.shape[0], -1, -1)], dim=1)
         cls_mask = torch.ones(pivot_mask.shape[0], 1, device=q.device, dtype=q_mask.dtype)
@@ -269,7 +270,7 @@ class EegInterAviModel(nn.Module):
         return out
 
 
-class EegInterAviModel(nn.Module):
+class OldEegInterAviModel(nn.Module):
     KD_KEY = "kd"
 
     def __init__(self, pivot: ModalityStream, *supports: ModalityStream,
@@ -546,8 +547,3 @@ class WeaklySupervisedEegInterAviModel(nn.Module):
         pred = self.prediction_head(outs.embeddings)
         o = WeaklySupervisedEegBaseModelOutputs(pred=pred, **vars(outs))
         return o if not return_dict else asdict(o)
-
-
-class ClsEegInterAviModel(EegInterAviModel):
-    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
-        pass

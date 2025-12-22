@@ -11,6 +11,7 @@ from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import SiglipLoss
 from main.model.neegavi.model import WeaklySupervisedEegInterAviModel, EegInterAviModel
+from main.model.neegavi.pooling import ClsPooling, MaskedMaxPooling
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
@@ -193,11 +194,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         return y["mask"].sum(dim=1) > 0
 
     # todo sistema. Prendi quello che sta facendo il modello (se fa CLS fai MAX?)
-    @staticmethod
-    def _y_mean(y: MaskedValue, valid_rows: torch.Tensor) -> torch.Tensor:
+
+    def _y_mean(self, y: MaskedValue, valid_rows: torch.Tensor) -> torch.Tensor:
         y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]
-        mask = mask.detach().unsqueeze(-1).float()
-        return (y_before * mask).sum(dim=1) / mask.sum(dim=1)
+        pooling = self.student.pooling
+        if isinstance(pooling, ClsPooling):
+            pooling = MaskedMaxPooling()
+        with torch.no_grad():
+            return pooling(y_before, mask)
 
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue],
                             step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
