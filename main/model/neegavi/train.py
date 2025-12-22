@@ -192,7 +192,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def _get_y_valid(y: MaskedValue) -> torch.Tensor:
         return y["mask"].sum(dim=1) > 0
 
-    # todo sistema
+    # todo sistema. Prendi quello che sta facendo il modello (se fa CLS fai MAX?)
     @staticmethod
     def _y_mean(y: MaskedValue, valid_rows: torch.Tensor) -> torch.Tensor:
         y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]

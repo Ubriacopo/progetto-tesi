@@ -33,9 +33,9 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         super().__init__()
         # First call
         self.attn = MaskedCrossAttention(dim=dim, dim_latent=dim_latent, dim_head=dim_head, heads=heads)
-        self.attn_gate = nn.Parameter(torch.tensor([.2]))
+        self.attn_gate = nn.Parameter(torch.tensor([1.]))
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
-        self.ff_gate = nn.Parameter(torch.tensor([.2]))
+        self.ff_gate = nn.Parameter(torch.tensor([1.]))
 
         self.norm_q = nn.LayerNorm(dim)
         self.norm_kv = nn.LayerNorm(dim)
@@ -47,7 +47,7 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         if with_self_attn:
             self.norm_self_attn = nn.LayerNorm(dim)
             self.self_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=2, batch_first=True)
-            self.self_attn_gate = nn.Parameter(torch.tensor([.2]))
+            self.self_attn_gate = nn.Parameter(torch.tensor([1.]))
 
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
         # Pre-LN + Cross modality attention
