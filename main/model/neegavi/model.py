@@ -5,6 +5,7 @@ from typing import Optional, Literal
 import torch
 from einops import repeat, rearrange
 from torch import nn
+from torch.nn import MaxPool2d
 
 from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock
 from main.model.neegavi.pooling import MaskedPooling
@@ -68,6 +69,7 @@ class EegInterAviModel(nn.Module):
         self.fusion_pooling = None
 
         self.config = config
+        self.cls_token = nn.Parameter(torch.randn(1, 1, pivot.output_size))
 
     def check_supports(self):
         """
@@ -193,15 +195,17 @@ class EegInterAviModel(nn.Module):
         if self.modality_encoder is not None:
             z = self.modality_encoder(z, modality=modality.get_code())
 
-        time_mask = torch.arange(t, device=data.device)
         _, _, m, d = z.shape
         # Reshape so that we flatten T x M
         z = rearrange(z, "b t m d -> b (t m) d")
+        time_mask = torch.arange(t, device=data.device)
         time_mask = repeat(time_mask, "t -> b (t m)", b=b, m=m)
+
         if mask is not None:
             mask = repeat(mask, "b t -> b (t m)", m=m)
 
         res = self.pad_to_batch(z, mask, idx, b)
+
         return output | {"data": res["data"], "mask": res["mask"], "t_mod": time_mask}
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
@@ -213,10 +217,9 @@ class EegInterAviModel(nn.Module):
         :return:
         """
         # Where outputs are partitioned for later use.
-        out = EegBaseModelOutputs(torch.empty(1), {}, {})
+        out = EegBaseModelOutputs(torch.zeros(1), None, {}, {})
 
         # Pivot modality elaboration
-
         pivot_x = x[self.pivot.get_code()]
         pivot_data, pivot_mask = pivot_x["data"], pivot_x.get("mask", None)
         # Device to always use the same
@@ -224,7 +227,9 @@ class EegInterAviModel(nn.Module):
         b, t = pivot_data.shape[0:2]
 
         # Time of pivot
-        time_pivot = torch.arange(t, device=device)
+        # For CLS, we have to add 1
+        time_range = t + 1
+        time_pivot = torch.arange(time_range, device=device)
         time_pivot = repeat(time_pivot, "t -> b t", b=b)
 
         pivot_out = self.pivot(pivot_data, mask=pivot_mask, use_kd=use_kd)
@@ -259,16 +264,31 @@ class EegInterAviModel(nn.Module):
         masks = torch.cat(masks, dim=1) if len(masks) != 0 else torch.zeros(b, 1, device=device)
         time_modality = torch.cat(t_mods, dim=1) if len(t_mods) != 0 else torch.zeros(b, 1, device=device)
 
+        cls_index = -1  # TODO vedi se questo va a guardare step non validi
         allow = self.build_allow_mask(time_pivot, time_modality)
+        allow[:, cls_index, :] = True
+
         z: torch.Tensor = pivot_out["data"]
+        # Add the CLS token
+        cls = self.cls_token.expand(z.shape[0], -1, -1)
+        z = torch.cat((z, cls), dim=1)
+        cls_mask = torch.ones(pivot_mask.shape[0], 1, device=z.device, dtype=pivot_mask.dtype)
+        pivot_mask = pivot_mask.any(dim=-1)
+        pivot_mask = torch.cat((pivot_mask, cls_mask), dim=1)
+
         for gated_x_attn in self.gatedXAttn_layers:
-            z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_out["mask"], kv_mask=masks)
+            z = gated_x_attn(z, support, attn_mask=allow, q_mask=pivot_mask.bool(), kv_mask=masks)
 
-        if self.fusion_pooling is not None:
-            z = self.fusion_pooling(z, mask=pivot_out["mask"])
+        # Because the mask was on channels, but we got rid of them
+        out.embeddings = MaskedValue(data=z, mask=pivot_mask)
+        out.cls = self.get_cls(z, pivot_mask)
 
-        out.embeddings = MaskedValue(data=z, mask=pivot_mask.any(dim=-1)) # Because the mask was on channels, but we got rid of them
         return out if not return_dict else asdict(out)
+
+    def get_cls(self, z: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        # mask = mask.unsqueeze(-1).float()
+        # return (z * mask).sum(dim=1) / mask.sum(dim=1)
+        return z[:, -1] # Class is last
 
 
 class WeaklySupervisedEegInterAviModel(nn.Module):
