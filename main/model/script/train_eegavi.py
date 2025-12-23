@@ -184,14 +184,13 @@ def main(cfg: KdConfig):
         alpha=0.0,
         generator=g,
     )
-    indices = next(iter(batch_sampler))  # grab one batch
 
     def collate_fn(batch):
         return tensordict.stack(batch)
 
     # In case overfit experiment
     batch_size = cfg.trainer.batch_size
-    if True:
+    if False:
         batch_sampler = [next(iter(batch_sampler))]  # grab one batch
 
     train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
@@ -209,7 +208,7 @@ def main(cfg: KdConfig):
         max_epochs=cfg.trainer.epochs,
         log_every_n_steps=24,
         callbacks=[TQDMProgressBar(leave=True)],
-        limit_train_batches=1
+        # limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
     trainer.fit(module, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader, )
