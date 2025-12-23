@@ -129,7 +129,9 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
     def aud(self) -> ModalityStream:
         config = self.aud_modality_config  # Specific configuration
         kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
+        adapter = PerceiverResamplerAdapter(
+            config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
+        )
 
         return ModalityStream(Audio.modality_code(), output_size=config.out_size,
                               timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)

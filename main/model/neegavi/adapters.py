@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Optional
 
 import torch
@@ -49,21 +49,28 @@ class EegAdapter(nn.Module):
 
 
 class PerceiverResamplerAdapter(nn.Module):
-    def __init__(self, perceiver_config: PerceiverResamplerConfig,
+    def __init__(self, perceiver_config: PerceiverResamplerConfig, in_size: int,
                  project_out_size: int = None, post_resample_module: nn.Module = None):
         super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+        self.linear_reshape: nn.Module = nn.Identity()
+
+        perceiver_config.dim = in_size # Make sure the dims match
+        if project_out_size is not None and project_out_size != in_size:
+            # TODO: In case this is noisy just to MLP + LN + non-linearity
+            self.logger.info(f"Shapes do not match so a nn.Linear({in_size}, {project_out_size}) is created")
+            perceiver_config.dim = project_out_size
+            self.linear_reshape = nn.Linear(in_size, project_out_size)
+
+        if isinstance(perceiver_config, PerceiverResamplerConfig):
+            perceiver_config = asdict(perceiver_config)
+
         self.resampler = PerceiverResampler(**perceiver_config)
         self.post_resample_module: Optional[nn.Module] = post_resample_module
-        self.logger = make_logger(self.__class__.__name__)
-        # We have to adapt
-        if self.post_resample_module is None and project_out_size is not None and project_out_size != perceiver_config.dim:
-            self.logger.info(
-                f"Shapes do not match so a nn.Linear({perceiver_config.dim}, {project_out_size}) is created"
-            )
-            self.post_resample_module = nn.Linear(perceiver_config.dim, project_out_size)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> MaskedValue:
-        y = self.resampler(x=x, mask=mask)
+        y = self.linear_reshape(x)
+        y = self.resampler(x=y, mask=mask)
         if self.post_resample_module is not None:
             y = self.post_resample_module(y)
 
@@ -91,7 +98,6 @@ class SimpleFeedForwardAdapter(nn.Module):
         :return:
         """
         return self.masked_ff(self.linear_reshape(x), mask=mask)
-
 
 
 class TemporalEncoderAdapter(nn.Module):
