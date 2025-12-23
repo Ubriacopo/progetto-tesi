@@ -59,6 +59,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.beta: float = fusion_loss_weight
         self.gamma: float = weakly_supervised_weight
 
+        self.k: int = 5
+
     # todo ramp up per other losses than supervised? Or just use supervised as aux
     def configure_optimizers(self) -> OptimizerLRScheduler:
         params = []
@@ -120,10 +122,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             embedding = self._y_mean(embedding, valid)
             # TOP-1 FUSED
             t1_fused = self._top_1(fused_z[valid], embedding)
+            tk_fused = self._top_k(fused_z[valid], embedding, self.k)
             t1_fused_rev = self._top_1(embedding, fused_z[valid])
+            tk_fused_rev = self._top_k(embedding, fused_z[valid], self.k)
 
             self.log(f"{step_type}/fused/top1_{key}", t1_fused, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top1_{key}_R", t1_fused_rev, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top1_{key}_R", t1_fused_rev, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top{self.k}_{key}", tk_fused, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top{self.k}_{key}_R", tk_fused_rev, on_step=False, on_epoch=True)
 
             if key == self.PIVOT_KEY:
                 continue
@@ -133,7 +139,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             t1_pivot_rev = self._top_1(embedding, pivot_z[valid])
 
             self.log(f"{step_type}/pivot/top1_{key}", t1_pivot, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/pivot/top1_{key}_R", t1_pivot_rev, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/pivot/top1_{key}_R", t1_pivot_rev, on_step=False, on_epoch=True)
 
             delta = t1_fused - t1_pivot
             self.log(f"{step_type}/delta_{key}", delta, prog_bar=True, on_step=False, on_epoch=True)
@@ -263,15 +269,19 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     @staticmethod
     def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:
+        return EegAviKdVateMaskedSemiSupervisedModule._top_k(x, y, 1)
+
+    @staticmethod
+    def _top_k(x: torch.Tensor, y: torch.Tensor, k: int) -> Optional[torch.Tensor]:
         x = F.normalize(x, dim=-1)
         y = F.normalize(y, dim=-1)
 
         similarity = x @ y.T
+        k = min(k, similarity.size(1))
 
-        pred = similarity.argmax(dim=1)
-
-        gt = torch.arange(similarity.size(0), device=similarity.device)
-        return (pred == gt).float().mean()
+        top_k = similarity.topk(k, dim=1).indices
+        gt = torch.arange(similarity.size(0), device=similarity.device).unsqueeze(1)
+        return (top_k == gt).any(dim=1).float().mean()
 
     def observe_xattn_gates(self):
         xattn_layer: GatedXAttentionBlock
