@@ -25,6 +25,7 @@ class EegInterAviModelConfiguration:
     # Configuration variables
     drop_p: float = .0
     use_modality_encoder: bool = True
+    modality: Literal['causal', 'bidirectional'] = 'causal'
 
 
 @dataclasses.dataclass
@@ -97,7 +98,7 @@ class EegInterAviModel(nn.Module):
             self.modality_encoder = ModalContextEncoder(self.supports_feature_size, modality_mappings)
 
         # TODO read from config
-        self.allow_modality: Literal['window', 'causal'] = 'window'
+        self.default_allow_modality: Literal['window', 'causal', 'bidirectional'] = config.modality
         self.past_window_units: int = 2  # How much past can be seen
 
         self.gatedXAttn_layers = nn.ModuleList(attn_blocks)
@@ -158,6 +159,7 @@ class EegInterAviModel(nn.Module):
 
         return MaskedValue(data=pad_y, mask=pad_mask)
 
+    # TODO randomly decide during training adn give option at inference
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         """
         Allowance mask aligns the same timesteps and previous ones.
@@ -169,14 +171,18 @@ class EegInterAviModel(nn.Module):
         # By multiplying by the timestep seconds we reshape so that alignemnt works correctly.
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
         tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
-        if self.allow_modality == "window":
+        if self.default_allow_modality == "window":
             # Window size compels us to explode the sun.
             # It's written like this to avoid symmetry
             return (tq >= (tk - self.past_window_units)) & (tq < tk + self.supports[0].timestep_seconds)
 
-        if self.allow_modality == "causal":
+        if self.default_allow_modality == "causal":
             return tk <= tq
-        raise ValueError(f"Unknown mode: {self.allow_modality}")
+
+        if self.default_allow_modality == "bidirectional":
+            return torch.ones(tq.shape[0], tq.shape[1], tk.shape[1], device=tq.device, dtype=torch.bool)
+
+        raise ValueError(f"Unknown mode: {self.default_allow_modality}")
 
     def process_support(self, x: MaskedValue, keep_idx: torch.Tensor, modality: ModalityStream,
                         use_kd: bool, out: EegBaseModelOutputs, device):

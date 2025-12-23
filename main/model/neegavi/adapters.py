@@ -1,8 +1,8 @@
 from dataclasses import dataclass, asdict
-from typing import Optional
+from typing import Optional, Literal
 
 import torch
-from einops import repeat, rearrange
+from einops import rearrange
 from torch import nn
 
 from main.model.neegavi.blocks import TemporalEncoder, MaskedFeedForward
@@ -55,7 +55,7 @@ class PerceiverResamplerAdapter(nn.Module):
         self.logger = make_logger(self.__class__.__name__)
         self.linear_reshape: nn.Module = nn.Identity()
 
-        perceiver_config.dim = in_size # Make sure the dims match
+        perceiver_config.dim = in_size  # Make sure the dims match
         if project_out_size is not None and project_out_size != in_size:
             # TODO: In case this is noisy just to MLP + LN + non-linearity
             self.logger.info(f"Shapes do not match so a nn.Linear({in_size}, {project_out_size}) is created")
@@ -101,18 +101,21 @@ class SimpleFeedForwardAdapter(nn.Module):
 
 
 class TemporalEncoderAdapter(nn.Module):
-    def __init__(self, dim: int, max_length: int, timestep_duration: int, project_out_size: int = None):
+    def __init__(self, dim: int, max_length: int, timestep_duration: int,
+                 modality: Literal['causal', 'bidirectional'], project_out_size: int = None):
         super().__init__()
-        self.temporal_encoder = TemporalEncoder(dim=dim, max_length=max_length, timestep_duration=timestep_duration)
-        self.projection: Optional[nn.Module] = None
+
+        self.projection: nn.Module = nn.Identity()
         if project_out_size is not None and project_out_size != dim:
             self.projection = nn.Linear(dim, project_out_size)
+            dim = project_out_size
+
+        self.temporal_encoder: nn.Module = TemporalEncoder(
+            dim=dim, max_length=max_length, timestep_duration=timestep_duration, modality=modality,
+        )
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> MaskedValue:
-        y = self.temporal_encoder(x=x, mask=mask)
+        y = self.projection(x)
+        y = self.temporal_encoder(x=y, mask=mask)
         y = rearrange(y, "b T (p D) -> b T p D", p=1)
-
-        if self.projection is not None:
-            y = self.projection(y)
-
         return MaskedValue(data=y, mask=mask)

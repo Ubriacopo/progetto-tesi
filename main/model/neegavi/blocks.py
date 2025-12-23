@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Literal
 
 import torch
 from torch import nn
@@ -106,17 +106,33 @@ class ModalContextEncoder(nn.Module):
 
 
 class TemporalEncoder(nn.Module):
-    def __init__(self, dim, max_length: int, timestep_duration: int, layers=1, heads=8, dropout=0.0):
+    def __init__(self, dim, max_length: int, timestep_duration: int, modality: Literal['causal', 'bidirectional'],
+                 layers: int = 1, heads: int = 8, dropout: float = 0.0):
         super().__init__()
-        enc = nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dropout=dropout, batch_first=True)
-        self.enc = nn.TransformerEncoder(encoder_layer=enc, num_layers=layers)
+        self.enc_layer = nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dropout=dropout, batch_first=True)
+        self.enc = nn.TransformerEncoder(encoder_layer=self.enc_layer, num_layers=layers)
         self.pos = nn.Parameter(torch.randn(1, int(max_length / timestep_duration), dim))  # or sinusoidal
+        self.modality: Literal['causal', 'bidirectional'] = modality
 
     def forward(self, x, mask=None):  # x: (B,T,D), mask: (B,T) bool True=valid
         T = x.size(1)
         x = x + self.pos[:, :T]
-        kpm = ~mask if mask is not None else None
-        return self.enc(x, src_key_padding_mask=kpm)  # -> (B,T,D)
+
+        attn_mask = None
+        if self.modality == 'causal':
+            attn_mask = torch.triu(torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1)
+
+        if mask is None:
+            return self.enc(x, mask=attn_mask)
+
+        mask = mask.bool()
+        valid = mask.any(dim=1)
+
+        out = x.new_zeros(x.shape)
+        if valid.any():
+            out[valid] = self.enc(x[valid], src_key_padding_mask=~mask[valid], mask=attn_mask)  # -> (B,T,D)
+
+        return out
 
 
 # todo vedi se fa a caso nostro

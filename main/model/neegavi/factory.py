@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Literal
 
 from torch import nn
 from torchvision.transforms import v2
@@ -117,7 +118,8 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         # todo vedere se cosi ok altrimenti mi sento costretto a dover passare per rifare gli script.
         config = self.vid_modality_config  # Specific configuration
         adapter = SimpleFeedForwardAdapter(config.in_size, config.out_size)
-        return ModalityStream(Video.modality_code(), config.out_size, adapter, config.timestep_seconds, )
+        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
+        return ModalityStream(Video.modality_code(), config.out_size, adapter, config.timestep_seconds, kd_head=kd_head)
 
         # kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
         # adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
@@ -142,7 +144,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
         # todo parametrizza correttamente
         adapter = TemporalEncoderAdapter(
-            dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds,
+            dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds, modality=self.config.modality
         )
 
         return ModalityStream(Text.modality_code(), output_size=config.out_size,

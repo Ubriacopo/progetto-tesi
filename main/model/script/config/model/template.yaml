@@ -17,3 +17,4 @@ custom_config:
   # If we want to add a modality embedding to vectors before doing fusion.
   use_modality_encoder: True
   output_size: 384
+  modality: bidirectional

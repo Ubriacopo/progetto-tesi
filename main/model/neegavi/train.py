@@ -122,12 +122,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             embedding = self._y_mean(embedding, valid)
             # TOP-1 FUSED
             t1_fused = self._top_1(fused_z[valid], embedding)
+            t3_fused = self._top_k(fused_z[valid], embedding, 3)
             tk_fused = self._top_k(fused_z[valid], embedding, self.k)
             t1_fused_rev = self._top_1(embedding, fused_z[valid])
+            t3_fused_rev = self._top_k(embedding, fused_z[valid], 3)
             tk_fused_rev = self._top_k(embedding, fused_z[valid], self.k)
 
             self.log(f"{step_type}/fused/top1_{key}", t1_fused, prog_bar=True, on_step=False, on_epoch=True)
             self.log(f"{step_type}/fused/top1_{key}_R", t1_fused_rev, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top3_{key}", t3_fused, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/fused/top3_{key}_R", t3_fused_rev, on_step=False, on_epoch=True)
             self.log(f"{step_type}/fused/top{self.k}_{key}", tk_fused, prog_bar=True, on_step=False, on_epoch=True)
             self.log(f"{step_type}/fused/top{self.k}_{key}_R", tk_fused_rev, on_step=False, on_epoch=True)
 

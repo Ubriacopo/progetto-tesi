@@ -17,7 +17,7 @@ supports: [ vid, aud, txt, ecg ]
 classpath: main.model.neegavi.factory.DefaultEegInterAviFactory
 constructor_args:
   # Pivot
-  disabled_supports: [ txt ]
+  disabled_supports: [ ]
   eeg_config: ${...pivot.config}
 
   # Supports
