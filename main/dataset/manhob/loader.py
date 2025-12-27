@@ -64,19 +64,19 @@ class ManhobPointsLoader(DataPointsLoader):
                 # Manhob always has both so we might match errors
                 assert clip is not None and raw is not None, f"Problem was met, the experiment {experiment_id} misses a modality"
 
-                nei = self.dataset_uid_store.uid(experiment_id, experiment_id, "amigos")
-                metadata = {"nei": nei, "dataset_id": self.DATASET_ID}
+                nei = self.dataset_uid_store.uid(experiment_id, experiment_id, "MANHOB")
+                metadata = {"experiment": experiment_id, "dataset_id": self.DATASET_ID}
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
                 yield FlexibleDatasetPoint(
-                    experiment_id,
-                    EEG(eid=experiment_id, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
-                    ECG(eid=experiment_id, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS),
+                    nei,
+                    EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
+                    ECG(eid=nei, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS),
                         fs=raw.info['sfreq'], leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
                     # All MANHOB videos have 30s offset
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=experiment_id,
+                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=nei,
                           offset=offset, filepath=clip.filename).as_mod_tuple(),
-                    Metadata(data=metadata, eid=experiment_id).as_mod_tuple()
+                    Metadata(data=metadata, eid=nei).as_mod_tuple()
                 )
             except Exception as e:
                 self.logger.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")

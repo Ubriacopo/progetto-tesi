@@ -3,8 +3,10 @@ base_path: ???
 defaults:
   - dataset: amigos
   - segmenter: eeg_features_segmenter
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
 
-uid_store_path: ${.base_path}/EEGAVI/uid_store.csv
+uid_store_path: ${base_path}/EEGAVI/uid_store.csv
 
 hydra:
   job_logging:

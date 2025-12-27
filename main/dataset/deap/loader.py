@@ -57,21 +57,19 @@ class DeapPointsLoader(DataPointsLoader):
                         ch_types=self.config.eeg_source_config.get_CH_TYPES(),
                         sfreq=self.config.eeg_source_config.fs
                     )
+
                     raw = mne.io.RawArray(trial, info=info, verbose=False)
-                    eeg = EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq'])
 
+                    # Video data
                     clip = VideoFileClip(media_path)
-                    video = Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size, filepath=media_path)
-
-                    assessment = Assessment(eid=nei, data=labels)
-                    metadata = Metadata(eid=nei, data={"nei": nei, "dataset_id": 3})
+                    fps = clip.fps
 
                     yield FlexibleDatasetPoint(
-                        eid,
-                        eeg.as_mod_tuple(),
-                        video.as_mod_tuple(),
-                        assessment.as_mod_tuple(),
-                        metadata.as_mod_tuple()
+                        nei,
+                        EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
+                        Video(eid=nei, data=clip, fps=fps, resolution=clip.size, filepath=media_path).as_mod_tuple(),
+                        Assessment(eid=nei, data=labels).as_mod_tuple(),
+                        Metadata(eid=nei, data={"experiment": eid, "dataset_id": 3}).as_mod_tuple()
                     )
 
             except Exception as e:

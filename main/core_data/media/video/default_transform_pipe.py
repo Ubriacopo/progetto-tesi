@@ -19,7 +19,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
     max_length = math.ceil(config.max_length / config.unit_seconds)
     # To handle empty rows
     vivit_latent = 768  # VIVIT Configuration
-    patches = 16  # From our PyramidPatchPooling
+    patches = 400  # From our ViVit 2D pooling
 
     return Video.modality_code(), SequentialWithFallback(
         VideoSubclipTensorRead(target_fps=32),
