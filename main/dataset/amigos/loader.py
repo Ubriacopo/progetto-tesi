@@ -46,7 +46,8 @@ class AmigosPointsLoader(DataPointsLoader):
             try:
                 pat = re.compile(r'^P\(\d+(?:,\d+)*\)_\w\d+_face$')
                 if pat.match(v.stem):
-                    print("These files are ignored as we have to extract the person face from them. TODO if not done.")
+                    self.logger.info(f"Files matching {pat} ignored as we have to extract the person face from them. "
+                                     "TODO: Actually elaborate them. Not done atm.")
                     continue
 
                 # [0] -> P40 [1] -> 18 [2] -> face(.mov) (Stemmed)
@@ -97,5 +98,5 @@ class AmigosPointsLoader(DataPointsLoader):
 
             except Exception as e:
                 # TODO robust logging
-                print(f"Loading failed for {v.stem}. Procedure will continue and drop the element")
-                print(e)
+                self.logger.error(f"Loading failed for {v.stem}. Procedure will continue and drop the element")
+                self.logger.error(e)

@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 
 from main.dataset.base_config import DatasetConfig
 from main.dataset.utils import PreprocessingConfig, DatasetUidStore
+from main.utils.logging import make_logger
 
 
 @dataclasses.dataclass
@@ -22,7 +23,8 @@ OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 @hydra.main(version_base=None, config_name="config", config_path="config")
 def main(cfg: Config):
     # allow extra keys only on txt_config
-    print(OmegaConf.to_yaml(cfg))
+    loger = make_logger("prepare_ds_pre_extracted")
+    loger.info(OmegaConf.to_yaml(cfg))
     OmegaConf.set_struct(cfg, False)
     OmegaConf.to_container(cfg, resolve=True)
 
@@ -45,6 +47,7 @@ def main(cfg: Config):
         base_path=cfg.preprocessing.data_path, dataset_uid_store=uid_store
     )
     preprocessing_fn.run(loader=loader, workers=1)
+    loger.info("Preprocessing finished.")
 
 
 if __name__ == "__main__":

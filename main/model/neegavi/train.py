@@ -219,7 +219,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         count_present = 0
 
         for key, value in modality_outputs.items():
-            self.verbose and print(f"\nFor key {key}:")
+            self.verbose and self.inner_logger.info(f"\nFor key {key}:")
             # Invalid rows are discarded
             valid_rows = self._get_y_valid(value)
             if not valid_rows.any():

@@ -17,6 +17,8 @@ from transformers import BatchFeature
 from base_config import BaseConfig
 from main.utils.logging import make_logger
 
+utils_logger = make_logger("data.utils")
+
 
 def dataset_information(dataset: Dataset, image_size: tuple[int, int]) -> tuple[torch.Tensor, torch.Tensor]:
     """
@@ -69,7 +71,7 @@ def build_tensor_dict(samples: list[dict | torch.Tensor] | tuple):
             return type(first)(build_tensor_dict(items) for items in zip(*samples))
 
         if isinstance(first, str):
-            print("String data won't be persisted. Only tensors")
+            utils_logger.warn("String data won't be persisted. Only tensors")
             return torch.empty(0)
 
         else:
@@ -117,38 +119,16 @@ def sanitize_for_ast(obj):
 _AST_OK = (str, bytes, bool, int, float, type(None))
 
 
-def compress_pt_in_folder(path_to_dir: str, verbose: bool = True):
-    if not Path(path_to_dir).exists():
-        raise FileNotFoundError(f"Folder {path_to_dir} does not exist")
-    if not Path(path_to_dir).is_dir():
-        raise NotADirectoryError(f"Folder {path_to_dir} is not a directory")
-
-    path = Path(path_to_dir)
-    pt_files = [file for file in path.iterdir() if file.glob("*.pt")]
-    for pt_file in pt_files:
-        print("Compressing file {}".format(pt_file)) if verbose else None
-        with open(pt_file, "rb") as f_in, gzip.open(Path(str(pt_file) + ".gz"), "wb") as f_out:
-            shutil.copyfileobj(f_in, f_out)
-        print("Compressed file {}".format(pt_file)) if verbose else None
-
-
-def decompress_pt(path_to_pt: str, map_location: str = "cpu"):
-    gz_file_path = Path(path_to_pt).with_suffix(".gz")
-    if not gz_file_path.exists():
-        raise FileNotFoundError(f"File {str(gz_file_path)} does not exist")
-
-    with gzip.open(gz_file_path, "rb") as f_in:
-        return torch.load(f_in, map_location=map_location)
-
-
 def debug_exceptional_catch(func):
+    exceptional_catch_logger = make_logger(debug_exceptional_catch.__name__)
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            print(f"{func.__name__}: raised exception: \n")
-            print(e)
+            exceptional_catch_logger.error(f"{func.__name__}: raised exception: \n")
+            exceptional_catch_logger.error(e)
             raise e
 
     return wrapper
@@ -185,6 +165,7 @@ def timed(label: str = None, longer_than: float = 0.5, suppress: bool = BaseConf
             return fn
 
         logger = make_logger("timed")
+
         @wraps(fn)
         def wrapper(*args, **kwargs):
             start = time.perf_counter()
