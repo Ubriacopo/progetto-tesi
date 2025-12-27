@@ -117,7 +117,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
             config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
         )
 
-        return ModalityStream(Audio.modality_code(), output_size=config.out_size,
+        return ModalityStream(Video.modality_code(), output_size=config.out_size,
                               timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
 
     @supporting

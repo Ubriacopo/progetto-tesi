@@ -1,6 +1,7 @@
 import dataclasses
 
 import hydra
+from hydra.core.config_store import ConfigStore
 from hydra.utils import get_object
 from omegaconf import OmegaConf
 
@@ -23,10 +24,15 @@ class SingleConfig:
 
 @dataclasses.dataclass
 class Config:
-    datasets: list[SingleConfig]
+    dataset: list[SingleConfig]
+    target_model: list[TargetModelConfig]
     base_path: str
 
-@hydra.main(version_base=None, config_name="multi", config_path="../prepare_ds_pre_extracted/config")
+cs = ConfigStore.instance()
+OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
+OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
+
+@hydra.main(version_base=None, config_name="base", config_path="config")
 def main(cfg: Config):
     # allow extra keys only on txt_config
     loger = make_logger("prepare_ds_pre_extracted")
@@ -34,7 +40,8 @@ def main(cfg: Config):
     OmegaConf.set_struct(cfg, False)
     OmegaConf.to_container(cfg, resolve=True)
 
-    for ds_config in cfg.datasets:
+    for ds_config, target_model in zip(cfg.dataset, cfg.target_model):
+        ds_config.dataset.output_path += target_model.out_folder_name + "/"
         config: DatasetConfig = get_object(ds_config.dataset.config_classpath)(
             aud_target_config=ds_config.dataset.aud_config,
             vid_target_config=ds_config.dataset.vid_config,

@@ -1,10 +1,12 @@
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/
+eeg_model_weights_path: /home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
+
 defaults:
   - default
-  - dataset: ???
-  - target_model: ???
-
-
-dataset:
-  eeg_config:
-    model_weights_path: /home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
+  - dataset:
+      - amigos
+      - manhob
+      - eav
+  - target_model:
+      - eegavi
+      - vate

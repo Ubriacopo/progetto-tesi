@@ -178,3 +178,32 @@ class DatasetFirstBatchSampler(Sampler[list[int]]):
 
             local = torch.randperm(length, generator=self.gen)[:self.batch_size].tolist()
             yield [start + j for j in local]
+
+# todo rename
+class SequentialPerDatasetBatchSampler(Sampler[list[int]]):
+    def __init__(self, multi: MultiDataset, batch_size: int, drop_last: bool = False):
+        super().__init__()
+
+        self.dataset: MultiDataset = multi
+        self.batch_size: int = batch_size
+        self.drop_last: bool = drop_last
+        self.ranges = [(s, l) for s, l in multi.dataset_ranges]
+
+    def __iter__(self):
+        for dataset_id, (start, length) in enumerate(self.ranges):
+            idx_list = list(range(start, start + length))
+            for i in range(0, length, self.batch_size):
+                chunk = idx_list[i:i + self.batch_size]
+                if len(chunk) < self.batch_size and self.drop_last:
+                    continue
+
+                yield chunk
+
+    def __len__(self):
+        total = 0
+
+        for start, length in self.ranges:
+            q, r = divmod(length, self.batch_size)
+            total += q + (0 if (r == 0 or self.drop_last) else 1)
+
+        return total

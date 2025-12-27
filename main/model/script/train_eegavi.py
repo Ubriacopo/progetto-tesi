@@ -11,7 +11,7 @@ from lightning.pytorch.callbacks import TQDMProgressBar
 from torch.utils.data import DataLoader, Subset
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
-    DatasetFirstBatchSampler
+    DatasetFirstBatchSampler, SequentialPerDatasetBatchSampler
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.neegavi.factory import AbstractEegInterAviFactory
@@ -193,10 +193,29 @@ def main(cfg: KdConfig):
     if False:
         batch_sampler = [next(iter(batch_sampler))]  # grab one batch
 
-    train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
+    train_dataloader = DataLoader(
+        train_dataset,
+        # TODO parametrize
+        batch_sampler=DatasetFirstBatchSampler(
+            multi=train_dataset,
+            batch_size=cfg.trainer.batch_size,
+            batches_per_epoch=100,  # you choose
+            alpha=0.0,
+            generator=g,
+        ), collate_fn=collate_fn
+    )
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=None, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=None, collate_fn=collate_fn)
+    valid_dataloader = DataLoader(
+        valid_dataset,
+        batch_sampler=SequentialPerDatasetBatchSampler(multi=valid_dataset, batch_size=cfg.trainer.batch_size, ),
+        shuffle=None, collate_fn=collate_fn
+    )
+
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_sampler=SequentialPerDatasetBatchSampler(multi=test_dataset, batch_size=cfg.trainer.batch_size, ),
+        collate_fn=collate_fn
+    )
 
     for n, p in student.named_parameters():
         print(n, p.requires_grad, p.grad is None)
