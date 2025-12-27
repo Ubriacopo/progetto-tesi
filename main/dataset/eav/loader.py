@@ -88,7 +88,7 @@ class EavPointsLoader(DataPointsLoader):
                         # Store the current to fs so that we have it ready
                         self.dataset_uid_store.store_dictionary()
 
-                        metadata = {"experiment": index, "dataset_id": self.DATASET_ID}
+                        metadata = {"experiment": str(index), "dataset_id": self.DATASET_ID}
 
                         # EEG data part
                         info = mne.create_info(
@@ -109,7 +109,7 @@ class EavPointsLoader(DataPointsLoader):
                                   filepath=str(video_file.resolve())).as_mod_tuple(),
                             Audio(eid=nei, data=audio, fs=audio_fs, filepath=audio_filepath).as_mod_tuple(),
                             Text(eid=nei, data=audio_copy, base_audio=audio_copy).as_mod_tuple(),
-                            Metadata(data=metadata, eid=str(nei)).as_mod_tuple()
+                            Metadata(data=metadata, eid=nei).as_mod_tuple()
                         )
 
                     except Exception as e:

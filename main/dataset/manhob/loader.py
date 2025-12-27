@@ -65,7 +65,7 @@ class ManhobPointsLoader(DataPointsLoader):
                 assert clip is not None and raw is not None, f"Problem was met, the experiment {experiment_id} misses a modality"
 
                 nei = self.dataset_uid_store.uid(experiment_id, experiment_id, "MANHOB")
-                metadata = {"experiment": experiment_id, "dataset_id": self.DATASET_ID}
+                metadata = {"experiment": str(experiment_id), "dataset_id": self.DATASET_ID}
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
                 yield FlexibleDatasetPoint(

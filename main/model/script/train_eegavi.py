@@ -195,8 +195,8 @@ def main(cfg: KdConfig):
 
     train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=None, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=None, collate_fn=collate_fn)
 
     for n, p in student.named_parameters():
         print(n, p.requires_grad, p.grad is None)
@@ -208,6 +208,7 @@ def main(cfg: KdConfig):
         max_epochs=cfg.trainer.epochs,
         log_every_n_steps=24,
         callbacks=[TQDMProgressBar(leave=True)],
+        num_sanity_val_steps=0
         # limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)

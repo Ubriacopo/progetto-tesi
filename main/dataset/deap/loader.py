@@ -69,7 +69,7 @@ class DeapPointsLoader(DataPointsLoader):
                         EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
                         Video(eid=nei, data=clip, fps=fps, resolution=clip.size, filepath=media_path).as_mod_tuple(),
                         Assessment(eid=nei, data=labels).as_mod_tuple(),
-                        Metadata(eid=nei, data={"experiment": eid, "dataset_id": 3}).as_mod_tuple()
+                        Metadata(eid=nei, data={"experiment": str(eid), "dataset_id": 3}).as_mod_tuple()
                     )
 
             except Exception as e:

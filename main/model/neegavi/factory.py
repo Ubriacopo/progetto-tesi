@@ -1,8 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Literal
-
-from torch import nn
-from torchvision.transforms import v2
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
@@ -11,13 +7,12 @@ from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
     SimpleFeedForwardAdapter
-from main.model.neegavi.blocks import ModalityStream, SimpleFeedForward, MaskedFeedForward
+from main.model.neegavi.blocks import ModalityStream
 from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, PerceiverModalityConfig, \
     MaskedFeedForwardConfig
 from main.model.neegavi.kd import KDHead
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration, WeaklySupervisedEegInterAviModel, \
     WeaklySupervisedWrapperModelConfiguration
-from main.model.neegavi.pooling import MaskedAvgPooling, MaskedMaxPooling
 from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 
 
@@ -117,15 +112,13 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
     def vid(self) -> ModalityStream:
         # todo vedere se cosi ok altrimenti mi sento costretto a dover passare per rifare gli script.
         config = self.vid_modality_config  # Specific configuration
-        adapter = SimpleFeedForwardAdapter(config.in_size, config.out_size)
         kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        return ModalityStream(Video.modality_code(), config.out_size, adapter, config.timestep_seconds, kd_head=kd_head)
+        adapter = PerceiverResamplerAdapter(
+            config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
+        )
 
-        # kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        # adapter = PerceiverResamplerAdapter(config.perceiver_resampler_config, project_out_size=config.out_size)
-
-        # return ModalityStream(Video.modality_code(), output_size=config.out_size,
-        #                      timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+        return ModalityStream(Audio.modality_code(), output_size=config.out_size,
+                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
 
     @supporting
     def aud(self) -> ModalityStream:

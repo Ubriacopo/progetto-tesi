@@ -1,0 +1,9 @@
+
+defaults:
+  dataset:
+    - amigos
+    - manhob
+    - eav
+  target_model:
+    - eegavi
+    - vate

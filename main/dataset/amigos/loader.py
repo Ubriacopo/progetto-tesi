@@ -76,7 +76,7 @@ class AmigosPointsLoader(DataPointsLoader):
                 raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
 
                 nei = self.dataset_uid_store.uid(person[1:], video_id, "amigos")
-                metadata = {"experiment": experiment_id, "dataset_id": 0}
+                metadata = {"experiment": str(experiment_id), "dataset_id": 0}
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
 
