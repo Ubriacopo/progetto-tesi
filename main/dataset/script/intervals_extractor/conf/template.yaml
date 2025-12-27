@@ -1,5 +1,5 @@
 # Where things are fetched from
-base_path: /home/jacopo/PycharmProjects/progetto-tesi/data
+base_path: ???
 defaults:
   - dataset: amigos
   - segmenter: eeg_features_segmenter

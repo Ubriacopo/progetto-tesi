@@ -165,8 +165,11 @@ class EmptyObjectTransform(nn.Module):
         data = torch.zeros(self.shape, device=self.device)
         if self.mask_shape is not None:
             mask = torch.zeros(self.mask_shape, device=self.device)
+            mask = mask.to(torch.bool)
+
             if self.reduce_mask:
                 mask = mask.squeeze(0)
+
             return MaskedValue(data=data, mask=mask)
 
         return torch.zeros(data)

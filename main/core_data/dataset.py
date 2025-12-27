@@ -1,5 +1,4 @@
 import dataclasses
-import random
 from abc import ABC
 from pathlib import Path
 from typing import Tuple
@@ -13,11 +12,6 @@ from torch.utils.data import Sampler
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
 from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.audio import Audio
-from main.core_data.media.ecg import ECG
-from main.core_data.media.eeg import EEG
-from main.core_data.media.text import Text
-from main.core_data.media.video import Video
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -117,6 +111,7 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.df)
+
 
 # So we did it to make the fusion/KD training signal cleaner and more stable, and to reduce unintended bias from batch composition
 class MultiDataset(torch.utils.data.Dataset):
