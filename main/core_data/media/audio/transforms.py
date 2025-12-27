@@ -40,7 +40,13 @@ class SubclipAudio(nn.Module):
     @timed()
     @call_log()
     def forward(self, x: Audio):
-        x.data = AudioFileClip(x.filepath)
+        try:
+            x.data = AudioFileClip(x.filepath)
+        except Exception as e:
+            msg = f"Provided x: {x.eid} has no valid audio for path: {x.filepath}"
+            self.logger.warn(msg)
+            raise FileNotFoundError(msg)
+
         aud: AudioFileClip = x.data
 
         if x.fs != aud.fps:

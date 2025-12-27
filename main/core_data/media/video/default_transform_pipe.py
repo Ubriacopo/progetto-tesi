@@ -8,7 +8,7 @@ from main.core_data.media.video import Video
 from main.core_data.media.video.transforms import ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
     ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, VideoSubclipTensorRead, \
-    ViVitVideoTensorImageProcessorTransform, DropBatchFromViVitProcessingTransform
+    ViVitVideoTensorImageProcessorTransform, DropBatchFromViVitProcessingTransform, ViVit2DPooling
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
     EmptyObjectTransform
 from main.dataset.base_config import DatasetConfig
@@ -30,7 +30,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
             frames_resampler=RegularFrameResampling(max_length=config.vid_target_config.max_frames, drop_mask=True),
         ),
         ViVitEmbedderTransform(map_to="cpu"),
-        ViVitPyramidPatchPooling(),
+        ViVit2DPooling(2, 3),
         MultimediaPadding(max_length=max_length),
         default_remap=EmptyObjectTransform(shape=(max_length, patches, vivit_latent), mask_shape=(max_length,)),
     )

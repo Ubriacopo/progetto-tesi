@@ -1,7 +1,0 @@
----
-defaults:
-  - base
-
-dataset_name: deap
-out_folder_name: vate
-preprocessing_pipeline: main.dataset.${.dataset_name}.preprocessing.vate_preprocessor

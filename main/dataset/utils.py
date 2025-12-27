@@ -13,7 +13,7 @@ from main.core_data.media.video import VidTargetConfig
 
 @dataclasses.dataclass
 class PreprocessingConfig:
-    dataset_name: str
+    name: str
 
     config_classpath: str
     loader_classpath: str

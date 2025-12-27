@@ -1,0 +1,2 @@
+out_folder_name: interleaved
+preprocessing_pipeline: main.dataset.${dataset.name}.preprocessing.interleaved_preprocessor

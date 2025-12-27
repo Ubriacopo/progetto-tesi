@@ -154,7 +154,7 @@ class EEGFeatureExtractor:
     @staticmethod
     def tkeo(frames: np.ndarray):
         # Teager–Kaiser Energy Operator averaged per frame; captures bursty, high-frequency energy.
-        # Sensitive to rapid local changes (popular in EEG, speech and seismic signal analysis)
+        # Sensitive to rapid local.yaml changes (popular in EEG, speech and seismic signal analysis)
         return np.mean(np.abs(frames[:, 1:-1] ** 2 - frames[:, :-2] * frames[:, 2:]), axis=1)
 
     @staticmethod

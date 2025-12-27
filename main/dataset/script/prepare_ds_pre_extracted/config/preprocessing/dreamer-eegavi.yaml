@@ -1,9 +1,0 @@
----
-defaults:
-  - base
-
-dataset_name: dreamer
-config_classpath: main.dataset.dreamer.config.DreamerConfig
-out_folder_name: interleaved
-
-preprocessing_pipeline: main.core.dataset.${dataset_name}.preprocessing.interleaved_preprocessor
