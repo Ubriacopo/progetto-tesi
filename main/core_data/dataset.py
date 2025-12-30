@@ -1,14 +1,15 @@
+from __future__ import annotations
 import dataclasses
 from abc import ABC
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import pandas as pd
 import tensordict
 import torch
 from tensordict import TensorDict
 from torch import device
-from torch.utils.data import Sampler
+from torch.utils.data import Sampler, Subset
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
 from main.core_data.media.assessment.assessment import Assessment
@@ -117,6 +118,7 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
 class MultiDataset(torch.utils.data.Dataset):
     def __init__(self, datasets: list[torch.utils.data.Dataset]):
         super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
         self.datasets: list[torch.utils.data.Dataset] = datasets
         self.dataset_offsets: list[int] = []
 
@@ -137,6 +139,37 @@ class MultiDataset(torch.utils.data.Dataset):
                 return self.datasets[ds_id][idx - self.dataset_offsets[ds_id]]
 
         raise IndexError("Element not found in datasets collection")
+
+    def split(self, train: float, validation: float = .0, seed: int = 1) -> \
+            tuple[MultiDataset, MultiDataset, MultiDataset] | tuple[MultiDataset, MultiDataset]:
+        generator = torch.Generator().manual_seed(seed)
+
+        if train == 0:
+            self.logger.error(f"Cannot make train split at 0%. (train={train}, validation={validation}).")
+            raise ValueError("Cannot make train split at 0%. (train={train}, validation={validation}).")
+
+        train_split, val_split, test_split = [], [], []
+        for dataset in self.datasets:
+            n = len(dataset)
+            permutation = torch.randperm(n, generator=generator).tolist()
+
+            n_train = int(train * n)
+            train_split.append(Subset(dataset, permutation[:n_train]))
+            test_start = n_train  # Test split starts from n_train
+
+            if validation > 0:
+                val_split.append(Subset(dataset, permutation[n_train:n_train + int(validation * n)]))
+                test_start += int(validation * n)  # Validation split exists thus we have to update start point for test
+
+            test_split.append(Subset(dataset, permutation[test_start:]))
+
+        if len(val_split) == 0:
+            self.logger.info(f"Split dataset in: {train}/{1 - train}")
+            # Do not return the Validation split in case it is empty
+            return MultiDataset(train_split), MultiDataset(test_split)
+
+        self.logger.info(f"Split dataset in: {train}/{validation}/{1 - validation - train}")
+        return MultiDataset(train_split), MultiDataset(val_split), MultiDataset(test_split)
 
     @property
     def dataset_ranges(self):
@@ -178,6 +211,7 @@ class DatasetFirstBatchSampler(Sampler[list[int]]):
 
             local = torch.randperm(length, generator=self.gen)[:self.batch_size].tolist()
             yield [start + j for j in local]
+
 
 # todo rename
 class SequentialPerDatasetBatchSampler(Sampler[list[int]]):

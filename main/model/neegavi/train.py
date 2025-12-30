@@ -10,6 +10,7 @@ from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import SiglipLoss
+from main.model.neegavi.blocks import TimeMaskSwitchableProperties
 from main.model.neegavi.model import WeaklySupervisedEegInterAviModel, EegInterAviModel
 from main.model.neegavi.pooling import ClsPooling, MaskedMaxPooling, MaskedAvgPooling
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
@@ -26,7 +27,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self,
             student: EegInterAviModel, teacher: MaskedContrastiveModel,
             kd_loss_weight: float, fusion_loss_weight: float, weakly_supervised_weight: float,
-            fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float
+            fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float,
+            bidirectional_p: float = .9,  # For ATTN
+            seed: int = 1
     ):
         super().__init__()
 
@@ -51,6 +54,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.use_fusion_loss = True
         self.use_supervised_loss = True
 
+        self.base_seed = seed
+        self.time_mask_switch_generator = torch.Generator(device=self.device)
+        self.time_mask_switch_generator.manual_seed(seed)
+        self.bidirectional_p: float = bidirectional_p
+
         # Hyperparameters
         self.lr: float = lr
         self.kd_temperature: float = kd_temperature
@@ -60,6 +68,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.gamma: float = weakly_supervised_weight
 
         self.k: int = 5
+
+        # Utils
+        self._n_causal: int = 0
+        self._n_bidirectional: int = 0
 
     # todo ramp up per other losses than supervised? Or just use supervised as aux
     def configure_optimizers(self) -> OptimizerLRScheduler:
@@ -80,8 +92,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
         return torch.optim.Adam(weight_decay=.01, params=params)
 
-    def _compute_step_metrics(self, stud: EegBaseModelOutputs, teacher: MaskedContrastiveModelOutputs,
-                              batch, step_type: Literal['train', 'val', 'test']):
+    def _compute_step_metrics(self, stud: EegBaseModelOutputs,
+                              teacher: MaskedContrastiveModelOutputs,
+                              batch, step_type: Literal['train', 'val', 'test'],
+                              mode: Literal['bidirectional', 'causal']):
         return_object: dict[str, torch.Tensor | MaskedValue] = dict(
             loss=torch.tensor(0, device=stud.embeddings['data'].device))
         if self.use_kd_loss:
@@ -90,7 +104,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         if self.use_fusion_loss:
             fusion_loss = self.compute_fusion_loss(
-                fused_output=stud.cls, modality_outputs=stud.multimodal_outs, step_type=step_type
+                fused_output=stud.cls, modality_outputs=stud.multimodal_outs, step_type=step_type, mode=mode
             )
             return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
             # For later evaluations
@@ -106,13 +120,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             supervised_loss = self.compute_supervised_loss(pred=stud.pred, target=targets, step_type=step_type)
             return_object["loss"] = return_object["loss"] + supervised_loss * self.gamma
 
-        self.log(f"{step_type}/loss", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
+        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
         return return_object
 
-    def _compute_batch_metrics(self, fused_z, pivot_z, outputs: dict, step_type: Literal['train', 'val', 'test']):
+    def _compute_batch_metrics(self, fused_z, pivot_z, outputs: dict, step_type: Literal['train', 'val', 'test'],
+                               mode: Optional[Literal['bidirectional', 'causal']] = None):
         # Euclidean distance between the two embedding spaces
         dist = (pivot_z - fused_z).norm(dim=1).mean()
-        self.log("train/||eeg-fused||", dist, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(f"{step_type}/||eeg-fused||", dist, on_step=False, on_epoch=True, prog_bar=True)
+        mode_prefix = "" if mode is None else f"{mode}/"
 
         for key, embedding in outputs.items():
             valid = self._get_y_valid(embedding)
@@ -128,12 +144,18 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             t3_fused_rev = self._top_k(embedding, fused_z[valid], 3)
             tk_fused_rev = self._top_k(embedding, fused_z[valid], self.k)
 
-            self.log(f"{step_type}/fused/top1_{key}", t1_fused, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top1_{key}_R", t1_fused_rev, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top3_{key}", t3_fused, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top3_{key}_R", t3_fused_rev, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top{self.k}_{key}", tk_fused, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/fused/top{self.k}_{key}_R", tk_fused_rev, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}fused/top1_{key}", t1_fused,
+                     prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}fused/top1_{key}_R", t1_fused_rev,
+                     on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}fused/top3_{key}", t3_fused,
+                     prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}fused/top3_{key}_R", t3_fused_rev,
+                     on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}fused/top{self.k}_{key}", tk_fused,
+                     prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}fused/top{self.k}_{key}_R", tk_fused_rev,
+                     on_step=False, on_epoch=True)
 
             if key == self.PIVOT_KEY:
                 continue
@@ -142,23 +164,66 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             t1_pivot = self._top_1(pivot_z[valid], embedding)
             t1_pivot_rev = self._top_1(embedding, pivot_z[valid])
 
-            self.log(f"{step_type}/pivot/top1_{key}", t1_pivot, prog_bar=True, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/pivot/top1_{key}_R", t1_pivot_rev, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}pivot/top1_{key}", t1_pivot,
+                     prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}pivot/top1_{key}_R", t1_pivot_rev,
+                     on_step=False, on_epoch=True)
 
             delta = t1_fused - t1_pivot
-            self.log(f"{step_type}/delta_{key}", delta, prog_bar=True, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{mode_prefix}delta_{key}", delta,
+                     prog_bar=True, on_step=False, on_epoch=True)
+
+    def p_causal_schedule(self):
+        # AntLM (2024): explicitly describes a unified framework that alternates/switches between causal
+        # LM (causal mask) and masked LM (bidirectional attention).
+        # Current setups favors bidirectional at lower epochs and causal later ones
+        initial_causal = 1 - self.bidirectional_p
+        return min(initial_causal + self.bidirectional_p * self.current_epoch / self.trainer.max_epochs, 1.0)
+
+    def on_train_epoch_start(self) -> None:
+        self._n_causal = 0
+        self._n_bidirectional = 0
+
+    def on_train_epoch_end(self) -> None:
+        total = self._n_causal + self._n_bidirectional
+        self.log("train/frac_causal", self._n_causal / max(1, total), on_epoch=True)
+        self.log("train/frac_bidi", self._n_bidirectional / max(1, total), on_epoch=True)
+
+    def on_train_start(self) -> None:
+        self.time_mask_switch_generator = torch.Generator(device=self.device)
+        self.time_mask_switch_generator.manual_seed(self.base_seed)
 
     def training_step(self, batch, batch_idx):
+        # Randomly draw the modality we want to train on (For the time relations)
+        causal_p = self.p_causal_schedule()
+        u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
+        mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
+
+        if mode == "bidirectional":
+            self._n_bidirectional += 1
+        else:
+            self._n_causal += 1
+
+        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
-        return self._compute_step_metrics(stud_out, teacher_out, batch, 'train')
+        return self._compute_step_metrics(stud_out, teacher_out, batch, 'train', mode)
 
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        out = {}
+        mode: Literal['causal', 'bidirectional']
+
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
-        return self._compute_step_metrics(stud_out, teacher_out, batch, 'val')
+
+        for mode in ("causal", "bidirectional"):
+            self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+            stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+            out[mode] = self._compute_step_metrics(stud_out, teacher_out, batch, 'val', mode)
+
+        return out
 
     def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
         _ = outputs.pop("loss")  # We have to ignore it
@@ -169,12 +234,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
 
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
-        _ = outputs.pop("loss")  # We have to ignore it
-        if self.FUSED_KEY in outputs:
-            fused_z = outputs.pop(self.FUSED_KEY)
-            pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
-            # Compute and log the metrics.
-            self._compute_batch_metrics(fused_z, pivot_z, outputs, 'val')
+        for mode, val in outputs.items():
+            _ = val.pop("loss")  # We have to ignore it
+            if self.FUSED_KEY in val:
+                fused_z = val.pop(self.FUSED_KEY)
+                pivot_z = self._y_mean(val[self.PIVOT_KEY], self._get_y_valid(val[self.PIVOT_KEY]))
+                # Compute and log the metrics.
+                self._compute_batch_metrics(fused_z, pivot_z, val, 'val', mode=mode)
 
     @staticmethod
     @torch.no_grad()
@@ -192,8 +258,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             student_data, teacher_data = student_out[key]["data"], teacher_out[key]['data']
             modality_loss = self.kd_losses[key](student_data, teacher_data)
             rand_baseline = self.siglip_random_baseline(self.kd_losses[key], student_data, teacher_data, )
-            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=True)
-            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=False, prog_bar=True)
+            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=False, prog_bar=True)
             loss = loss + modality_loss
 
         self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=True, prog_bar=True)
@@ -214,7 +280,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             return pooling(y_before, mask)
 
     def compute_fusion_loss(self, fused_output: torch.Tensor, modality_outputs: dict[str, MaskedValue],
-                            step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
+                            step_type: Literal['train', 'val', 'test'],
+                            mode: Literal['bidirectional', 'causal']) -> torch.Tensor:
         base_loss = torch.tensor(0.0, device=fused_output.device)
         count_present = 0
 
@@ -227,7 +294,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             count_present += 1
             mod_loss = self.siglip_losses[key](fused_output[valid_rows], self._y_mean(value, valid_rows))
-            self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=True)
             base_loss = base_loss + mod_loss
 
         return base_loss / count_present

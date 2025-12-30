@@ -89,28 +89,6 @@ class KdConfig:
 SEED = 96
 
 
-def split_multidataset(md: MultiDataset, train=0.75, val=0.10, seed=0):
-    g = torch.Generator().manual_seed(seed)
-
-    train_parts, val_parts, test_parts = [], [], []
-    for ds in md.datasets:
-        n = len(ds)
-        perm = torch.randperm(n, generator=g).tolist()
-
-        n_train = int(train * n)
-        n_val = int(val * n)
-
-        train_idx = perm[:n_train]
-        val_idx = perm[n_train:n_train + n_val]
-        test_idx = perm[n_train + n_val:]
-
-        train_parts.append(Subset(ds, train_idx))
-        val_parts.append(Subset(ds, val_idx))
-        test_parts.append(Subset(ds, test_idx))
-
-    return MultiDataset(train_parts), MultiDataset(val_parts), MultiDataset(test_parts)
-
-
 @hydra.main(config_path="config", config_name="new_train_kd")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
@@ -172,9 +150,8 @@ def main(cfg: KdConfig):
         ))
 
     g = torch.Generator().manual_seed(SEED)
-    full_dataset = MultiDataset(dataset_pairs)
     # Partition the dataset in 3 splits (Percentage should per parameter of Trainer)
-    train_dataset, valid_dataset, test_dataset = split_multidataset(full_dataset, seed=SEED)
+    train_dataset, valid_dataset, test_dataset = MultiDataset(dataset_pairs).split(0.75, 0.15, seed=SEED)
 
     # todo parameterize
     batch_sampler = DatasetFirstBatchSampler(

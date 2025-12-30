@@ -6,7 +6,8 @@ import torch
 from einops import repeat, rearrange
 from torch import nn
 
-from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock
+from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock, TimeMaskSwitchable, \
+    TimeMaskSwitchableProperties
 from main.model.neegavi.dropout import ModalityDropout, DisabledModalityDropout
 from main.model.neegavi.pooling import ClsPooling
 from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
@@ -21,11 +22,11 @@ class EegInterAviModelConfiguration:
     support_dim: int
 
     output_size: int  # End size of the model (Output).
+    modality: TimeMaskSwitchableProperties
 
     # Configuration variables
     drop_p: float = .0
     use_modality_encoder: bool = True
-    modality: Literal['causal', 'bidirectional'] = 'causal'
 
 
 @dataclasses.dataclass
@@ -66,7 +67,7 @@ def check_supports(supports: nn.ModuleList) -> int:
     return reference.output_size
 
 
-class EegInterAviModel(nn.Module):
+class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     KD_KEY = "kd"
 
     def __init__(self,
@@ -77,7 +78,8 @@ class EegInterAviModel(nn.Module):
                  attn_blocks: list[AbstractAttentionBlock],
                  # Pooling strategy after attention
                  pooling: Optional[nn.Module] = None):
-        super(EegInterAviModel, self).__init__()
+        nn.Module.__init__(self)
+        TimeMaskSwitchable.__init__(self)
         self.logger = make_logger(self.__class__.__name__)
 
         # Pivot defines Q in xattn while supports compose KV
@@ -97,10 +99,7 @@ class EegInterAviModel(nn.Module):
             modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
             self.modality_encoder = ModalContextEncoder(self.supports_feature_size, modality_mappings)
 
-        # TODO read from config
-        self.default_allow_modality: Literal['window', 'causal', 'bidirectional'] = config.modality
-        self.past_window_units: int = 2  # How much past can be seen
-
+        self.set_attention_modality(config.modality)
         self.gatedXAttn_layers = nn.ModuleList(attn_blocks)
 
         # Define Pooling Strategy
@@ -169,20 +168,23 @@ class EegInterAviModel(nn.Module):
         :return: Allowance mask signaling what one can attend to.
         """
         # By multiplying by the timestep seconds we reshape so that alignemnt works correctly.
+        dt = self.supports[0].timestep_seconds
         tq = t_q.unsqueeze(-1) * self.pivot.timestep_seconds  # [B, Tq, 1]
-        tk = t_kv.unsqueeze(1) * self.supports[0].timestep_seconds  # [B, 1, Tk]
-        if self.default_allow_modality == "window":
+        tk = t_kv.unsqueeze(1) * dt  # [B, 1, Tk]
+
+        if self.modality.mode == "window":
+            lb, la = self.modality.lookback, self.modality.lookahead
             # Window size compels us to explode the sun.
             # It's written like this to avoid symmetry
-            return (tq >= (tk - self.past_window_units)) & (tq < tk + self.supports[0].timestep_seconds)
+            return (tq >= (tk - lb * dt)) & (tq < (tk + dt + la * dt))
 
-        if self.default_allow_modality == "causal":
+        if self.modality.mode == "causal":
             return tk <= tq
 
-        if self.default_allow_modality == "bidirectional":
-            return torch.ones(tq.shape[0], tq.shape[1], tk.shape[1], device=tq.device, dtype=torch.bool)
+        if self.modality.mode == "bidirectional":
+            return torch.ones(tq.shape[0], tq.shape[1], tk.shape[-1], device=tq.device, dtype=torch.bool)
 
-        raise ValueError(f"Unknown mode: {self.default_allow_modality}")
+        raise ValueError(f"Unknown mode: {self.modality.mode}")
 
     def process_support(self, x: MaskedValue, keep_idx: torch.Tensor, modality: ModalityStream,
                         use_kd: bool, out: EegBaseModelOutputs, device):
