@@ -173,12 +173,24 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/{mode_prefix}delta_{key}", delta,
                      prog_bar=True, on_step=False, on_epoch=True)
 
+    warmup_threshold: float = .5
+    causal_threshold: float = .8
+
     def p_causal_schedule(self):
         # AntLM (2024): explicitly describes a unified framework that alternates/switches between causal
         # LM (causal mask) and masked LM (bidirectional attention).
         # Current setups favors bidirectional at lower epochs and causal later ones
-        initial_causal = 1 - self.bidirectional_p
-        return min(initial_causal + self.bidirectional_p * self.current_epoch / self.trainer.max_epochs, 1.0)
+        # TOO WEAK
+        # initial_causal = 1 - self.bidirectional_p
+        # return min(initial_causal + self.bidirectional_p * self.current_epoch / self.trainer.max_epochs, 1.0)
+        # TODO parametrizza
+        frac = self.current_epoch / self.trainer.max_epochs
+        if frac < self.causal_threshold:
+            return .1
+        elif frac < self.causal_threshold:
+            return .4
+
+        return .5
 
     def on_train_epoch_start(self) -> None:
         self._n_causal = 0
