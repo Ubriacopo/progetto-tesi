@@ -158,7 +158,6 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
         return MaskedValue(data=pad_y, mask=pad_mask)
 
-    # TODO randomly decide during training adn give option at inference
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         """
         Allowance mask aligns the same timesteps and previous ones.
@@ -179,7 +178,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
             return (tq >= (tk - lb * dt)) & (tq < (tk + dt + la * dt))
 
         if self.modality.mode == "causal":
-            return tk <= tq
+            return tq < tk + dt
 
         if self.modality.mode == "bidirectional":
             return torch.ones(tq.shape[0], tq.shape[1], tk.shape[-1], device=tq.device, dtype=torch.bool)
