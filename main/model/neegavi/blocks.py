@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from abc import ABC, abstractmethod
 from typing import Optional, Literal
 
@@ -8,6 +9,48 @@ from torch import nn
 
 from main.model.neegavi.kd import KDHead
 from main.utils.data import MaskedValue, KdMaskedValue
+
+
+@dataclasses.dataclass
+class TimeMaskSwitchableProperties:
+    mode: Literal['causal', 'bidirectional', 'window']
+    # Note: For now I avoid using the window. Might be improvement. TODO: Valuta
+    lookback: Optional[int] = None  # Size of the window if in window mode
+    lookahead: int = 0  # Future tokens allowed (This makes window on past only possible).
+
+
+class TimeMaskSwitchable(ABC):
+    def __init__(self):
+        super().__init__()
+        self.modality: Optional[TimeMaskSwitchableProperties] = None
+        self.modality_cache: dict = {}
+
+    def set_attention_modality(self, modality: TimeMaskSwitchableProperties) -> None:
+        self.modality = modality
+
+    def _get_attn_mask(self, t: int, device):
+        if self.modality.mode == "bidirectional":
+            return None  # Everything is allowed.
+
+        key = (t, self.modality.mode, self.modality.lookback, self.modality.lookahead, device)
+        if key in self.modality_cache:
+            # Value already calculated so we return it.
+            return self.modality_cache[key]
+
+        if self.modality.mode == "causal":
+            mask = torch.triu(torch.ones(t, t, device=device, dtype=torch.bool), diagonal=1)
+
+        elif self.modality.mode == "window":
+            # Attend to: [t- lookback, t + lookahead]
+            i, j = torch.arange(t, device=device), torch.arange(t, device=device)
+            lookback, lookahead = self.modality.lookback or 0, self.modality.lookahead
+            mask = (j[None, :] < (i[:, None] - lookback)) | (j[None, :] > (i[:, None] + lookahead))
+
+        else:
+            raise ValueError(f"Set modality: {self.modality} is invalid")
+
+        self.modality_cache[key] = mask
+        return mask
 
 
 class ModalityStream(nn.Module):
@@ -105,23 +148,21 @@ class ModalContextEncoder(nn.Module):
         return self.norm(x + self.modal_embeddings(idx).view(1, 1, 1, -1))
 
 
-class TemporalEncoder(nn.Module):
-    def __init__(self, dim, max_length: int, timestep_duration: int, modality: Literal['causal', 'bidirectional'],
+class TemporalEncoder(nn.Module, TimeMaskSwitchable):
+    def __init__(self, dim, max_length: int, timestep_duration: int, modality: TimeMaskSwitchableProperties,
                  layers: int = 1, heads: int = 8, dropout: float = 0.0):
-        super().__init__()
+        nn.Module.__init__(self)
+        TimeMaskSwitchable.__init__(self)
         self.enc_layer = nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dropout=dropout, batch_first=True)
         self.enc = nn.TransformerEncoder(encoder_layer=self.enc_layer, num_layers=layers)
         self.pos = nn.Parameter(torch.randn(1, int(max_length / timestep_duration), dim))  # or sinusoidal
-        self.modality: Literal['causal', 'bidirectional'] = modality
+        self.set_attention_modality(modality)  # Initialize the attn modality
 
     def forward(self, x, mask=None):  # x: (B,T,D), mask: (B,T) bool True=valid
-        T = x.size(1)
-        x = x + self.pos[:, :T]
+        t = x.size(1)
+        x = x + self.pos[:, :t]
 
-        attn_mask = None
-        if self.modality == 'causal':
-            attn_mask = torch.triu(torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1)
-
+        attn_mask = self._get_attn_mask(t, x.device)
         if mask is None:
             return self.enc(x, mask=attn_mask)
 

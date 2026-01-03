@@ -38,5 +38,10 @@ class KdPerceiverModalityConfig(PerceiverModalityConfig, KdModalityConfig):
 
 
 @dataclasses.dataclass(frozen=True)
+class KdTemporalEncoderConfig(KdModalityConfig):
+    max_length: int
+
+
+@dataclasses.dataclass(frozen=True)
 class VideoModalityConfig(ModalityConfig):
     pass

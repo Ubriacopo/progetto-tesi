@@ -17,4 +17,8 @@ custom_config:
   # If we want to add a modality embedding to vectors before doing fusion.
   use_modality_encoder: True
   output_size: 384
-  modality: causal
+  # TODO Change name che non troppo chiaro
+  modality:
+    mode: bidirectional
+    lookback: 4
+    lookahead: 1

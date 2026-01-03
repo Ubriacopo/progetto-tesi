@@ -110,7 +110,6 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
 
     @supporting
     def vid(self) -> ModalityStream:
-        # todo vedere se cosi ok altrimenti mi sento costretto a dover passare per rifare gli script.
         config = self.vid_modality_config  # Specific configuration
         kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
         adapter = PerceiverResamplerAdapter(
