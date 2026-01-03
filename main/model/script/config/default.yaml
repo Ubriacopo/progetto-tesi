@@ -1,0 +1,32 @@
+defaults:
+  - model: default
+  - trainer: default
+  - teacher: default
+
+base_path: /root/PycharmProjects/progetto-tesi/
+teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
+
+student_dataset_path: [
+  "/mnt/turing-datasets/EEGAVI/AMIGOS/interleaved/spec.csv",
+  "/mnt/turing-datasets/EEGAVI/EAV/interleaved/spec.csv",
+  "/mnt/turing-datasets/EEGAVI/MAHNOB/interleaved/spec.csv",
+  "/mnt/turing-datasets/EEGAVI/DEAP/interleaved/spec.csv"
+]
+teacher_dataset_path: [
+  "/mnt/turing-datasets/EEGAVI/AMIGOS/vate/spec.csv",
+  "/mnt/turing-datasets/EEGAVI/EAV/vate/spec.csv",
+  "/mnt/turing-datasets/EEGAVI/MAHNOB/vate/spec.csv",
+  "/mnt/turing-datasets/EEGAVI/DEAP/vate/spec.csv"
+]
+
+
+hydra:
+  job_logging:
+    root:
+      handlers: [ console, file ]   # make sure both are used
+
+    handlers:
+      file:
+        class: logging.FileHandler
+        formatter: simple         # or "colorlog" if you really want ANSI codes in file
+        filename: ${hydra.runtime.output_dir}/job.log

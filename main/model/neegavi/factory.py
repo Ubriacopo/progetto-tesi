@@ -136,7 +136,8 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
         # todo parametrizza correttamente
         adapter = TemporalEncoderAdapter(
-            dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds, modality=self.config.modality
+            dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds,
+            modality=self.config.modality.mode
         )
 
         return ModalityStream(Text.modality_code(), output_size=config.out_size,

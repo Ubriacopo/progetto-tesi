@@ -11,7 +11,7 @@ from lightning.pytorch.callbacks import TQDMProgressBar
 from torch.utils.data import DataLoader, Subset
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
-    DatasetFirstBatchSampler, SequentialPerDatasetBatchSampler
+    DatasetFirstBatchSampler, SequentialPerDatasetBatchSampler, MultiDatasetQueueBatchSampler
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.neegavi.factory import AbstractEegInterAviFactory
@@ -29,6 +29,7 @@ class TrainerConfig:
     weakly_supervised_weight: float
     ecg_correction_weight: float
     kd_temperature: float
+    batches_per_epoch: int
 
 
 @dataclasses.dataclass
@@ -89,7 +90,7 @@ class KdConfig:
 SEED = 96
 
 
-@hydra.main(config_path="config", config_name="new_train_kd")
+@hydra.main(config_path="config", config_name="default")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     torch.manual_seed(SEED)  # Reproducibility
@@ -152,12 +153,13 @@ def main(cfg: KdConfig):
     g = torch.Generator().manual_seed(SEED)
     # Partition the dataset in 3 splits (Percentage should per parameter of Trainer)
     train_dataset, valid_dataset, test_dataset = MultiDataset(dataset_pairs).split(0.75, 0.15, seed=SEED)
+    # todo: see how many samples all ds have
 
     # todo parameterize
     batch_sampler = DatasetFirstBatchSampler(
         multi=train_dataset,
         batch_size=cfg.trainer.batch_size,
-        batches_per_epoch=100,  # you choose
+        batches_per_epoch=cfg.trainer.batches_per_epoch,  # you choose
         alpha=0.0,
         generator=g,
     )
@@ -173,25 +175,28 @@ def main(cfg: KdConfig):
     train_dataloader = DataLoader(
         train_dataset,
         # TODO parametrize
-        batch_sampler=DatasetFirstBatchSampler(
+        batch_sampler=MultiDatasetQueueBatchSampler(
             multi=train_dataset,
             batch_size=cfg.trainer.batch_size,
-            batches_per_epoch=100,  # you choose
+            batches_per_epoch=cfg.trainer.batches_per_epoch,  # you choose
             alpha=0.0,
             generator=g,
-        ), collate_fn=collate_fn
+        ), collate_fn=collate_fn,
+        pin_memory=True
     )
     # train_dataloader = DataLoader(train_dataset, batch_sampler=batch_sampler, collate_fn=collate_fn)
     valid_dataloader = DataLoader(
         valid_dataset,
         batch_sampler=SequentialPerDatasetBatchSampler(multi=valid_dataset, batch_size=cfg.trainer.batch_size, ),
-        shuffle=None, collate_fn=collate_fn
+        shuffle=None, collate_fn=collate_fn,
+        pin_memory=True
     )
 
     test_dataloader = DataLoader(
         test_dataset,
         batch_sampler=SequentialPerDatasetBatchSampler(multi=test_dataset, batch_size=cfg.trainer.batch_size, ),
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        pin_memory=True
     )
 
     for n, p in student.named_parameters():
@@ -202,9 +207,10 @@ def main(cfg: KdConfig):
         accelerator="gpu",
         devices=1,
         max_epochs=cfg.trainer.epochs,
-        log_every_n_steps=24,
-        callbacks=[TQDMProgressBar(leave=True)],
-        num_sanity_val_steps=0
+        callbacks=[
+            TQDMProgressBar(leave=True)
+        ],
+        # num_sanity_val_steps=0
         # limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
