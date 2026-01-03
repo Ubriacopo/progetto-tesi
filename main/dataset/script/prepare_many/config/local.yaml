@@ -5,7 +5,7 @@ defaults:
   - default
   - dataset:
       - amigos
-      - manhob
+      - mahnob
       - eav
   - target_model:
       - eegavi

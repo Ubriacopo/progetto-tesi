@@ -1,4 +1,4 @@
-base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/
+base_path: /mnt/turing-datasets/
 defaults:
   - default
   - dataset: ???

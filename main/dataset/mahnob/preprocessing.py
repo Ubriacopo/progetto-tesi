@@ -6,10 +6,10 @@ from main.core_data.media.metadata.transforms import MetadataToTensor
 from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
     vid_vate_basic_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
-from main.dataset.manhob.config import ManhobConfig
+from main.dataset.mahnob.config import MahnobConfig
 
 
-def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: ManhobConfig):
+def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: MahnobConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,
@@ -27,7 +27,7 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
     )
 
 
-def vate_preprocessor(output_path: str, extraction_data_folder: str, config: ManhobConfig):
+def vate_preprocessor(output_path: str, extraction_data_folder: str, config: MahnobConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
         extraction_data_folder=extraction_data_folder,

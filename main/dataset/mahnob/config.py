@@ -9,7 +9,7 @@ from main.core_data.media.video.config import VidSourceConfig
 from main.dataset.base_config import DatasetConfig
 
 @dataclasses.dataclass
-class ManhobEegSourceConfig(EegSourceConfig):
+class MahnobEegSourceConfig(EegSourceConfig):
     fs: int = 256
     EEG_CHANNELS: list[str] = dataclasses.field(default_factory=lambda: [
         'Fp1', 'AF3', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7', 'CP5', 'CP1', 'P3', 'P7', 'PO3', 'O1', 'Oz', 'Pz', 'Fp2',
@@ -25,7 +25,7 @@ class ManhobEegSourceConfig(EegSourceConfig):
     ])
 
 @dataclasses.dataclass
-class ManhobEcgSourceConfig(EcgSourceConfig):
+class MahnobEcgSourceConfig(EcgSourceConfig):
     # todo cambia nome non sono lead names ma channels
     LEAD_NAMES: list[str] = dataclasses.field(default_factory=lambda: ["RA", "LA", "LL"])
 
@@ -55,7 +55,7 @@ class ManhobEcgSourceConfig(EcgSourceConfig):
 
 
 @dataclasses.dataclass
-class ManhobConfig(DatasetConfig):
-    eeg_source_config: ManhobEegSourceConfig = dataclasses.field(default_factory=ManhobEegSourceConfig)
+class MahnobConfig(DatasetConfig):
+    eeg_source_config: MahnobEegSourceConfig = dataclasses.field(default_factory=MahnobEegSourceConfig)
     vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=61))
-    ecg_source_config: ManhobEcgSourceConfig = dataclasses.field(default_factory=ManhobEcgSourceConfig)
+    ecg_source_config: MahnobEcgSourceConfig = dataclasses.field(default_factory=MahnobEcgSourceConfig)

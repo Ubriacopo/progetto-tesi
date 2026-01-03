@@ -13,17 +13,17 @@ from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.video import Video
-from main.dataset.manhob.config import ManhobConfig
+from main.dataset.mahnob.config import MahnobConfig
 from main.dataset.utils import DatasetUidStore
 
 
-class ManhobPointsLoader(DataPointsLoader):
+class MahnobPointsLoader(DataPointsLoader):
     DATASET_ID: int = 4
 
-    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore, config: ManhobConfig = ManhobConfig()):
+    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore, config: MahnobConfig = MahnobConfig()):
         super().__init__(dataset_uid_store)
         self.base_path: str = base_path
-        self.config: ManhobConfig = config
+        self.config: MahnobConfig = config
         self.length: int = 0
 
     def __len__(self) -> int:

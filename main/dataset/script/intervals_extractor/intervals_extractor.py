@@ -15,7 +15,7 @@ OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
 OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
 
-@hydra.main(config_path="conf", config_name="config")
+@hydra.main(config_path="conf", config_name="base")
 def main(cfg: Config):
     logger = make_logger("intervals_extractor")
     logger.info(OmegaConf.to_yaml(cfg))
@@ -26,6 +26,7 @@ def main(cfg: Config):
         segmenter=get_object(cfg.segmenter.segmenter_type)(**cfg.segmenter.segmenter_args),
         loader=get_object(cfg.dataset.points_loader_classpath)(cfg.dataset.data_path, uid_store),
     ).extract_segments()
+    logger.info(f"Done processing for {cfg.dataset.dataset_name}")
 
 
 if __name__ == "__main__":
