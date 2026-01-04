@@ -137,7 +137,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         # todo parametrizza correttamente
         adapter = TemporalEncoderAdapter(
             dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds,
-            modality=self.config.modality.mode
+            modality=self.config.modality
         )
 
         return ModalityStream(Text.modality_code(), output_size=config.out_size,

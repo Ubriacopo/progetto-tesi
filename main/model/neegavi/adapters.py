@@ -5,7 +5,7 @@ import torch
 from einops import rearrange
 from torch import nn
 
-from main.model.neegavi.blocks import TemporalEncoder, MaskedFeedForward
+from main.model.neegavi.blocks import TemporalEncoder, MaskedFeedForward, TimeMaskSwitchableProperties
 from main.model.neegavi.perceiver import PerceiverResampler
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
@@ -102,7 +102,7 @@ class SimpleFeedForwardAdapter(nn.Module):
 
 class TemporalEncoderAdapter(nn.Module):
     def __init__(self, dim: int, max_length: int, timestep_duration: int,
-                 modality: Literal['causal', 'bidirectional'], project_out_size: int = None):
+                 modality: TimeMaskSwitchableProperties, project_out_size: int = None):
         super().__init__()
 
         self.projection: nn.Module = nn.Identity()

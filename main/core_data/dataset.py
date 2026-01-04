@@ -82,17 +82,18 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
         try:
             sample = self.df.iloc[idx].to_dict()
             inner_idx, eid, segment = sample["index"], sample["eid"], sample["segment"]
+            # Only put in cache inner_idx. Nah useless.
+
             o = tensordict.load_memmap(self.base_path + "/" + str(eid))
+            o.pop("assessment", None)
 
             batch_size = o[self.main_key].batch_size
             for k in self.required_keys:
                 # Special hand crafted case for Assessment. TODO: Move elsewhere.
                 if k.key == Assessment.modality_code() and k.key in o:
                     # noinspection PyTypeChecker
-                    o[k.key] = TensorDict(
-                        MaskedValue(data=o[k.key], mask=torch.ones((*batch_size, *k.mask_shape), dtype=torch.bool)),
-                        batch_size=batch_size
-                    )
+                    o[k.key]["mask"] = torch.ones((*batch_size, *k.mask_shape), dtype=torch.bool)
+
                 elif isinstance(k, RequiredKey) and k.key not in o:
                     # noinspection PyTypeChecker
                     default = TensorDict(
@@ -105,8 +106,12 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
                         default['mask'] = default['mask'].squeeze()
 
                     o.setdefault(k.key, default)
+            # TODO non va bene troppo lento
+            item = o[inner_idx].clone()
+            del o
 
-            return o[inner_idx]
+            return item
+
         except Exception as e:
             raise e
 
@@ -181,6 +186,7 @@ class MultiDataset(torch.utils.data.Dataset):
 class QueueState:
     perm: torch.Tensor  # permutation of [0..length-1]
     ptr: int  # next position to read
+
 
 # TODO document
 class MultiDatasetQueueBatchSampler(Sampler[list[int]]):
