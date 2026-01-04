@@ -133,3 +133,14 @@ For overfitting checks, **retrieval beats loss every time**.
 Train-set retrieval (top-1 / top-k)
 +
 Validation retrieval
+
+
+
+# Experiments to run with different setups:
+- Mixed causal and bidirectional
+- Only Causal
+- Only bidirectional
+- EEG vid mapping (pooled attn)/ plain / maxpool (Over T)
+- setup hp tuning
+- Prepare e vedere se usare cache RAM per samples during training
+  (Poi passi in cuda a richiesta)
