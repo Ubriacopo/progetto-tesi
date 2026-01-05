@@ -1,15 +1,12 @@
-from hydra.utils import get_object
-
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.default_transform_pipe import assessment_transform_pipe
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
-from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe
+from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
+    vid_vate_basic_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.dataset.deap.config import DeapConfig
-from main.dataset.deap.loader import DeapPointsLoader
-from main.dataset.utils import PreprocessingConfig
 
 
 def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: DeapConfig):
@@ -37,7 +34,7 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Dea
         extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "deap-vate-processor",
-            vid_vivit_interleaved_transform_pipe(config),
+            vid_vate_basic_transform_pipe(config),
             # Audio and text do not exist so we cannot use them :(
             (Metadata.modality_code(), MetadataToTensor())
         ),
