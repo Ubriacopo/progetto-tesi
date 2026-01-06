@@ -5,6 +5,7 @@ from typing import Optional, Literal
 import torch
 from einops import repeat, rearrange
 from torch import nn
+from torch.distributed import supports_complex
 
 from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock, TimeMaskSwitchable, \
     TimeMaskSwitchableProperties
@@ -219,25 +220,39 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         return z["data"], z["mask"], time
 
     def process_supports(self, x: dict, keep: torch.Tensor, use_kd: bool, out: EegBaseModelOutputs, device):
-        b = keep.shape[0]  # TODO check
-
+        b = keep.shape[0]
         # Empty initialization
-        support = torch.empty(b, 0, self.supports_feature_size, device=device)
-        mask = torch.empty(b, 0, device=device, dtype=torch.bool)
-        time = torch.empty(b, 0, device=device)
-
+        support_outs, mask_outs, time_outs = [], [], []
         modality: ModalityStream
         for idx, modality in enumerate(self.supports):
+            if modality.get_code() not in x:
+                continue
+
             keep_idx = keep[:, idx].nonzero(as_tuple=True)[0]
+
+            # Skip if empty
+            if keep_idx.numel() == 0:
+                continue
 
             support_out, support_mask, support_time = self.process_support(
                 x=x[modality.get_code()], keep_idx=keep_idx, modality=modality, use_kd=use_kd, out=out, device=device
             )
 
             # Add the found elements
-            support = torch.cat([support, support_out], dim=1)
-            mask = torch.cat([mask, support_mask], dim=1)
-            time = torch.cat([time, support_time], dim=1)
+            support_outs.append(support_out)
+            mask_outs.append(support_mask.bool())
+            time_outs.append(support_time)
+
+        if len(support_outs) != 0:
+            # Filled return objects
+            support = torch.cat(support_outs, dim=1)
+            mask = torch.cat(mask_outs, dim=1)
+            time = torch.cat(time_outs, dim=1)
+        else:
+            # Default empty return
+            support = torch.empty(b, 0, self.supports_feature_size, device=device)
+            mask = torch.empty(b, 0, device=device, dtype=torch.bool)
+            time = torch.empty(b, 0, device=device)
 
         return support, mask, time
 

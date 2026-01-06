@@ -10,6 +10,8 @@ import torch
 from tensordict import TensorDict
 from torch import device
 from torch.utils.data import Sampler, Subset
+from functools import lru_cache
+from torch.utils.data import get_worker_info
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
 from main.core_data.media.assessment.assessment import Assessment
@@ -42,6 +44,12 @@ class RequiredKey:
     cannot_miss: bool = False
 
 
+def _worker_cache():
+    wi = get_worker_info()
+    # each worker has its own Dataset instance, so self-scoped cache is enough
+    return
+
+
 # TODO change sampling instead of Sample uniformly from all samples across all datasets to
 #       First choose a dataset, then sample a batch from it
 # Single-dataset batches (simplest, very effective)
@@ -49,7 +57,7 @@ class RequiredKey:
 # This is often best with contrastive / SigLIP losses.
 class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, required_keys: list[RequiredKey], main_key: str,
-                 squeeze_mask: bool = False, selected_device: device = None, cache_in_ram: bool = False):
+                 squeeze_mask: bool = False, selected_device: device = None):
         """"
 
 
@@ -66,10 +74,8 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.base_path: str = str(Path(dataset_spec_file).parent)
         self.df = pd.read_csv(dataset_spec_file, index_col=False)
-
-        # TODO In futuro supportare l'opzione
-        self.cache_in_ram: bool = cache_in_ram
-        self.ram_cache = dict()
+        self.inner_idx = self.df["index"].to_numpy()
+        self.eid_list = self.df["eid"].astype(str).to_numpy()
 
         self.squeeze_mask = squeeze_mask
 
@@ -78,39 +84,25 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
         if not main_key in map(lambda x: x.key, self.required_keys):
             raise ValueError(f"main_key={main_key} not in required_keys={required_keys}")
 
+        self._load = lru_cache(maxsize=256)(self._load_uncached)  # tune maxsize
+
+    def _load_uncached(self, eid: str):
+        td = tensordict.load_memmap(f"{self.base_path}/{eid}")
+        # Do “one-time” cleanup here if possible
+        td.pop("assessment", None)
+        return td
+
     def __getitem__(self, idx: int):
         try:
-            sample = self.df.iloc[idx].to_dict()
-            inner_idx, eid, segment = sample["index"], sample["eid"], sample["segment"]
-            # Only put in cache inner_idx. Nah useless.
+            inner_idx = int(self.inner_idx[idx])
+            eid = self.eid_list[idx]
+            o = self._load(eid)
 
-            o = tensordict.load_memmap(self.base_path + "/" + str(eid))
-            o.pop("assessment", None)
-
-            batch_size = o[self.main_key].batch_size
-            for k in self.required_keys:
-                # Special hand crafted case for Assessment. TODO: Move elsewhere.
-                if k.key == Assessment.modality_code() and k.key in o:
-                    # noinspection PyTypeChecker
-                    o[k.key]["mask"] = torch.ones((*batch_size, *k.mask_shape), dtype=torch.bool)
-
-                elif isinstance(k, RequiredKey) and k.key not in o:
-                    # noinspection PyTypeChecker
-                    default = TensorDict(
-                        MaskedValue(data=torch.zeros((*batch_size, *k.shape), dtype=torch.float32),
-                                    mask=torch.zeros((*batch_size, *k.mask_shape), dtype=torch.bool)),
-                        batch_size=batch_size
-                    )
-
-                    if self.squeeze_mask:
-                        default['mask'] = default['mask'].squeeze()
-
-                    o.setdefault(k.key, default)
             # TODO non va bene troppo lento
-            item = o[inner_idx].clone()
-            del o
+            # item = o[inner_idx].clone()
+            # del o
 
-            return item
+            return o[inner_idx]
 
         except Exception as e:
             raise e

@@ -220,7 +220,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
         return self._compute_step_metrics(stud_out, teacher_out, batch, 'train', mode)
 
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:

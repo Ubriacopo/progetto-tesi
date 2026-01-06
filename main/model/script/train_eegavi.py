@@ -8,6 +8,7 @@ import torch
 import torchinfo
 from hydra.utils import get_class
 from lightning.pytorch.callbacks import TQDMProgressBar
+from lightning.pytorch.profilers import SimpleProfiler
 from torch.utils.data import DataLoader, Subset
 
 from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
@@ -182,7 +183,9 @@ def main(cfg: KdConfig):
             alpha=0.0,
             generator=g,
         ), collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=12,
+        prefetch_factor=4,
+        persistent_workers=True,
     )
 
     valid_dataloader = DataLoader(
@@ -203,17 +206,23 @@ def main(cfg: KdConfig):
 
     torchinfo.summary(module)
     trainer = L.Trainer(
+        profiler=SimpleProfiler(),
         accelerator="gpu",
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[
             TQDMProgressBar(leave=True)
         ],
-        num_sanity_val_steps=0
+        num_sanity_val_steps=0,
+        precision="16-mixed",
+        log_every_n_steps=50,
         # limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)
-    trainer.fit(module, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader, )
+    trainer.fit(module, train_dataloaders=train_dataloader)
+    # trainer.fit(module, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader, )
+
+    print(trainer.profiler.summary())
 
 
 if __name__ == "__main__":

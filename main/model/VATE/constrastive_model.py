@@ -1,8 +1,12 @@
-from typing import TypedDict
+from typing import TypedDict, Optional
 
 import torch
+from pandas import notna
 from torch import nn
 
+from main.core_data.media.audio import Audio
+from main.core_data.media.text import Text
+from main.core_data.media.video import Video
 from main.utils.data import MaskedValue
 
 
@@ -33,25 +37,21 @@ class MaskedContrastiveModel(nn.Module):
         logit_scale_init_value = 2.6592
         self.logit_scale = nn.Parameter(torch.tensor(logit_scale_init_value))
 
-    def forward(self, vid: MaskedValue, aud: MaskedValue, txt: MaskedValue, **kwargs) \
+    def _process_modality(self, o: Optional[MaskedValue], embedder: nn.Module, device, b):
+        if o is not None:
+            emb = nn.functional.normalize(embedder(o["data"]), dim=-1)
+            emb = emb * o["mask"].bool().unsqueeze(-1)
+            return MaskedValue(data=emb, mask=o["mask"].bool())
+
+        empty = torch.zeros(b, self.out_channels, device=device)
+        return MaskedValue(data=empty, mask=torch.zeros(b, device=device, dtype=torch.bool))
+
+    def forward(self, x: dict, **kwargs) \
             -> MaskedContrastiveModelOutputs:
-        vid_data, vid_mask = vid["data"], vid["mask"]
-        vid_emb = self.embedding_video(vid_data)
-        vid_emb = nn.functional.normalize(vid_emb)
-        vid_emb = vid_emb * vid_mask.unsqueeze(-1)
-
-        aud_data, aud_mask = aud["data"], aud["mask"]
-        aud_emb = self.embedding_audio(aud_data)
-        aud_emb = nn.functional.normalize(aud_emb)
-        aud_emb = aud_emb * aud_mask.unsqueeze(-1)
-
-        txt_data, txt_mask = txt["data"], txt["mask"]
-        txt_emb = self.embedding_text(txt_data)
-        txt_emb = nn.functional.normalize(txt_emb)
-        txt_emb = txt_emb * txt_mask.unsqueeze(-1)
-
+        first = next(iter(x.values()))
+        device, b = first["data"].device, first["data"].shape[0]
         return {
-            "vid": MaskedValue(data=vid_emb, mask=vid_mask),
-            "aud": MaskedValue(data=aud_emb, mask=aud_mask),
-            "txt": MaskedValue(data=txt_emb, mask=txt_mask)
+            "vid": self._process_modality(x.get(Video.modality_code(), None), self.embedding_video, device, b),
+            "aud": self._process_modality(x.get(Audio.modality_code(), None), self.embedding_audio, device, b),
+            "txt": self._process_modality(x.get(Text.modality_code(), None), self.embedding_text, device, b),
         }
