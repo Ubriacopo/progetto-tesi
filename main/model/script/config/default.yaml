@@ -10,13 +10,13 @@ student_dataset_path: [
   "/mnt/turing-datasets/EEGAVI/AMIGOS/interleaved/spec.csv",
   "/mnt/turing-datasets/EEGAVI/EAV/interleaved/spec.csv",
   "/mnt/turing-datasets/EEGAVI/MAHNOB/interleaved/spec.csv",
-  "/mnt/turing-datasets/EEGAVI/DEAP/interleaved/spec.csv"
+  # "/mnt/turing-datasets/EEGAVI/DEAP/interleaved/spec.csv"
 ]
 teacher_dataset_path: [
   "/mnt/turing-datasets/EEGAVI/AMIGOS/vate/spec.csv",
   "/mnt/turing-datasets/EEGAVI/EAV/vate/spec.csv",
   "/mnt/turing-datasets/EEGAVI/MAHNOB/vate/spec.csv",
-  "/mnt/turing-datasets/EEGAVI/DEAP/vate/spec.csv"
+  # "/mnt/turing-datasets/EEGAVI/DEAP/vate/spec.csv"
 ]
 
 

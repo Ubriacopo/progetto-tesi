@@ -7,18 +7,18 @@ import tensordict
 import torch
 import torchinfo
 from hydra.utils import get_class
-from lightning.pytorch.callbacks import TQDMProgressBar
 from lightning.pytorch.profilers import SimpleProfiler
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 
-from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset, RequiredKey, MultiDataset, \
-    DatasetFirstBatchSampler, SequentialPerDatasetBatchSampler, MultiDatasetQueueBatchSampler
+from main.core_data.dataset import RequiredKey, MultiDataset, \
+    DatasetFirstBatchSampler, SequentialPerDatasetBatchSampler, MultiDatasetQueueBatchSampler, \
+    FlexibleEmbeddingsSpecMediaDatasetSlow
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 from main.model.neegavi.factory import AbstractEegInterAviFactory
 from main.model.neegavi.model import EegInterAviModelConfiguration
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
-
+import torch.multiprocessing as mp
 
 @dataclasses.dataclass
 class TrainerConfig:
@@ -145,9 +145,9 @@ def main(cfg: KdConfig):
     for student_file, teacher_file in zip(cfg.student_dataset_path, cfg.teacher_dataset_path):
         pivot_key = cfg.model.pivot.code
         dataset_pairs.append(KdDatasetWrapper(
-            student=FlexibleEmbeddingsSpecMediaDataset(student_file, student_keys, main_key=pivot_key),
-            teacher=FlexibleEmbeddingsSpecMediaDataset(
-                teacher_file, teacher_keys, main_key=cfg.teacher.pivot, squeeze_mask=True
+            student=FlexibleEmbeddingsSpecMediaDatasetSlow(student_file, student_keys, main_key=pivot_key,selected_device='cpu'),
+            teacher=FlexibleEmbeddingsSpecMediaDatasetSlow(
+                teacher_file, teacher_keys, main_key=cfg.teacher.pivot, squeeze_mask=True, selected_device='cpu'
             )
         ))
 
@@ -182,9 +182,10 @@ def main(cfg: KdConfig):
             batches_per_epoch=cfg.trainer.batches_per_epoch,  # you choose
             alpha=0.0,
             generator=g,
-        ), collate_fn=collate_fn,
+        ),
+        collate_fn=collate_fn,
         num_workers=12,
-        prefetch_factor=4,
+        prefetch_factor=8,
         persistent_workers=True,
     )
 
@@ -211,11 +212,12 @@ def main(cfg: KdConfig):
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[
-            TQDMProgressBar(leave=True)
+            # TQDMProgressBar(leave=True, refresh_rate=40)
         ],
         num_sanity_val_steps=0,
-        precision="16-mixed",
+        # precision="16-mixed", P6000 has no tensor cores
         log_every_n_steps=50,
+        enable_progress_bar=False
         # limit_train_batches=1
     )
     # trainer = L.Trainer(accelerator="gpu", devices=1, max_epochs=cfg.trainer.epochs, log_every_n_steps=24)

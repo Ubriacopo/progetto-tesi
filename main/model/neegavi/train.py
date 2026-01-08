@@ -4,6 +4,7 @@ import lightning as L
 import torch
 import torch.nn.functional as F
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
+from tensordict import TensorDict
 from torch import nn
 from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 
@@ -22,6 +23,9 @@ from main.utils.logging import make_logger
 class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     FUSED_KEY: str = "fused"
     PIVOT_KEY: str = 'eeg'
+
+    def transfer_batch_to_device(self, batch: Any, device: torch.device, dataloader_idx: int) -> Any:
+        return batch.to(device, non_blocking=True)
 
     def __init__(
             self,
@@ -123,6 +127,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
         return return_object
 
+    # todo expensive only on some batches
     def _compute_batch_metrics(self, fused_z, pivot_z, outputs: dict, step_type: Literal['train', 'val', 'test'],
                                mode: Optional[Literal['bidirectional', 'causal']] = None):
         # Euclidean distance between the two embedding spaces
@@ -145,15 +150,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             tk_fused_rev = self._top_k(embedding, fused_z[valid], self.k)
 
             self.log(f"{step_type}/{mode_prefix}fused/top1_{key}", t1_fused,
-                     prog_bar=True, on_step=False, on_epoch=True)
+                     prog_bar=False, on_step=False, on_epoch=True)
             self.log(f"{step_type}/{mode_prefix}fused/top1_{key}_R", t1_fused_rev,
                      on_step=False, on_epoch=True)
             self.log(f"{step_type}/{mode_prefix}fused/top3_{key}", t3_fused,
-                     prog_bar=True, on_step=False, on_epoch=True)
+                     prog_bar=False, on_step=False, on_epoch=True)
             self.log(f"{step_type}/{mode_prefix}fused/top3_{key}_R", t3_fused_rev,
                      on_step=False, on_epoch=True)
             self.log(f"{step_type}/{mode_prefix}fused/top{self.k}_{key}", tk_fused,
-                     prog_bar=True, on_step=False, on_epoch=True)
+                     prog_bar=False, on_step=False, on_epoch=True)
             self.log(f"{step_type}/{mode_prefix}fused/top{self.k}_{key}_R", tk_fused_rev,
                      on_step=False, on_epoch=True)
 
@@ -165,13 +170,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             t1_pivot_rev = self._top_1(embedding, pivot_z[valid])
 
             self.log(f"{step_type}/{mode_prefix}pivot/top1_{key}", t1_pivot,
-                     prog_bar=True, on_step=False, on_epoch=True)
+                     prog_bar=False, on_step=False, on_epoch=True)
             self.log(f"{step_type}/{mode_prefix}pivot/top1_{key}_R", t1_pivot_rev,
                      on_step=False, on_epoch=True)
 
             delta = t1_fused - t1_pivot
             self.log(f"{step_type}/{mode_prefix}delta_{key}", delta,
-                     prog_bar=True, on_step=False, on_epoch=True)
+                     prog_bar=False, on_step=False, on_epoch=True)
 
     warmup_threshold: float = .5
     causal_threshold: float = .8

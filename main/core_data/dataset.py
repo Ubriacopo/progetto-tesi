@@ -1,21 +1,24 @@
 from __future__ import annotations
+
 import dataclasses
+import fcntl
+import os
+import shutil
+import subprocess
+import time
 from abc import ABC
+from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, Optional, Iterator, List
+from typing import Tuple, Iterator, List
 
 import pandas as pd
 import tensordict
 import torch
-from tensordict import TensorDict
 from torch import device
 from torch.utils.data import Sampler, Subset
-from functools import lru_cache
 from torch.utils.data import get_worker_info
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
-from main.core_data.media.assessment.assessment import Assessment
-from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
 
@@ -50,6 +53,95 @@ def _worker_cache():
     return
 
 
+class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
+    def __init__(self, dataset_spec_file: str, required_keys: list[RequiredKey], main_key: str,
+                 squeeze_mask: bool = False, selected_device: device = None):
+        """"
+
+
+        :param dataset_spec_file:
+        :param required_keys:
+        :param selected_device:
+        :param cache_in_ram:
+        """
+        super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+
+        self.device = selected_device
+        if selected_device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.base_path: str = str(Path(dataset_spec_file).parent)
+        self.df = pd.read_csv(dataset_spec_file, index_col=False)
+        self.inner_idx = self.df["index"].to_numpy()
+        self.eid_list = self.df["eid"].astype(str).to_numpy()
+
+        self.squeeze_mask = squeeze_mask
+
+        self.required_keys: list[RequiredKey] = required_keys
+        self.main_key: str = main_key
+        if not main_key in map(lambda x: x.key, self.required_keys):
+            raise ValueError(f"main_key={main_key} not in required_keys={required_keys}")
+
+    def _load_uncached(self, eid: str):
+        td = tensordict.load_memmap(f"{self.base_path}/{eid}")
+        # Do “one-time” cleanup here if possible
+        td.pop("assessment", None)
+        return td
+
+    def __getitem__(self, idx: int):
+        try:
+            # Questa variante è troppo lenta
+            inner_idx = int(self.inner_idx[idx])
+            eid = self.eid_list[idx]
+            td = tensordict.load_memmap(f"{self.base_path}/{eid}")
+            # Do “one-time” cleanup here if possible
+            td.pop("assessment", None)
+            return td[inner_idx]
+
+        except Exception as e:
+            raise e
+
+    def __len__(self):
+        return len(self.df)
+
+
+# todo riscrivi non mi piace
+def fast_copy(src: str, dst: str) -> str:
+    src_dir = os.path.abspath(src)
+    dst_dir = os.path.abspath(dst)
+
+    done = os.path.join(dst_dir, ".done")
+    lock_path = dst_dir + ".lock"
+    tmp_dir = dst_dir + ".tmp"
+    os.makedirs(os.path.dirname(dst_dir), exist_ok=True)
+
+    # Fast path: already cached and marked complete
+    if os.path.exists(done):
+        return dst_dir
+
+    with open(lock_path, "w") as lockf:
+        fcntl.flock(lockf, fcntl.LOCK_EX)
+        # Re-check after acquiring lock
+        if os.path.exists(done):
+            return dst_dir
+        elif os.path.exists(tmp_dir):
+            # Clean old tmp if it exists (e.g., crashed previous run)
+            shutil.rmtree(tmp_dir)
+
+        os.makedirs(tmp_dir, exist_ok=True)
+        # rsync into tmp, then atomic rename
+        subprocess.check_call(["rsync", "-a",  # archive + preserve hardlinks (safe); drop H if you don't need it
+                               "--info=progress2", src_dir.rstrip("/") + "/", tmp_dir.rstrip("/") + "/", ])
+        if os.path.exists(dst_dir):
+            # If dst exists but no .done, it's suspicious/incomplete; remove it.
+            shutil.rmtree(dst_dir)
+        os.replace(tmp_dir, dst_dir)  # atomic on same filesystem
+        with open(done, "w") as f:
+            f.write(str(time.time()))
+
+        return dst_dir
+
+
 # TODO change sampling instead of Sample uniformly from all samples across all datasets to
 #       First choose a dataset, then sample a batch from it
 # Single-dataset batches (simplest, very effective)
@@ -73,23 +165,60 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
         if selected_device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.base_path: str = str(Path(dataset_spec_file).parent)
+        # TODO calc from given (make robust)
+
+        parts = Path(dataset_spec_file).parent.parts[4:]
+        self.cache_root = f"/tmp/EEGAVI/{parts[0]}/{parts[1]}/"
+        self.local_path: str = self.cache_root + str(Path(*parts[2:]))
+
         self.df = pd.read_csv(dataset_spec_file, index_col=False)
         self.inner_idx = self.df["index"].to_numpy()
         self.eid_list = self.df["eid"].astype(str).to_numpy()
 
         self.squeeze_mask = squeeze_mask
 
+        self.max_cached_elements = 10  # 100MB one  ~ 1GB total
+
         self.required_keys: list[RequiredKey] = required_keys
         self.main_key: str = main_key
         if not main_key in map(lambda x: x.key, self.required_keys):
             raise ValueError(f"main_key={main_key} not in required_keys={required_keys}")
 
-        self._load = lru_cache(maxsize=256)(self._load_uncached)  # tune maxsize
+        self._load = lru_cache(maxsize=8)(self._load_uncached)  # tune maxsize
+
+    def evict_if_needed(self):
+        # simple LRU by ".done" mtime
+        root = Path(self.cache_root)
+        if not root.exists():
+            return
+
+        items = []
+        for d in root.iterdir():
+            done = d / ".done"
+            if d.is_dir() and done.exists():
+                items.append((done.stat().st_mtime, d))
+
+        items.sort()  # oldest first
+        for _, d in items[:-self.max_cached_elements]:
+            shutil.rmtree(d, ignore_errors=True)
+        self.logger.info(f"Removed items: {items[:-self.max_cached_elements]}")
 
     def _load_uncached(self, eid: str):
-        td = tensordict.load_memmap(f"{self.base_path}/{eid}")
+        remote_path = f"{self.base_path}/{eid}"
+        local_path = f"{self.local_path}/{eid}"
+
+        local = fast_copy(remote_path, local_path)
+        td = tensordict.load_memmap(local)
         # Do “one-time” cleanup here if possible
         td.pop("assessment", None)
+        done = Path(local) / ".done"
+        # MEH Dont like it
+        try:
+            os.utime(done, None)
+        except FileNotFoundError:
+            pass
+
+        self.evict_if_needed()
         return td
 
     def __getitem__(self, idx: int):
@@ -97,11 +226,6 @@ class FlexibleEmbeddingsSpecMediaDataset(torch.utils.data.Dataset):
             inner_idx = int(self.inner_idx[idx])
             eid = self.eid_list[idx]
             o = self._load(eid)
-
-            # TODO non va bene troppo lento
-            # item = o[inner_idx].clone()
-            # del o
-
             return o[inner_idx]
 
         except Exception as e:
