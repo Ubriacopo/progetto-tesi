@@ -24,18 +24,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     FUSED_KEY: str = "fused"
     PIVOT_KEY: str = 'eeg'
 
-    def transfer_batch_to_device(self, batch: Any, device: torch.device, dataloader_idx: int) -> Any:
-        return batch.to(device, non_blocking=True)
-
     def __init__(
             self,
             student: EegInterAviModel, teacher: MaskedContrastiveModel,
             kd_loss_weight: float, fusion_loss_weight: float, weakly_supervised_weight: float,
             fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float,
             bidirectional_p: float = .9,  # For ATTN
-            seed: int = 1
+            seed: int = 1, batch_size=None
     ):
         super().__init__()
+        self.batch_size = batch_size
 
         self.inner_logger = make_logger(self.__class__.__name__)
         self.verbose: bool = False
@@ -233,7 +231,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         mode: Literal['causal', 'bidirectional']
 
         with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(**batch["teacher"])
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
 
         for mode in ("causal", "bidirectional"):
             self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))

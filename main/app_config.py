@@ -3,4 +3,4 @@ import dataclasses
 
 @dataclasses.dataclass
 class AppConfig:
-    pass
+    SEED = 96

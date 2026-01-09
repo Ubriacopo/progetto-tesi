@@ -74,7 +74,7 @@ class VideoResampler:
         if self.tracker_ctor is None:
             return None
         tracker = self.tracker_ctor()
-        ok = tracker.init(frame_bgr, tuple(bbox_xywh))
+        ok = tracker.init_trainlike_script(frame_bgr, tuple(bbox_xywh))
         return tracker if ok else None
 
     @staticmethod

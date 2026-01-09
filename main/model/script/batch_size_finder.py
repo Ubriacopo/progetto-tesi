@@ -3,10 +3,11 @@ import lightning as L
 import torch
 import torchinfo
 from lightning.pytorch.profilers import SimpleProfiler
+from lightning.pytorch.tuner import Tuner
 
-import hydra_utils
 from main.app_config import AppConfig
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.script import hydra_utils
 from main.model.script.hydra_beans import KdConfig
 from main.model.train_utils import KdTrainDataModule
 from main.utils.logging import make_logger
@@ -33,7 +34,8 @@ def main(cfg: KdConfig):
         kd_temperature=cfg.trainer.kd_temperature,
         # All modalities contribute to fusion
         fusion_metrics=init_object.fusion_metric_codes,
-        kd_keys=list(map(lambda o: o.key, init_object.teacher_keys))
+        kd_keys=list(map(lambda o: o.key, init_object.teacher_keys)),
+        batch_size=1
     )
 
     kd_train_datamodule = KdTrainDataModule(
@@ -41,7 +43,6 @@ def main(cfg: KdConfig):
         teacher_keys=init_object.teacher_keys,
         dataset_paths=list(zip(cfg.student_dataset_path, cfg.teacher_dataset_path)),
         student_pivot=cfg.model.pivot.code,  # Is for checks only could just remove it.
-        teacher_pivot=cfg.teacher.pivot,
         batch_size=cfg.trainer.batch_size,
         batches_per_epoch=cfg.trainer.batches_per_epoch,
         seed=AppConfig.SEED
@@ -64,10 +65,12 @@ def main(cfg: KdConfig):
         log_every_n_steps=50,
         # enable_progress_bar=False,
         # limit_train_batches=1
-        check_val_every_n_epoch=999,
+        check_val_every_n_epoch=0,
     )
 
-    trainer.fit(module, datamodule=kd_train_datamodule)
+    tuner = Tuner(trainer)
+    tuner.scale_batch_size(module, mode="power")
+    trainer.fit(module, kd_train_datamodule)
     logger.info(trainer.profiler.summary())
 
 

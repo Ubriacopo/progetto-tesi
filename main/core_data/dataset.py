@@ -55,7 +55,7 @@ def _worker_cache():
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, required_keys: list[RequiredKey], main_key: str,
-                 squeeze_mask: bool = False, selected_device: device = None):
+                 squeeze_mask: bool = False, selected_device='cpu'):
         """"
 
 
@@ -68,8 +68,9 @@ class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
         self.logger = make_logger(self.__class__.__name__)
 
         self.device = selected_device
-        if selected_device is None:
+        if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.base_path: str = str(Path(dataset_spec_file).parent)
         self.df = pd.read_csv(dataset_spec_file, index_col=False)
         self.inner_idx = self.df["index"].to_numpy()
@@ -93,7 +94,7 @@ class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
             # Questa variante è troppo lenta
             inner_idx = int(self.inner_idx[idx])
             eid = self.eid_list[idx]
-            td = tensordict.load_memmap(f"{self.base_path}/{eid}")
+            td = tensordict.load_memmap(f"{self.base_path}/{eid}", device=self.device)
             # Do “one-time” cleanup here if possible
             td.pop("assessment", None)
             return td[inner_idx]
