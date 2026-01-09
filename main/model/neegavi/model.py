@@ -146,15 +146,15 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         """
         # Pad to same batch size (This happens when we drop some elements from modality)
         # Pad the data
-        pad_y = torch.zeros(b, *data.shape[1:], device=data.device)
+        pad_y = torch.zeros(b, *data.shape[1:], device=data.device, dtype=data.dtype)
         pad_y[idx] = data
 
         # Pad the mask. If non-existent we generate one matching the data tensor.
         if mask is not None:
-            pad_mask = torch.zeros(b, *mask.shape[1:], device=mask.device).bool()
+            pad_mask = torch.zeros(b, *mask.shape[1:], device=mask.device, dtype=torch.bool)
             pad_mask[idx] = mask
         else:
-            pad_mask = torch.zeros(b, data.size(1), dtype=torch.bool, device=data.device)
+            pad_mask = torch.zeros(b, data.size(1), device=data.device, dtype=torch.bool)
             pad_mask[idx] = True
 
         return MaskedValue(data=pad_y, mask=pad_mask)
@@ -219,7 +219,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         out.multimodal_outs[code] = z
         return z["data"], z["mask"], time
 
-    def process_supports(self, x: dict, keep: torch.Tensor, use_kd: bool, out: EegBaseModelOutputs, device):
+    def process_supports(self, x: dict, keep: torch.Tensor, use_kd: bool, out: EegBaseModelOutputs, device, dtype):
         b = keep.shape[0]
         # Empty initialization
         support_outs, mask_outs, time_outs = [], [], []
@@ -239,7 +239,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
             )
 
             # Add the found elements
-            support_outs.append(support_out)
+            support_outs.append(support_out.to(dtype))
             mask_outs.append(support_mask.bool())
             time_outs.append(support_time)
 
@@ -266,7 +266,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
         b = pivot_out.shape[0]
         support_out, support_mask, support_time = self.process_supports(
-            x, self.modality_dropout(b, device), use_kd, out, device
+            x, self.modality_dropout(b, device), use_kd, out, device, pivot_out.dtype
         )
 
         q, q_mask = pivot_out, pivot_mask

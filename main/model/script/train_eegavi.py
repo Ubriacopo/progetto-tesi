@@ -20,6 +20,7 @@ from main.model.neegavi.model import EegInterAviModelConfiguration
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
 import torch.multiprocessing as mp
 
+
 @dataclasses.dataclass
 class TrainerConfig:
     lr: float
@@ -145,7 +146,8 @@ def main(cfg: KdConfig):
     for student_file, teacher_file in zip(cfg.student_dataset_path, cfg.teacher_dataset_path):
         pivot_key = cfg.model.pivot.code
         dataset_pairs.append(KdDatasetWrapper(
-            student=FlexibleEmbeddingsSpecMediaDatasetSlow(student_file, student_keys, main_key=pivot_key,selected_device='cpu'),
+            student=FlexibleEmbeddingsSpecMediaDatasetSlow(student_file, student_keys, main_key=pivot_key,
+                                                           selected_device='cpu'),
             teacher=FlexibleEmbeddingsSpecMediaDatasetSlow(
                 teacher_file, teacher_keys, main_key=cfg.teacher.pivot, squeeze_mask=True, selected_device='cpu'
             )
@@ -166,7 +168,9 @@ def main(cfg: KdConfig):
     )
 
     def collate_fn(batch):
-        return tensordict.stack(batch)
+        td = tensordict.stack(batch)
+        td["student", "vid", "data"] = td["student", "vid", "data"].to(torch.float16)
+        return td
 
     # In case overfit experiment
     batch_size = cfg.trainer.batch_size
@@ -184,7 +188,7 @@ def main(cfg: KdConfig):
             generator=g,
         ),
         collate_fn=collate_fn,
-        num_workers=12,
+        num_workers=8,
         prefetch_factor=8,
         persistent_workers=True,
     )
@@ -215,7 +219,7 @@ def main(cfg: KdConfig):
             # TQDMProgressBar(leave=True, refresh_rate=40)
         ],
         num_sanity_val_steps=0,
-        # precision="16-mixed", P6000 has no tensor cores
+        precision="16-mixed",# P6000 has no tensor cores
         log_every_n_steps=50,
         enable_progress_bar=False
         # limit_train_batches=1
