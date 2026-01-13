@@ -55,10 +55,10 @@ class KdTrainDataModule(lightning.LightningDataModule):
             dataset_pairs.append(
                 KdDatasetWrapper(
                     student=FlexibleEmbeddingsSpecMediaDatasetSlow(
-                        student_ds_path, self.student_keys, main_key=self.student_pivot
+                        student_ds_path
                     ),
                     teacher=FlexibleEmbeddingsSpecMediaDatasetSlow(
-                        teacher_ds_path, self.teacher_keys, main_key=self.teacher_pivot, squeeze_mask=True
+                        teacher_ds_path
                     )
                 )
             )

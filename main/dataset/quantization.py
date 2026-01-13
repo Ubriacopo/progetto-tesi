@@ -24,3 +24,25 @@ class Float16ToInt8Quantization:
 
     def dequantize(self, t: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
         return (t.half() * scales).half()
+
+    def check_loss(self, og: torch.Tensor, new: torch.Tensor, scales: torch.Tensor) \
+            -> tuple[torch.Tensor, torch.Tensor]:
+        og = og.reshape(-1, og.shape[-1])  # To 2D
+        mask = og.norm(dim=-1) > 0  # When norm not zero the row is valid (used)
+        og = og[mask]
+
+        og = torch.nn.functional.normalize(og, dim=-1)
+
+        new = self.dequantize(new, scales)
+        new = new.reshape(-1, new.shape[-1])[mask]
+        new = torch.nn.functional.normalize(new, dim=-1)
+
+        self_cos = (og * og).sum(dim=1)
+        cos = (og * new).sum(dim=1)
+
+        self.logger.info("[SANITY CHECK] self cos-sim:" + str(self_cos.mean()))
+        self.logger.info("cos-sim:" + str(cos.mean()))
+        if cos.mean() < 0.7:
+            self.logger.warn("You loose some information on this sample be wary!")
+
+        return (og * og).sum(dim=1), (og * new).sum(dim=1)

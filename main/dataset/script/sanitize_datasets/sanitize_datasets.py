@@ -4,8 +4,6 @@ import hydra
 import pandas as pd
 from omegaconf import OmegaConf
 
-from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDataset
-from main.core_data.media.eeg import EEG
 from main.utils.logging import make_logger
 
 
@@ -42,6 +40,7 @@ def main(cfg: Config):
 
     logger.debug("Removing entries: {}".format(remove_entries))
     logger.info(f"Removing {len(remove_entries)} entries")
+
 
 if __name__ == "__main__":
     main()
