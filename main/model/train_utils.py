@@ -79,8 +79,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 generator=torch.Generator().manual_seed(self.seed)
             ),
             collate_fn=self.collate_fn,
-            num_workers=4,
-            prefetch_factor=2,
+            num_workers=2,
+            prefetch_factor=1,
             persistent_workers=True
         )
 
@@ -89,8 +89,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.valid_dataset,
             batch_sampler=SequentialPerDatasetBatchSampler(multi=self.valid_dataset, batch_size=self.batch_size, ),
             collate_fn=self.collate_fn,
-            num_workers=4,
-            prefetch_factor=2,
+            num_workers=2,
+            prefetch_factor=1,
             persistent_workers=True
         )
 

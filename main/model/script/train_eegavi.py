@@ -2,6 +2,7 @@ import hydra
 import lightning as L
 import torch
 import torchinfo
+from lightning.pytorch.loggers import MLFlowLogger
 from lightning.pytorch.profilers import SimpleProfiler
 
 import hydra_utils
@@ -16,6 +17,7 @@ from main.utils.logging import make_logger
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     logger = make_logger("hydra-main>train_eegavi")
+    mlf_logger = MLFlowLogger(experiment_name="lightning_logs", tracking_uri="file:./ml-runs")
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     init_object = hydra_utils.init_trainlike_script(cfg)
 
@@ -54,6 +56,7 @@ def main(cfg: KdConfig):
     trainer = L.Trainer(
         profiler=SimpleProfiler(),
         accelerator="gpu",
+        logger=mlf_logger,
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[
@@ -62,9 +65,7 @@ def main(cfg: KdConfig):
         num_sanity_val_steps=0,
         precision="16-mixed",  # P6000 has no tensor cores
         log_every_n_steps=50,
-        # enable_progress_bar=False,
-        # limit_train_batches=1
-        check_val_every_n_epoch=999,
+        check_val_every_n_epoch=3,
     )
 
     trainer.fit(module, datamodule=kd_train_datamodule)

@@ -44,3 +44,4 @@ tensordict~=0.10.0
 openpyxl
 colorlog
 hydra_colorlog
+mlflow
