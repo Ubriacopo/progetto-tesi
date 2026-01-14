@@ -39,10 +39,11 @@ class Float16ToInt8Quantization:
 
         self_cos = (og * og).sum(dim=1)
         cos = (og * new).sum(dim=1)
+        if self_cos.mean() != 1:
+            self.logger.info("[SANITY CHECK FAILED] self-cos-sim:" + str(self_cos.mean()))
 
-        self.logger.info("[SANITY CHECK] self cos-sim:" + str(self_cos.mean()))
-        self.logger.info("cos-sim:" + str(cos.mean()))
-        if cos.mean() < 0.7:
+        if cos.mean() < 0.9:
             self.logger.warn("You loose some information on this sample be wary!")
+            self.logger.info("cos-sim:" + str(cos.mean()))
 
         return (og * og).sum(dim=1), (og * new).sum(dim=1)

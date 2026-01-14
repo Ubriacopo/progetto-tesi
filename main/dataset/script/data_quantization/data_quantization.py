@@ -4,14 +4,11 @@ from pathlib import Path
 import hydra
 import pandas as pd
 import tensordict
+import torch
 from hydra.core.config_store import ConfigStore
-from hydra.utils import get_object
 from omegaconf import OmegaConf
 
-from main.core_data.dataset import FlexibleEmbeddingsSpecMediaDatasetSlow, RequiredKey
-from main.dataset.base_config import DatasetConfig
 from main.dataset.quantization import Float16ToInt8Quantization
-from main.dataset.utils import PreprocessingConfig, DatasetUidStore
 from main.utils.logging import make_logger
 
 
@@ -28,6 +25,14 @@ OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
 OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
 
+# setups
+# MANHOB
+# ds_path=/mnt/turing-datasets/EEGAVI/MAHNOB/interleaved/
+# export_path=/localssd/EEGAVI/MANHOB/interleaved_quantized/
+
+
+
+# todo little refactor
 @hydra.main(version_base=None, config_name="base", config_path="config")
 def main(cfg: Config):
     """
@@ -65,6 +70,9 @@ def main(cfg: Config):
             continue
 
         td = tensordict.load_memmap(folder)
+        # We add a new metadata key. The old experiment seems wrong?
+        # It is not wrong, but it references old data structure (original ds). We are working on a new one.
+        td["meta"]["eid"] = torch.tensor(int(folder.stem), dtype=torch.int).repeat(td["meta"].batch_size[0])
         # Remove assessment if exists. We decided to discard it as it brings little info
         if "assessment" in td:
             del td["assessment"]
@@ -78,12 +86,11 @@ def main(cfg: Config):
                 td[quantize_key]["scales"] = scales
 
         td_size = sum(v.numel() * v.element_size() for v in td.values(True, True) if hasattr(v, "numel"))
-        # Export what we had step.
         if td_size + current_stack_size > cfg.shard_size_bytes:
             # Read the spec csv and cat the rows add new col for sharded aggregation key
             df = pd.DataFrame()
             for eid in old_eids:
-                item = int(eid.item())
+                item = int(eid)
                 df = pd.concat((df, spec[spec["eid"] == item]))
             # Now we can look up from this. We need to be able to see the relative index now
             df["sharded_eid"] = sharded_eid
@@ -105,11 +112,11 @@ def main(cfg: Config):
         # Add to stack if the size of the stack allows it
         current_stack_size += td_size
         stack.append(td)
-        old_eids.append(td["meta"]["nei"][0])
+        old_eids.append(td["meta"]["eid"][0])
 
     df = pd.DataFrame()
     for eid in old_eids:
-        item = int(eid.item())
+        item = int(eid)
         df = pd.concat((df, spec[spec["eid"] == item]))
     # Now we can look up from this. We need to be able to see the relative index now
     df["sharded_eid"] = sharded_eid
