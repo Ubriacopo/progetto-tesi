@@ -11,9 +11,16 @@ class Float16ToInt8Quantization:
         self.scale_range = (-127, 127)
         self.eps = 1e-8
 
+        self.to_warn_on_fp32: bool = True
+
     def quantize(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.dtype == torch.float32:
-            self.logger.warn("The passed tensor is a float32. We will still proceed conversion by halving.")
+            self.to_warn_on_fp32 and self.logger.warn(
+                "The passed tensor is a float32. We will still proceed conversion by halving."
+                "So will be for all further input tensors. This message won't be displayed again."
+            )
+
+            self.to_warn_on_fp32 = False
             x = x.half()
 
         scales = x.abs().amax(dim=-1, keepdim=True) / float(self.scale_range[1])
@@ -39,8 +46,9 @@ class Float16ToInt8Quantization:
 
         self_cos = (og * og).sum(dim=1)
         cos = (og * new).sum(dim=1)
-        if self_cos.mean() != 1:
-            self.logger.info("[SANITY CHECK FAILED] self-cos-sim:" + str(self_cos.mean()))
+        self_cos_mean = self_cos.mean()
+        if self_cos_mean != 1 and self_cos_mean != 1.:
+            self.logger.warn("[SANITY CHECK FAILED] self-cos-sim:" + str(self_cos_mean))
 
         if cos.mean() < 0.9:
             self.logger.warn("You loose some information on this sample be wary!")

@@ -4,6 +4,7 @@ from main.core_data.media.eeg import EEG
 from main.core_data.media.eeg.transforms import EEGResample, EEGToTimePatches, CBraModEmbedderTransform, EegTimePadding, \
     CanonicalOrderTransform
 from main.core_data.media.signal.transforms import SubclipMneRaw, SignalToTensor, BandpassFilter
+from main.core_data.processing.transform import DataQuantizationTransform
 from main.dataset.base_config import DatasetConfig
 
 
@@ -18,6 +19,7 @@ def eeg_transform_pipe(config: DatasetConfig) \
         CanonicalOrderTransform(eeg_order=config.eeg_source_config.EEG_CHANNELS),
         CBraModEmbedderTransform(weights_path=config.eeg_target_config.model_weights_path),
         EegTimePadding(max_length=config.max_length),
+        DataQuantizationTransform()
     )
 
 

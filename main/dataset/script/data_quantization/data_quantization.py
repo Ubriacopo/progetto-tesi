@@ -31,7 +31,6 @@ OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 # export_path=/localssd/EEGAVI/MANHOB/interleaved_quantized/
 
 
-
 # todo little refactor
 @hydra.main(version_base=None, config_name="base", config_path="config")
 def main(cfg: Config):
@@ -62,7 +61,7 @@ def main(cfg: Config):
         existing_df = pd.read_csv(cfg.export_path + "spec.csv")
 
     ds_path = Path(cfg.ds_path)
-    sharded_eid: int = 0 if len(existing_df["sharded_eid"]) == 0 else max(existing_df["sharded_eid"])
+    sharded_eid: int = 0 if len(existing_df["sharded_eid"]) == 0 else (max(existing_df["sharded_eid"]) + 1)
     for folder in ds_path.iterdir():
         if not folder.is_dir() or (existing_df["eid"] == int(folder.stem)).any():
             # We hit spec.csv again or the procedure started but was not finished
@@ -88,6 +87,7 @@ def main(cfg: Config):
         td_size = sum(v.numel() * v.element_size() for v in td.values(True, True) if hasattr(v, "numel"))
         if td_size + current_stack_size > cfg.shard_size_bytes:
             # Read the spec csv and cat the rows add new col for sharded aggregation key
+            logger.info(f"Exporting shard number: {sharded_eid} composed of: [{old_eids}]")
             df = pd.DataFrame()
             for eid in old_eids:
                 item = int(eid)

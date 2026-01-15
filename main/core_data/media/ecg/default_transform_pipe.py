@@ -2,11 +2,11 @@ import math
 
 from torch import nn
 
-from main.core_data.media.ecg import EcgTargetConfig
 from main.core_data.media.ecg.ecg import ECG
 from main.core_data.media.ecg.transforms import EcgDataToTensor, EcgSequenceResampling, EcgFmEmbedderTransform
 from main.core_data.media.signal.transforms import SubclipMneRaw, SignalZeroMasking
-from main.core_data.processing.transform import MultimediaPadding, SequentialWithFallback, EmptyObjectTransform
+from main.core_data.processing.transform import MultimediaPadding, SequentialWithFallback, DataQuantizationTransform, \
+    EmptyQuantizedObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 
@@ -27,5 +27,6 @@ def ecg_interleaved_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Modul
             data_transform_fn=config.ecg_source_config.prepare_ecg, endpoint=config.ecg_target_config.fm_endpoint
         ),
         MultimediaPadding(max_length=max_length),
-        default_remap=EmptyObjectTransform(shape=(max_length, patches, latent_size), mask_shape=(max_length,)),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, patches, latent_size), mask_shape=(max_length,)),
     )

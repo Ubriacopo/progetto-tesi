@@ -10,7 +10,8 @@ from torchvision.transforms import Lambda
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.media.media import Media
-from main.utils.data import MaskedValue
+from main.dataset.quantization import Float16ToInt8Quantization
+from main.utils.data import MaskedValue, QuantizedMaskedValue
 from main.utils.logging import make_logger
 
 IDENTITY = Lambda(lambda x: x)
@@ -164,12 +165,32 @@ class EmptyObjectTransform(nn.Module):
     def forward(self) -> MaskedValue | torch.Tensor:
         data = torch.zeros(self.shape, device=self.device)
         if self.mask_shape is not None:
-            mask = torch.zeros(self.mask_shape, device=self.device)
-            mask = mask.to(torch.bool)
-
+            mask = torch.zeros(self.mask_shape, device=self.device, dtype=torch.bool)
             if self.reduce_mask:
                 mask = mask.squeeze(0)
 
             return MaskedValue(data=data, mask=mask)
 
         return torch.zeros(data)
+
+# TODO VERIFICA
+class EmptyQuantizedObjectTransform(EmptyObjectTransform):
+    def forward(self) -> QuantizedMaskedValue:
+        data = torch.zeros(self.shape, device=self.device, dtype=torch.int8)
+        if self.mask_shape is None:
+            raise ValueError("For quantized data we expect a mask")
+        mask = torch.zeros(self.mask_shape, device=self.device, dtype=torch.bool)
+        if self.reduce_mask:
+            mask = mask.squeeze(0)
+        scales = torch.zeros(self.shape[:-1].unsqueeze(), device=self.device, dtype=torch.float16)
+        return QuantizedMaskedValue(data=data, mask=mask, scales=scales)
+
+
+class DataQuantizationTransform(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.quantizer = Float16ToInt8Quantization()
+
+    def forward(self, x: MaskedValue) -> QuantizedMaskedValue:
+        data, scales = self.quantizer.quantize(x['data'])
+        return QuantizedMaskedValue(data=data, mask=x["mask"], scales=scales)
