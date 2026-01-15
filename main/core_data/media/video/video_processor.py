@@ -1,7 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from moviepy import VideoFileClip, ImageSequenceClip
+from moviepy import ImageSequenceClip
 
 from main.core_data.media.video.utils import VideoTensor
 
@@ -29,7 +29,10 @@ class VideoResampler:
         # Tracker (CSRT preferred; fall back to KCF)
         self.tracker_ctor = None
         for ctor in (
-                "TrackerCSRT_create", "TrackerKCF_create", "legacy.TrackerCSRT_create", "legacy.TrackerKCF_create"
+                "TrackerCSRT_create",
+                "TrackerKCF_create",
+                "legacy.TrackerCSRT_create",
+                "legacy.TrackerKCF_create"
         ):
             self.tracker_ctor = getattr(cv2, ctor, None) if self.tracker_ctor is None else self.tracker_ctor
 
@@ -74,7 +77,7 @@ class VideoResampler:
         if self.tracker_ctor is None:
             return None
         tracker = self.tracker_ctor()
-        ok = tracker.init_trainlike_script(frame_bgr, tuple(bbox_xywh))
+        ok = tracker.init(frame_bgr, tuple(bbox_xywh))
         return tracker if ok else None
 
     @staticmethod

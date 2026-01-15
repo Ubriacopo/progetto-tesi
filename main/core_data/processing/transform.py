@@ -173,7 +173,7 @@ class EmptyObjectTransform(nn.Module):
 
         return torch.zeros(data)
 
-# TODO VERIFICA
+
 class EmptyQuantizedObjectTransform(EmptyObjectTransform):
     def forward(self) -> QuantizedMaskedValue:
         data = torch.zeros(self.shape, device=self.device, dtype=torch.int8)
@@ -182,7 +182,9 @@ class EmptyQuantizedObjectTransform(EmptyObjectTransform):
         mask = torch.zeros(self.mask_shape, device=self.device, dtype=torch.bool)
         if self.reduce_mask:
             mask = mask.squeeze(0)
-        scales = torch.zeros(self.shape[:-1].unsqueeze(), device=self.device, dtype=torch.float16)
+
+        # Drop the last dimension as scales apply to fullset
+        scales = torch.zeros((self.shape[:-1] + (1,)), device=self.device, dtype=torch.float16)
         return QuantizedMaskedValue(data=data, mask=mask, scales=scales)
 
 
