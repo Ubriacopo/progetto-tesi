@@ -10,7 +10,7 @@ from main.core_data.media.video.transforms import ViVitImageProcessorTransform, 
     ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, VideoSubclipTensorRead, \
     ViVitVideoTensorImageProcessorTransform, DropBatchFromViVitProcessingTransform, ViVit2DPooling
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
-    EmptyObjectTransform
+    EmptyObjectTransform, DataQuantizationTransform, EmptyQuantizedObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 
@@ -32,7 +32,9 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         ViVitEmbedderTransform(map_to="cpu"),
         ViVit2DPooling(2, 3),
         MultimediaPadding(max_length=max_length),
-        default_remap=EmptyObjectTransform(shape=(max_length, patches, vivit_latent), mask_shape=(max_length,)),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, patches, vivit_latent),
+                                                    mask_shape=(max_length,)),
     )
 
 
@@ -47,5 +49,6 @@ def vid_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module
         ViVitForVideoClassificationEmbedderTransform(),
         v2.Lambda(lambda x: x.to("cpu")),
         ToSimpleMaskedObject(stop_at_dim=-1),
-        default_remap=EmptyObjectTransform(shape=(400,), mask_shape=(1,), reduce_mask=True),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(400,), mask_shape=(1,), reduce_mask=True),
     )

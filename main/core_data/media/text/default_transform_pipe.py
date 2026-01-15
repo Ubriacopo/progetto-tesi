@@ -7,7 +7,7 @@ from main.core_data.media.text import TxtTargetConfig
 from main.core_data.media.text.transforms import SubclipTextExtract, MiniLMEmbedderTransform, \
     RestoreTextExtract, BertEmbeddings
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
-    EmptyObjectTransform
+    EmptyObjectTransform, EmptyQuantizedObjectTransform, DataQuantizationTransform
 from main.dataset.base_config import DatasetConfig
 
 
@@ -24,7 +24,8 @@ def txt_from_aud_interleaved_txt_extract_transform_pipe(config: DatasetConfig) \
         SubclipTextExtract(interleaved=True, i_max_length=int(config.unit_seconds)),
         MiniLMEmbedderTransform(),
         MultimediaPadding(max_length=max_length),
-        default_remap=EmptyObjectTransform(shape=(max_length, 384), mask_shape=(max_length,)),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, 384), mask_shape=(max_length,)),
     )
 
 
@@ -34,5 +35,6 @@ def txt_vate_basic_transform_pipe() -> tuple[str, nn.Module]:
         SubclipTextExtract(interleaved=False),
         BertEmbeddings(),
         ToSimpleMaskedObject(stop_at_dim=-1),
-        default_remap=EmptyObjectTransform(shape=(768,), mask_shape=(1,), reduce_mask=True),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(768,), mask_shape=(1,), reduce_mask=True),
     )

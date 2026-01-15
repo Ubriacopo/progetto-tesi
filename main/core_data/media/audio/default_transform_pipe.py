@@ -10,7 +10,7 @@ from main.core_data.media.audio.transforms import SubclipAudio, AudioToTensor, T
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform, HubertBaseComputeFeature, HubertFeatureExtractor
 from main.core_data.media.signal.transforms import SignalZeroMasking
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
-    EmptyObjectTransform
+    DataQuantizationTransform, EmptyQuantizedObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 
@@ -28,8 +28,10 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
         WavLmFeatureExtractorTransform(sampling_rate=config.aud_target_config.fs),
         WavLmEmbedderTransform(map_to="cpu"),
         MultimediaPadding(max_length=math.ceil(config.max_length / config.unit_seconds)),
-        default_remap=EmptyObjectTransform(shape=(max_length, 199, 768), mask_shape=(max_length,)),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, 199, 768), mask_shape=(max_length,)),
     )
+
 
 def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfig, fs: int, max_length: int) \
         -> tuple[str, nn.Module]:
@@ -37,7 +39,7 @@ def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfi
         SubclipAudio(),  # In the split interval
         AudioToTensor(),  # Transform to a tensor object
         ToMono(),  # Drop the dual channel audio and go to Mono
-        Resample(orig_freq=fs, new_freq=target_config.fs), # TODO vedi se questo crea problemi
+        Resample(orig_freq=fs, new_freq=target_config.fs),  # TODO vedi se questo crea problemi
         SignalZeroMasking(max_length, target_config.fs, channels_first=False),
         WavLmFeatureExtractorTransform(sampling_rate=target_config.fs),
         WavLmEmbedderTransform()
@@ -53,5 +55,6 @@ def aud_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module
         HubertFeatureExtractor(),
         v2.Lambda(lambda x: x.to("cpu")),
         ToSimpleMaskedObject(stop_at_dim=-1),
-        default_remap=EmptyObjectTransform(shape=(768,), mask_shape=(1,), reduce_mask=True),
+        DataQuantizationTransform(),
+        default_remap=EmptyQuantizedObjectTransform(shape=(768,), mask_shape=(1,), reduce_mask=True),
     )
