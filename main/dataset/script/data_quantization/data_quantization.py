@@ -8,7 +8,7 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 
-from main.dataset.quantization import Float16ToInt8Quantization
+from main.dataset.quantization import Float16ToInt8Quantizer
 from main.utils.logging import make_logger
 
 
@@ -48,7 +48,7 @@ def main(cfg: Config):
     OmegaConf.set_struct(cfg, False)
     OmegaConf.to_container(cfg, resolve=True)
 
-    quantizer = Float16ToInt8Quantization()
+    quantizer = Float16ToInt8Quantizer()
     spec = pd.read_csv(cfg.ds_path + "spec.csv")
     # Now we iterate and prepare chunks
     old_eids = []

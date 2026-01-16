@@ -9,34 +9,20 @@ import time
 from abc import ABC
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, Iterator, List
+from typing import Tuple, Iterator, List, Optional
 
 import pandas as pd
 import tensordict
 import torch
+from cachetools import LRUCache
+from tensordict import TensorDict
 from torch import device
 from torch.utils.data import Sampler, Subset
 from torch.utils.data import get_worker_info
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
+from main.dataset.quantization import Float16ToInt8Quantizer
 from main.utils.logging import make_logger
-
-
-class AgnosticProcessingPdMediaDataset(torch.utils.data.Dataset, ABC):
-    def __init__(self, dataset_spec_file: str, pipeline: FlexibleDatasetTransformWrapper):
-        super().__init__()
-        self.pipeline: FlexibleDatasetTransformWrapper = pipeline
-        self.df = pd.read_csv(dataset_spec_file, index_col=False)
-        self.df.to_dict(orient="records")
-
-    def __getitem__(self, idx: int):
-        data_point = self.df.iloc[idx].to_dict()
-        data_point = FlexibleDatasetPoint.from_dict(data_point)
-        data_point = self.pipeline.call(data_point)
-        return data_point
-
-    def len(self):
-        return len(self.df)
 
 
 @dataclasses.dataclass
@@ -51,6 +37,138 @@ def _worker_cache():
     wi = get_worker_info()
     # each worker has its own Dataset instance, so self-scoped cache is enough
     return
+
+
+class SimpleDiskLRU:
+    def __init__(self, remote_dir: str, local_dir: str, max_gb: int, shard_gb: int = 4):
+        self.remote: Path = Path(remote_dir)
+        self.local: Path = Path(local_dir)
+        # Add the folder if it non existent
+        self.local.mkdir(parents=True, exist_ok=True)
+
+        self.max_items = max(1, int((max_gb * (1 << 30)) // (shard_gb * (1 << 30))))
+        self.cache = LRUCache(maxsize=self.max_items)
+
+    @staticmethod
+    def atomic_copy(src: Path, dst: Path):
+        tmp = dst.with_suffix(dst.suffix + ".tmp")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        # Copy to TMP
+        shutil.copy2(src, tmp)
+        # Put into the corret path
+        os.replace(tmp, dst)
+
+    def get(self, shard_name: str):
+        shard: Path = self.cache.get(shard_name)
+        if shard is not None and shard.exists():
+            # Touch the existing shard to refresh recency
+            self.cache[shard_name] = shard
+            return shard
+
+        while len(self.cache) > - self.max_items:
+            old_name, old_path = self.cache.popitem()  # LRU
+            try:
+                old_path.unlink()
+            except FileNotFoundError:
+                pass  # We failed for some reason but as long as we loose it we don't care
+
+        remote = self.remote / shard_name
+        local = self.local / shard_name
+        if not local.exists():
+            self.atomic_copy(remote, local)
+
+        self.cache[shard_name] = local
+        return local
+
+
+# todo verify
+class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset_spec_file: str, cache_path: str, dequantize_keys: list[str], selected_device='cpu'):
+        self.logger = make_logger(self.__class__.__name__)
+        self.device = selected_device
+
+        self.quantizer = Float16ToInt8Quantizer()
+
+        self.base_path: str = str(Path(dataset_spec_file).parent)
+        self.cache_path: str = cache_path
+        # Read the spec
+        self.df = pd.read_csv(dataset_spec_file, index_col=False)
+        # If the cache path is the same as the dataset path we are using a cached version directly (AMIGOS, ..)
+        # if the cache path is not given also no caching enabled
+        self.lru_caching_enabled = self.cache_path is not None and self.base_path != self.cache_path
+
+        self.disk_lru = None  # Initialzied differntly for each worker
+
+        self.open_shard_td: Optional[TensorDict] = None
+        self.open_shard_name: Optional[str] = None
+
+        self.inner_idx = self.df["index"].to_numpy()
+        self.eid_list = self.df["eid"].astype(str).to_numpy()
+        self.sharded_eid = self.df["sharded_eid"].to_numpy()
+        self.sharded_idx = self.df["sharded_idx"].to_numpy()
+
+        self.dequantize_keys: list[str] = dequantize_keys
+
+    @staticmethod
+    def _worker_cache_dir(base_cache_dir: str) -> str:
+        worker_info = get_worker_info()
+        return base_cache_dir if worker_info is None else str(Path(base_cache_dir) / f"w{worker_info.id}")
+
+    def _get_lru(self):
+        if not self.lru_caching_enabled:
+            return None
+        if self.disk_lru is None:
+            worker_info = get_worker_info()
+            num_workers = worker_info.num_workers if worker_info else 1
+
+            self.disk_lru = SimpleDiskLRU(
+                self.base_path, self._worker_cache_dir(self.cache_path), max(4, 70 // num_workers), shard_gb=4
+            )
+
+        return self.disk_lru
+
+    def get_shard_td(self, shard_path: Path, shard_name: str):
+        # Avoid re-opening memmap for every sample so we store in current memory
+        if self.open_shard_name != shard_name:
+            self.open_shard_td = tensordict.load_memmap(shard_path)
+            # Used for checking if the tensordict is open
+            self.open_shard_name = shard_name
+
+        return self.open_shard_td
+
+    def __getitem__(self, item):
+        # todo verify this acces
+        shard_name = self.sharded_eid[item]
+        idx_in_shard = int(self.sharded_idx[item])
+
+        lru = self._get_lru()
+        if lru is None:
+            shard_path = Path(self.base_path) / shard_name
+        else:
+            shard_path = lru.get(shard_name)
+
+        shard = self.get_shard_td(shard_path, shard_name)
+        sample = shard[idx_in_shard]
+        # TODO: Biggest win if you’re GPU training MOVE TO GPu
+        # Move dequantization to the GPU (or at least to a vectorized torch op) so CPU doesn’t become the bottleneck:
+        # Keep data as int8 + scales until the model forward
+        # Dequantize inside the model on GPU
+        output = TensorDict({}, batch_size=[])
+        td: TensorDict
+        for modality, td in sample.items():
+            if modality not in self.dequantize_keys:
+                output[modality] = td
+                continue  # Not to dequantize keys are just passed through
+
+            data = self.quantizer.dequantize(td["data"], td["scales"])
+            output[modality] = TensorDict({
+                "data": data, "mask": td["mask"]
+            })
+
+        return output
+
+    def __len__(self):
+        return len(self.df)
 
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):

@@ -10,7 +10,7 @@ from torchvision.transforms import Lambda
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.media.media import Media
-from main.dataset.quantization import Float16ToInt8Quantization
+from main.dataset.quantization import Float16ToInt8Quantizer
 from main.utils.data import MaskedValue, QuantizedMaskedValue
 from main.utils.logging import make_logger
 
@@ -191,7 +191,7 @@ class EmptyQuantizedObjectTransform(EmptyObjectTransform):
 class DataQuantizationTransform(nn.Module):
     def __init__(self):
         super().__init__()
-        self.quantizer = Float16ToInt8Quantization()
+        self.quantizer = Float16ToInt8Quantizer()
 
     def forward(self, x: MaskedValue) -> QuantizedMaskedValue:
         data, scales = self.quantizer.quantize(x['data'])

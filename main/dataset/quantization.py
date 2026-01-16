@@ -5,7 +5,7 @@ import torch
 from main.utils.logging import make_logger
 
 
-class Float16ToInt8Quantization:
+class Float16ToInt8Quantizer:
     def __init__(self):
         self.logger = make_logger(self.__class__.__name__)
         self.scale_range = (-127, 127)
