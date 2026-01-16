@@ -8,19 +8,25 @@ defaults:
 base_path: /root/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
-student_dataset_path: [
-  "/mnt/turing-datasets/EEGAVI/AMIGOS/interleaved/spec.csv",
-  "/mnt/turing-datasets/EEGAVI/EAV/interleaved/spec.csv",
-  "/mnt/turing-datasets/EEGAVI/MAHNOB/interleaved/spec.csv",
-  # "/mnt/turing-datasets/EEGAVI/DEAP/interleaved/spec.csv"
-]
-teacher_dataset_path: [
-  "/mnt/turing-datasets/EEGAVI/AMIGOS/vate/spec.csv",
-  "/mnt/turing-datasets/EEGAVI/EAV/vate/spec.csv",
-  "/mnt/turing-datasets/EEGAVI/MAHNOB/vate/spec.csv",
-  # "/mnt/turing-datasets/EEGAVI/DEAP/vate/spec.csv"
-]
+student_dataset_path:
+  - dataset_spec_file: "/localssd/EEGAVI/AMIGOS/interleaved_quantized/spec.csv"
+    cache_path: null
+  - dataset_spec_file: "/localssd/EEGAVI/DEAP/interleaved_quantized/spec.csv"
+    cache_path: null
+  - dataset_spec_file: "/localssd/EEGAVI/MANHOB/interleaved_quantized/spec.csv"
+    cache_path: null
+  - dataset_spec_file: "/mnt/turing-datasets/EEGAVI/EAV/interleaved_quantized/spec.csv"
+    cache_path: "/localssd/EEGAVI/EAV/interleaved_quantized/"
 
+teacher_dataset_path:
+  - dataset_spec_file: "/localssd/EEGAVI/AMIGOS/vate_quantized/spec.csv"
+    cache_path: null
+  - dataset_spec_file: "/localssd/EEGAVI/DEAP/vate_quantized/spec.csv"
+    cache_path: null
+  - dataset_spec_file: "/localssd/EEGAVI/MANHOB/vate_quantized/spec.csv"
+    cache_path: null
+  - dataset_spec_file: "/mnt/turing-datasets/EEGAVI/EAV/vate_quantized/spec.csv"
+    cache_path: "/localssd/EEGAVI/EAV/vate_quantized/"
 
 hydra:
   job_logging:

@@ -27,6 +27,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def __init__(
             self,
             student: EegInterAviModel, teacher: MaskedContrastiveModel,
+            dequantize_keys: list[str],
             kd_loss_weight: float, fusion_loss_weight: float, weakly_supervised_weight: float,
             fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float,
             bidirectional_p: float = .9,  # For ATTN
@@ -60,6 +61,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.time_mask_switch_generator = torch.Generator(device=self.device)
         self.time_mask_switch_generator.manual_seed(seed)
         self.bidirectional_p: float = bidirectional_p
+
+        self.dequantize_keys: list[str] = dequantize_keys
 
         # Hyperparameters
         self.lr: float = lr
@@ -208,11 +211,28 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.time_mask_switch_generator = torch.Generator(device=self.device)
         self.time_mask_switch_generator.manual_seed(self.base_seed)
 
+    def dequantize(self, batch: TensorDict, dtype=torch.float16):
+        # Student part:
+        bs = self.batch_size
+        output = TensorDict({}, batch_size=bs)
+        for container_key, container in batch.items():  # Student - Teacher
+            output[container_key] = TensorDict({}, batch_size=bs)
+
+            td: TensorDict
+            for key, td in container.items():
+                if key in self.dequantize_keys:
+                    td = TensorDict({"data": td["data"].to(dtype) * td["scales"], "mask": td["mask"]}, batch_size=bs)
+                output[container_key][key] = td
+
+        return output
+
     def training_step(self, batch, batch_idx):
         # Randomly draw the modality we want to train on (For the time relations)
         causal_p = self.p_causal_schedule()
         u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
         mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
+        # Convert the batch to fp16 from quantized
+        batch = self.dequantize(batch, torch.float16)
 
         if mode == "bidirectional":
             self._n_bidirectional += 1
@@ -229,6 +249,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
         out = {}
         mode: Literal['causal', 'bidirectional']
+        # Convert the batch to fp16 from quantized
+        batch = self.dequantize(batch, torch.float16)
 
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])

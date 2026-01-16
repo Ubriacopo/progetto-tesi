@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import time
+import uuid
 from abc import ABC
 from functools import lru_cache
 from pathlib import Path
@@ -51,11 +52,14 @@ class SimpleDiskLRU:
 
     @staticmethod
     def atomic_copy(src: Path, dst: Path):
-        tmp = dst.with_suffix(dst.suffix + ".tmp")
+        if not src.is_dir():
+            raise ValueError(f"Expected directory source, got: {src}")
+
         dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.parent / (dst.name + f".tmp_{uuid.uuid4().hex}")
         # Copy to TMP
-        shutil.copy2(src, tmp)
-        # Put into the corret path
+        shutil.copytree(src, tmp, dirs_exist_ok=False)
+        # Put into the correct path
         os.replace(tmp, dst)
 
     def get(self, shard_name: str):
@@ -65,7 +69,7 @@ class SimpleDiskLRU:
             self.cache[shard_name] = shard
             return shard
 
-        while len(self.cache) > - self.max_items:
+        while len(self.cache) > self.max_items:
             old_name, old_path = self.cache.popitem()  # LRU
             try:
                 old_path.unlink()
@@ -81,9 +85,15 @@ class SimpleDiskLRU:
         return local
 
 
+@dataclasses.dataclass
+class CachableDatasetDescriptor:
+    dataset_spec_file: str
+    cache_path: Optional[str]
+
+
 # todo verify
 class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_spec_file: str, cache_path: str, dequantize_keys: list[str], selected_device='cpu'):
+    def __init__(self, dataset_spec_file: str, cache_path: str, selected_device='cpu'):
         self.logger = make_logger(self.__class__.__name__)
         self.device = selected_device
 
@@ -97,7 +107,8 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
         # if the cache path is not given also no caching enabled
         self.lru_caching_enabled = self.cache_path is not None and self.base_path != self.cache_path
 
-        self.disk_lru = None  # Initialzied differntly for each worker
+        # Initialized differently for each worker
+        self.disk_lru = None
 
         self.open_shard_td: Optional[TensorDict] = None
         self.open_shard_name: Optional[str] = None
@@ -105,9 +116,7 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
         self.inner_idx = self.df["index"].to_numpy()
         self.eid_list = self.df["eid"].astype(str).to_numpy()
         self.sharded_eid = self.df["sharded_eid"].to_numpy()
-        self.sharded_idx = self.df["sharded_idx"].to_numpy()
-
-        self.dequantize_keys: list[str] = dequantize_keys
+        self.sharded_idx = self.df["sharded_index"].to_numpy()
 
     @staticmethod
     def _worker_cache_dir(base_cache_dir: str) -> str:
@@ -115,16 +124,15 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
         return base_cache_dir if worker_info is None else str(Path(base_cache_dir) / f"w{worker_info.id}")
 
     def _get_lru(self):
-        if not self.lru_caching_enabled:
-            return None
-        if self.disk_lru is None:
+        if self.disk_lru is None and self.lru_caching_enabled:
             worker_info = get_worker_info()
             num_workers = worker_info.num_workers if worker_info else 1
 
             self.disk_lru = SimpleDiskLRU(
-                self.base_path, self._worker_cache_dir(self.cache_path), max(4, 70 // num_workers), shard_gb=4
+                self.base_path, self._worker_cache_dir(self.cache_path), max(4, 30 // num_workers), shard_gb=4
             )
 
+        # Return the currently set instance (might be None if lru_caching is disabled.
         return self.disk_lru
 
     def get_shard_td(self, shard_path: Path, shard_name: str):
@@ -143,29 +151,15 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
 
         lru = self._get_lru()
         if lru is None:
-            shard_path = Path(self.base_path) / shard_name
+            shard_path = Path(self.base_path) / str(shard_name)
         else:
-            shard_path = lru.get(shard_name)
+            shard_path = lru.get(str(shard_name))
 
-        shard = self.get_shard_td(shard_path, shard_name)
+        shard = self.get_shard_td(shard_path, str(shard_name))
         sample = shard[idx_in_shard]
-        # TODO: Biggest win if you’re GPU training MOVE TO GPu in lightning a forward
-        # Move dequantization to the GPU (or at least to a vectorized torch op) so CPU doesn’t become the bottleneck:
-        # Keep data as int8 + scales until the model forward
-        # Dequantize inside the model on GPU
-        output = TensorDict({}, batch_size=[])
-        td: TensorDict
-        for modality, td in sample.items():
-            if modality not in self.dequantize_keys:
-                output[modality] = td
-                continue  # Not to dequantize keys are just passed through
-
-            data = self.quantizer.dequantize(td["data"], td["scales"])
-            output[modality] = TensorDict({
-                "data": data, "mask": td["mask"]
-            })
-
-        return output
+        # In hope to speed up training
+        sample.pop("meta", None)
+        return sample
 
     def __len__(self):
         return len(self.df)
@@ -396,14 +390,14 @@ class SequentialPerDatasetBatchSampler(Sampler[list[int]]):
         self.ranges = [(s, l) for s, l in multi.dataset_ranges]
 
     def __iter__(self):
-        for dataset_id, (start, length) in enumerate(self.ranges):
-            idx_list = list(range(start, start + length))
-            for i in range(0, length, self.batch_size):
-                chunk = idx_list[i:i + self.batch_size]
-                if len(chunk) < self.batch_size and self.drop_last:
+        bs = self.batch_size
+        for start, length in self.ranges:
+            end = start + length
+            for i in range(start, end, bs):
+                chunk_end = min(i + bs, end)
+                if chunk_end - i < bs and self.drop_last:
                     continue
-
-                yield chunk
+                yield list(range(i, chunk_end))
 
     def __len__(self):
         total = 0

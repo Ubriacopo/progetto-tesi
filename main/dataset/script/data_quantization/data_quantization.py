@@ -122,8 +122,9 @@ def main(cfg: Config):
     df["sharded_eid"] = sharded_eid
     df["sharded_index"] = range(len(df))
     # Change index so that it now makes sense
-    new_td = tensordict.cat(stack, dim=0)
-    new_td.save(cfg.export_path + str(sharded_eid))
+    if len(stack) > 0:
+        new_td = tensordict.cat(stack, dim=0)
+        new_td.save(cfg.export_path + str(sharded_eid))
 
     # todo add new indexing
     existing_df = pd.concat((existing_df, df))

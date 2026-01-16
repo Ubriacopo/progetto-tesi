@@ -35,15 +35,14 @@ def main(cfg: KdConfig):
         kd_temperature=cfg.trainer.kd_temperature,
         # All modalities contribute to fusion
         fusion_metrics=init_object.fusion_metric_codes,
-        kd_keys=list(map(lambda o: o.key, init_object.teacher_keys))
+        kd_keys=list(map(lambda o: o.key, init_object.teacher_keys)),
+        dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"]
     )
 
     kd_train_datamodule = KdTrainDataModule(
         student_keys=init_object.student_keys,
         teacher_keys=init_object.teacher_keys,
         dataset_paths=list(zip(cfg.student_dataset_path, cfg.teacher_dataset_path)),
-        student_pivot=cfg.model.pivot.code,  # Is for checks only could just remove it.
-        teacher_pivot=cfg.teacher.pivot,
         batch_size=cfg.trainer.batch_size,
         batches_per_epoch=cfg.trainer.batches_per_epoch,
         seed=AppConfig.SEED
