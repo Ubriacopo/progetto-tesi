@@ -149,7 +149,7 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
 
         shard = self.get_shard_td(shard_path, shard_name)
         sample = shard[idx_in_shard]
-        # TODO: Biggest win if you’re GPU training MOVE TO GPu
+        # TODO: Biggest win if you’re GPU training MOVE TO GPu in lightning a forward
         # Move dequantization to the GPU (or at least to a vectorized torch op) so CPU doesn’t become the bottleneck:
         # Keep data as int8 + scales until the model forward
         # Dequantize inside the model on GPU
