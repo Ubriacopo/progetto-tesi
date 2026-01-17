@@ -64,7 +64,7 @@ def main(cfg: KdConfig):
         num_sanity_val_steps=0,
         precision="16-mixed",  # P6000 has no tensor cores
         log_every_n_steps=50,
-        check_val_every_n_epoch=3,
+        check_val_every_n_epoch=999,
     )
 
     trainer.fit(module, datamodule=kd_train_datamodule)

@@ -45,3 +45,4 @@ openpyxl
 colorlog
 hydra_colorlog
 mlflow
+webdataset

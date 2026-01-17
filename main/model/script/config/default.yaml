@@ -15,8 +15,8 @@ student_dataset_path:
     cache_path: null
   - dataset_spec_file: "/localssd/EEGAVI/MANHOB/interleaved_quantized/spec.csv"
     cache_path: null
-  - dataset_spec_file: "/mnt/turing-datasets/EEGAVI/EAV/interleaved_quantized/spec.csv"
-    cache_path: "/localssd/EEGAVI/EAV/interleaved_quantized/"
+#  - dataset_spec_file: "/mnt/turing-datasets/EEGAVI/EAV/interleaved_quantized/spec.csv"
+#    cache_path: "/localssd/EEGAVI/EAV/interleaved_quantized/"
 
 teacher_dataset_path:
   - dataset_spec_file: "/localssd/EEGAVI/AMIGOS/vate_quantized/spec.csv"
@@ -25,8 +25,8 @@ teacher_dataset_path:
     cache_path: null
   - dataset_spec_file: "/localssd/EEGAVI/MANHOB/vate_quantized/spec.csv"
     cache_path: null
-  - dataset_spec_file: "/mnt/turing-datasets/EEGAVI/EAV/vate_quantized/spec.csv"
-    cache_path: "/localssd/EEGAVI/EAV/vate_quantized/"
+#  - dataset_spec_file: "/mnt/turing-datasets/EEGAVI/EAV/vate_quantized/spec.csv"
+#    cache_path: "/localssd/EEGAVI/EAV/vate_quantized/"
 
 hydra:
   job_logging:
