@@ -3,7 +3,9 @@
 # - For performance reasons having both teacher and student inputs -> One record has to contain both teacher student value and no longer 2 different partitions.
 # - On load of a shard for first time in epoch shuffle it. Take the first B samples available (exhaustion map  to track what not to take)
 import io
+import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -26,8 +28,7 @@ def to_numpy(x: torch.Tensor):
     return materialize(x).detach().cpu().numpy()
 
 
-# todo log progress
-class WebSharder:
+class ReSharder:
     def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str, shard_size_gb=4):
         self.student_path = Path(student_spec_path).parent
         self.student_df = pd.read_csv(student_spec_path)
@@ -45,224 +46,143 @@ class WebSharder:
         Path(self.output_path).mkdir(parents=True, exist_ok=True)
         self.shard_size_bytes = int(shard_size_gb * (1024 ** 3))
 
-        # caches for open memmap shards
-        self.student_open = {}  # shard_name -> tensordict
-        self.teacher_open = {}
+        self.student_current_td: Optional[TensorDict] = None
+        self.current_student_name: Optional[str] = None
+        self.teacher_current_td: Optional[TensorDict] = None
+        self.current_teacher_name: Optional[str] = None
+
+        self.prefix: str = "ds"
+
+    def load_student_shard(self, shard_name: str):
+        if shard_name != self.current_student_name:
+            self.student_current_td = tensordict.load_memmap(self.student_path / shard_name)
+            self.current_student_name = shard_name
+        return self.student_current_td
+
+    def load_teacher_shard(self, shard_name: str):
+        if shard_name != self.current_teacher_name:
+            self.teacher_current_td = tensordict.load_memmap(self.teacher_path / shard_name)
+            self.current_teacher_name = shard_name
+        return self.teacher_current_td
+
+    def count_samples(self):
+        count: int = 0
+        for record in self.student_df.itertuples(index=False):
+            # Only if the teacher equivalent exists
+            if (str(record.eid), int(record.index)) in self.teacher_map:
+                count += 1
+
+        return count
 
     @staticmethod
-    def decompose_tensordict(prefix: str, td: TensorDict) -> dict:
-        decomposition = {}
-        for modality, sub in td.items():
-            for key, value in sub.items():
-                buffer = io.BytesIO()
-                torch.save(materialize(value), buffer)
-                name = f"{prefix}.{modality}.{key}.pth"
-                decomposition[name] = buffer.getvalue()
+    def ensure_meta_appendable(h5: h5py.File):
+        if "meta/eid" in h5 and "meta/index" in h5:
+            return h5["meta/eid"], h5["meta/index"]
 
-        return decomposition
+        str_dt = h5py.string_dtype(encoding="utf-8")
+        eid_ds = h5.create_dataset("meta/eid", shape=(0,), maxshape=(None,), dtype=str_dt, chunks=(1024,))
+        idx_ds = h5.create_dataset("meta/index", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,))
+
+        return eid_ds, idx_ds
+
+    def open_new_shard(self, h5: h5py.File, shard_id: int, shard_size: int):
+        if h5 is not None:
+            h5.attrs["num_samples"] = shard_size
+            # Close the current shard
+            h5.flush()
+            h5.close()
+
+        shard_name = f"{self.prefix}_{shard_id:03d}.h5"
+        output_path = self.output_path / shard_name
+        h5 = h5py.File(output_path, "w")
+
+        eid_ds, idx_ds = self.ensure_meta_appendable(h5)
+        i_in_shard: int = 0
+        shard_id += 1
+
+        return h5, output_path, shard_id, shard_name, eid_ds, idx_ds, i_in_shard
 
     @staticmethod
-    def get_open_shard(root: Path, cache: dict, shard_name: str):
-        td = cache.get(shard_name)
-
-        if td is None:
-            td = tensordict.load_memmap(root / shard_name)  # Shard_name is a folder
-            cache[shard_name] = td
-
-        return td
-
-    def make_ds(self):
-        pass
-
-    # First steps aggregates together the shards so that student teacher is one combo
-    def to_shards(self):
-        with wds.writer.ShardWriter(str(self.output_path / "ds-%06d.tar"), maxsize=self.shard_size_bytes, ) as sink:
-            try:
-                # todo rename che sarebbe sta roba
-                cur_s_name, cur_s_td = None, None
-                cur_t_name, cur_t_td = None, None
-                tch_shard_td, std_shard_td = None, None
-
-                for record in self.student_df.itertuples(index=False):
-                    eid = str(record.eid)
-                    idx = record.index
-
-                    # Check for same EID and index
-                    teacher_location = self.teacher_map.get((eid, idx))
-                    if teacher_location is None:
-                        # you can skip or raise; skipping is safer in large conversions
-                        continue
-
-                    student_shard = str(record.sharded_eid)
-                    student_i = int(record.sharded_index)
-
-                    teacher_shard, teacher_i = teacher_location
-                    if student_shard != cur_s_name:
-                        std_shard_td = tensordict.load_memmap(self.student_path / student_shard)
-                        cur_s_name = student_shard
-
-                    if teacher_shard != cur_t_name:
-                        tch_shard_td = tensordict.load_memmap(self.teacher_path / teacher_shard)
-                        cur_t_name = teacher_shard
-
-                    student_record = std_shard_td[student_i]
-                    teacher_record = tch_shard_td[teacher_i]
-
-                    key = f"{eid}_{idx:06d}"
-
-                    sample = {
-                        "__key__": key,
-                        # optionally store tiny metadata fields
-                        "eid.txt": eid.encode("utf-8"),
-                        "index.txt": str(idx).encode("utf-8"),
-                    }
-
-                    sample |= self.decompose_tensordict("student", student_record)
-                    sample |= self.decompose_tensordict("teacher", teacher_record)
-
-                    sink.write(sample)
-
-            except Exception as e:
-                print(e)
-
-    # Shuffle the shards so that data is more sparse
-    def shuffle(self):
-
-        with wds.writer.ShardWriter(str(self.output_path / "s_ds-%06d.tar"), maxsize=self.shard_size_bytes, ) as sink:
-
-            for file in Path(self.output_path).iterdir():
-                if file.suffix != ".tar":
-                    continue
-
-                ds = wds.WebDataset(str(file)).decode()
-
-    def post_check(self):
-        pass  # TODO controlla che conversione corretta
-
-    # todo valuta gzip o (meglio) .tar.zst compresion per ridurre problema di velocita di disco
-
-
-class Sharder:
-    def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str, shard_size_gb=4):
-        self.student_path = Path(student_spec_path).parent
-        self.student_df = pd.read_csv(student_spec_path)
-
-        self.teacher_path = Path(teacher_spec_path).parent
-        self.teacher_df = pd.read_csv(teacher_spec_path)
-
-        self.teacher_map = {
-            (str(r.eid), int(r.index)): (str(r.sharded_eid), int(r.sharded_index))
-            for r in self.teacher_df.itertuples(index=False)
-        }
-
-        self.output_path = Path(output_path)
-        self.output_path.mkdir(parents=True, exist_ok=True)
-
-        self.shard_size_bytes = int(shard_size_gb * (1024 ** 3))  # unused for HDF5
-
-        # cache current open shard tensordicts
-        self._cur_s_name = None
-        self._cur_t_name = None
-        self._std_shard_td = None
-        self._tch_shard_td = None
-
-    def _load_student_shard(self, shard_name: str):
-        if shard_name != self._cur_s_name:
-            self._std_shard_td = tensordict.load_memmap(self.student_path / shard_name)
-            self._cur_s_name = shard_name
-        return self._std_shard_td
-
-    def _load_teacher_shard(self, shard_name: str):
-        if shard_name != self._cur_t_name:
-            self._tch_shard_td = tensordict.load_memmap(self.teacher_path / shard_name)
-            self._cur_t_name = shard_name
-        return self._tch_shard_td
-
-    def _count_pairs(self) -> int:
-        # single pass to count how many student rows have a matching teacher
-        n = 0
-        for r in self.student_df.itertuples(index=False):
-            eid = str(r.eid)
-            idx = int(r.index)
-            if (eid, idx) in self.teacher_map:
-                n += 1
-        return n
-
-    def _ensure_tensor_ds(self, h5: h5py.File, path: str, N: int, sample_arr: np.ndarray,
-                          chunk0: int = 64, compression=None):
-        """
-        Create dataset once with final shape (N, ...) and chunking along axis 0.
-        """
+    def ensure_tensor_ds_appendable(h5: h5py.File, path: str, sample: np.ndarray, chunk0: int = 64, compression=None):
         if path in h5:
             return h5[path]
 
-        arr = np.asarray(sample_arr)
-        if arr.shape == ():
-            # store scalars as (N,) not (N,1)
-            shape = (N,)
-            chunks = (min(chunk0, N),)
-        else:
-            shape = (N,) + arr.shape
-            chunks = (min(chunk0, N),) + arr.shape
-
+        has_shape = sample.shape != ()
         return h5.create_dataset(
             path,
-            shape=shape,
-            dtype=arr.dtype,
-            chunks=chunks,
-            compression=compression,  # None (fastest) or "lzf"
+            dtype=sample.dtype,
+            shape=(0,) + sample.shape if has_shape else (0,),
+            maxshape=(None,) + sample.shape if has_shape else (None,),
+            chunks=(chunk0,) + sample.shape if has_shape else (chunk0,),
+            compression=compression
         )
 
-    def _write_record(self, h5: h5py.File, base: str, td_record, i: int, N: int,
-                      chunk0: int = 64, compression=None):
-        for modality, sub in td_record.items():
-            for key, value in sub.items():
+    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int, chunk0: int = 64, compression=None):
+        for modality, container in td.items():
+            for key, value in container.items():
                 arr = to_numpy(value)
-                ds_path = f"{base}/{modality}/{key}"
-                ds = self._ensure_tensor_ds(h5, ds_path, N, arr, chunk0=chunk0, compression=compression)
-                ds[i, ...] = arr  # works for 1D and ND
+                ds_path: str = f"{base}/{modality}/{key}"
 
-    def to_hdf5(self, out_file="dataset.h5", compression=None, chunk0: int = 64):
-        out_path = self.output_path / out_file
+                ds = self.ensure_tensor_ds_appendable(h5, ds_path, arr, chunk0=chunk0, compression=compression)
 
-        N = self._count_pairs()
+                if ds.shape[0] <= i:
+                    ds.resize((i + 1,) + ds.shape[1:])
 
-        with h5py.File(out_path, "w") as h5:
-            # metadata (fixed-size now)
-            str_dt = h5py.string_dtype(encoding="utf-8")
-            eid_ds = h5.create_dataset("meta/eid", shape=(N,), dtype=str_dt)
-            idx_ds = h5.create_dataset("meta/index", shape=(N,), dtype=np.int64)
+                ds[i, ...] = arr
 
-            i = 0
-            for r in self.student_df.itertuples(index=False):
-                eid = str(r.eid)
-                idx = int(r.index)
+    def build(self, compression=None, chunk0: int = 64):
+        # Take on from each experiment in order (Round Robin)
+        shard_id: int = 0
+        h5: Optional[h5py.File] = None
 
-                teacher_loc = self.teacher_map.get((eid, idx))
-                if teacher_loc is None:
-                    continue
+        total_written: int = 0
+        h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
+            h5=h5, shard_id=shard_id, shard_size=0
+        )
+        for record in self.student_df.itertuples(index=False):
+            eid, idx = str(record.eid), int(record.index)
 
-                student_shard = str(r.sharded_eid)
-                student_i = int(r.sharded_index)
-                teacher_shard, teacher_i = teacher_loc
+            # This mapping should be solid but no harm in checking TODO
+            teacher_location = self.teacher_map.get((eid, idx))
+            if teacher_location is None:
+                continue  # No existing row
 
-                std_td = self._load_student_shard(student_shard)
-                std_td["meta"].pop("experiment", None)
-                tch_td = self._load_teacher_shard(teacher_shard)
-                tch_td["meta"].pop("experiment", None)
+            student_shard, student_i = str(record.sharded_eid), int(record.sharded_index)
+            teacher_shard, teacher_i = teacher_location
 
-                student_record = std_td[student_i]
-                teacher_record = tch_td[teacher_i]
+            student_td = self.load_student_shard(student_shard)
+            student_td["meta"].pop("experiment", None)  # TODO arricchiro il csv
 
-                eid_ds[i] = eid
-                idx_ds[i] = idx
+            teacher_td = self.load_teacher_shard(teacher_shard)
+            teacher_td["meta"].pop("experiment", None)
 
-                self._write_record(h5, "student", student_record, i, N, chunk0=chunk0, compression=compression)
-                self._write_record(h5, "teacher", teacher_record, i, N, chunk0=chunk0, compression=compression)
+            student_record = student_td[student_i]
+            teacher_record = teacher_td[teacher_i]
 
-                i += 1
+            if eid_ds.shape[0] <= i_in_shard:
+                eid_ds.resize((i_in_shard + 1,))
+                idx_ds.resize((i_in_shard + 1,))
 
-            h5.attrs["num_samples"] = i
+            eid_ds[i_in_shard] = eid
+            idx_ds[i_in_shard] = idx
+            self.append_records(h5, student_record, "student", i_in_shard, chunk0=chunk0, compression=compression)
+            self.append_records(h5, teacher_record, "teacher", i_in_shard, chunk0=chunk0, compression=compression)
+
+            i_in_shard += 1
+            total_written += 1
+            if (total_written % 256) == 0:  # don’t stat every sample
+                h5.flush()
+                if os.path.getsize(current_path) >= self.shard_size_bytes:
+                    h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
+                        h5=h5, shard_id=shard_id, shard_size=i_in_shard
+                    )
+
+        if h5 is not None:
+            h5.attrs["num_samples"] = i_in_shard
             h5.flush()
+            h5.close()
 
-        return out_path
+        return self.output_path
+
+    # TODO: Potrebbe essere improvement fare round robin [1,1,1,1,2,2,2,2,3,3,3,3]->[1,2,3,1,2,3,1,2,3]
+    #       ma vediamo poi per il momento cosi va bene. Anzi fai!
