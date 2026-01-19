@@ -1,0 +1,3 @@
+student_spec_path: "/localssd/EEGAVI/DEAP/interleaved_quantized/spec.csv"
+teacher_spec_path: "/localssd/EEGAVI/DEAP/vate_quantized/spec.csv"
+output_path: "/localssd/EEGAVI/DEAP/"
