@@ -1,7 +1,7 @@
 import dataclasses
 import hydra
 
-from main.core_data.shards import WebSharder
+from main.core_data.shards import Sharder
 
 
 @dataclasses.dataclass
@@ -21,14 +21,14 @@ class Config:
 
 @hydra.main(version_base=None, config_name="base", config_path="config")
 def main(cfg: Config):
-    sharder = WebSharder(
+    sharder = Sharder(
         student_spec_path=cfg.target.student_spec_path,
         teacher_spec_path=cfg.target.teacher_spec_path,
         output_path=cfg.target.output_path,
         shard_size_gb=cfg.shard_size_gb
     )
 
-    sharder.make_web_shards()
+    sharder.to_hdf5()
     sharder.shuffle()
 
 
