@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 import fcntl
+import glob
+import json
 import os
 import shutil
 import subprocess
@@ -12,6 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Tuple, Iterator, List, Optional
 
+import h5py
 import pandas as pd
 import tensordict
 import torch
@@ -163,6 +166,68 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.df)
+
+
+@dataclasses.dataclass(frozen=True)
+class SampleReference:
+    shard_idx: int
+    local_idx: int
+
+# todo iterable dataset
+class H5KdSourceDataset(torch.utils.data.Dataset):
+    def __init__(self, shards_path: str, selected_device="cpu", index_cache_name="index.json"):
+        super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+
+        self.device = selected_device
+        if self.device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # todo use pathlib
+        self.shard_paths: list[str] = sorted(glob.glob(os.path.join(shards_path, "*.h5")))
+        if not self.shard_paths:
+            raise FileNotFoundError(f"No .h5 shards found in: {shards_path}")
+
+        cache_path = os.path.join(shards_path, index_cache_name)
+        self.shard_lengths = self.load_lengths(cache_path)
+
+        self.refs: list[SampleReference] = []
+        for s_idx, n in enumerate(self.shard_lengths):
+            self.refs.extend(SampleReference(s_idx, i) for i in range(n))
+
+        self._open_files: dict[int, h5py.File] = {}  # key: shard_idx
+
+    # todo meh
+    def load_lengths(self, cache_path: str):
+        # todo use pandas csv
+        if os.path.exists(cache_path):
+            with open(cache_path, "r") as f:
+                obj = json.load(f)
+            if obj.get("shards") == self.shard_paths:
+                return obj["lengths"]
+
+        lengths = []
+        for p in self.shard_paths:
+            with h5py.File(p, "r") as h5:
+                # Prefer attr; fallback to dataset length
+                n = int(h5.attrs.get("num_samples", 0))
+                if n <= 0:
+                    # e.g. eid dataset exists
+                    n = int(h5["eid"].shape[0]) if "eid" in h5 else 0
+                if n <= 0:
+                    raise ValueError(f"Could not determine num_samples for shard: {p}")
+                lengths.append(n)
+
+        with open(cache_path, "w") as f:
+            json.dump({"shards": self.shard_paths, "lengths": lengths}, f)
+        return lengths
+
+    def __getitem__(self, idx: int):
+        pass
+
+    # todo Buffer shuffle (best compromise):
+
+    def __len__(self) -> int:
+        return len(self.refs)
 
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):

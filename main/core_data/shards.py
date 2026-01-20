@@ -2,18 +2,17 @@
 # - Each shard contains samples from across the whole dataset (Local ds so AMIGOS only AMIGOS) randomly picked
 # - For performance reasons having both teacher and student inputs -> One record has to contain both teacher student value and no longer 2 different partitions.
 # - On load of a shard for first time in epoch shuffle it. Take the first B samples available (exhaustion map  to track what not to take)
-import io
 import os
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Optional
 
+import h5py
 import numpy as np
 import pandas as pd
 import tensordict
 import torch
-import webdataset as wds
 from tensordict import TensorDict
-import h5py
 
 
 def materialize(x):
@@ -132,15 +131,35 @@ class ReSharder:
 
     def build(self, compression=None, chunk0: int = 64):
         # Take on from each experiment in order (Round Robin)
+        rows_by_eid = defaultdict(list)
+        for record in self.student_df.itertuples(index=False):
+            rows_by_eid[str(record.eid)].append(record)
+
+        active_eids = deque(rows_by_eid.keys())
+        pos = {eid: 0 for eid in rows_by_eid.keys()}
+
         shard_id: int = 0
         h5: Optional[h5py.File] = None
-
         total_written: int = 0
+
         h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
             h5=h5, shard_id=shard_id, shard_size=0
         )
-        for record in self.student_df.itertuples(index=False):
-            eid, idx = str(record.eid), int(record.index)
+
+        # TODO csv sbalgiato? nomi migliori
+        while active_eids:
+            eid = active_eids.popleft()
+            p = pos[eid]
+            bucket = rows_by_eid[eid]
+
+            if p >= len(bucket):
+                continue  # this eid exhausted
+
+            record = bucket[p]
+            pos[eid] = p + 1
+            active_eids.append(eid)  # still active (unless it becomes exhausted later)
+
+            idx = int(record.index)
 
             # This mapping should be solid but no harm in checking TODO
             teacher_location = self.teacher_map.get((eid, idx))
