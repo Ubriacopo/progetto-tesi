@@ -12,7 +12,7 @@ import uuid
 from abc import ABC
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, Iterator, List, Optional
+from typing import Tuple, Iterator, List, Optional, Any
 
 import h5py
 import pandas as pd
@@ -21,7 +21,7 @@ import torch
 from cachetools import LRUCache
 from tensordict import TensorDict
 from torch import device
-from torch.utils.data import Sampler, Subset
+from torch.utils.data import Sampler, Subset, IterableDataset
 from torch.utils.data import get_worker_info
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
@@ -173,28 +173,37 @@ class SampleReference:
     shard_idx: int
     local_idx: int
 
+
 # todo iterable dataset
-class H5KdSourceDataset(torch.utils.data.Dataset):
-    def __init__(self, shards_path: str, selected_device="cpu", index_cache_name="index.json"):
+class H5KdSourceDataset(IterableDataset):
+    def __init__(self, shards_path: str, buffer_size: int = 1024, seed: int = 42,
+                 selected_device="cpu", index_cache_name="index.json"):
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
 
         self.device = selected_device
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         # todo use pathlib
         self.shard_paths: list[str] = sorted(glob.glob(os.path.join(shards_path, "*.h5")))
         if not self.shard_paths:
             raise FileNotFoundError(f"No .h5 shards found in: {shards_path}")
 
+        self.buffer_size: int = buffer_size
+        if self.buffer_size <= 0:
+            raise ValueError("buffer_size must be > 0")
+
+        self.seed: int = seed
+        self.epoch: int = 0
+
+        self.block_size: int = 256  # todo what isi t purely performance wise no effect on results
+
         cache_path = os.path.join(shards_path, index_cache_name)
-        self.shard_lengths = self.load_lengths(cache_path)
+        self.shard_lengths: list[int] = self.load_lengths(cache_path)
 
-        self.refs: list[SampleReference] = []
-        for s_idx, n in enumerate(self.shard_lengths):
-            self.refs.extend(SampleReference(s_idx, i) for i in range(n))
-
-        self._open_files: dict[int, h5py.File] = {}  # key: shard_idx
+    def set_epoch(self, epoch: int):
+        self.epoch = int(epoch)
 
     # todo meh
     def load_lengths(self, cache_path: str):
@@ -206,28 +215,101 @@ class H5KdSourceDataset(torch.utils.data.Dataset):
                 return obj["lengths"]
 
         lengths = []
-        for p in self.shard_paths:
-            with h5py.File(p, "r") as h5:
+        for file_path in self.shard_paths:
+            with h5py.File(file_path, "r") as h5:
                 # Prefer attr; fallback to dataset length
                 n = int(h5.attrs.get("num_samples", 0))
                 if n <= 0:
                     # e.g. eid dataset exists
                     n = int(h5["eid"].shape[0]) if "eid" in h5 else 0
                 if n <= 0:
-                    raise ValueError(f"Could not determine num_samples for shard: {p}")
+                    raise ValueError(f"Could not determine num_samples for shard: {file_path}")
                 lengths.append(n)
 
         with open(cache_path, "w") as f:
             json.dump({"shards": self.shard_paths, "lengths": lengths}, f)
+
         return lengths
 
-    def __getitem__(self, idx: int):
-        pass
+    def get_shards_for_worker(self, g: torch.Generator):
+        permutation = torch.randperm(len(self.shard_paths), generator=g).tolist()
+        shard_paths = [self.shard_paths[i] for i in permutation]
+
+        info = get_worker_info()  # Assign to each worker exclusive shards. It is best if the workers have more than one shard for local shuffling.
+        if info is not None:
+            shard_paths = shard_paths[info.id:: info.num_workers]
+
+        return shard_paths
+
+    def iter_shard(self, h5: h5py.File) -> Iterator[dict[str, dict]]:
+        n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+        for start in range(0, n, self.block_size):
+            end = min(start + self.block_size, n)
+
+            # Read meta in one go
+            eid_list = h5["meta/eid"][start:end]
+            idx_list = h5["meta/index"][start:end]
+
+            student_vid = {
+                "data": h5["student/vid/data"][start:end],
+                "mask": h5["student/vid/mask"][start:end],
+                "scales": h5["student/vid/scales"][start:end],
+            }
+
+            teacher_vid = {
+                "data": h5["teacher/vid/data"][start:end],
+                "mask": h5["teacher/vid/mask"][start:end],
+                "scales": h5["teacher/vid/scales"][start:end],
+            }
+
+            for i in range(end - start):
+                yield {
+                    "eid": eid_list[i],
+                    "idx": idx_list[i],
+                    "student": {
+                        "vid": {
+                            "data": student_vid["data"][i],
+                            "mask": student_vid["mask"][i],
+                            "scales": student_vid["scales"][i],
+                        }
+                    },
+                    "teacher": {
+                        "vid": {
+                            "data": teacher_vid["data"][i],
+                            "mask": teacher_vid["mask"][i],
+                            "scales": teacher_vid["scales"][i],
+                        }
+                    }
+                }
 
     # todo Buffer shuffle (best compromise):
+    def __iter__(self):
+        # Use a different RNG per worker (and rank), but deterministic across epochs
+        worker_info = get_worker_info()
+        worker_id = 0 if worker_info is None else worker_info.id
+
+        # This generator behaves the same for all the workers
+        global_g = torch.Generator()
+        global_g.manual_seed(self.seed + self.epoch)
+
+        # Worker specific
+        g = torch.Generator()
+        g.manual_seed(self.seed + self.epoch + 10 * worker_id)
+
+        buffer: list[dict[str, Any]] = []
+        for path in self.get_shards_for_worker(global_g):
+            with h5py.File(path, "r") as h5:
+                for sample in self.iter_shard(h5):
+                    buffer.append(sample)
+                    if len(buffer) >= self.buffer_size:
+                        yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
+
+        while buffer:
+            yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
 
     def __len__(self) -> int:
-        return len(self.refs)
+        # IterableDataset len is optional; this is a reasonable estimate/true value here.
+        return int(sum(self.shard_lengths))
 
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
