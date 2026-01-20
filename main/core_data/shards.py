@@ -2,6 +2,7 @@
 # - Each shard contains samples from across the whole dataset (Local ds so AMIGOS only AMIGOS) randomly picked
 # - For performance reasons having both teacher and student inputs -> One record has to contain both teacher student value and no longer 2 different partitions.
 # - On load of a shard for first time in epoch shuffle it. Take the first B samples available (exhaustion map  to track what not to take)
+import logging
 import os
 from collections import defaultdict, deque
 from pathlib import Path
@@ -13,6 +14,9 @@ import pandas as pd
 import tensordict
 import torch
 from tensordict import TensorDict
+from tqdm import tqdm
+
+from main.utils.logging import make_logger
 
 
 def materialize(x):
@@ -28,7 +32,9 @@ def to_numpy(x: torch.Tensor):
 
 
 class ReSharder:
+    # TODO Generalize but for now works just fine given how we are setup
     def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str, shard_size_gb=4):
+        self.logger = make_logger(self.__class__.__name__)
         self.student_path = Path(student_spec_path).parent
         self.student_df = pd.read_csv(student_spec_path)
 
@@ -37,7 +43,7 @@ class ReSharder:
 
         tmap = {}
         for row in self.teacher_df.itertuples(index=False):
-            # expects columns: eid, index, sharded_eid, sharded_idx
+            # Expects columns: eid, index, sharded_eid, sharded_index
             tmap[(str(row.eid), row.index)] = (str(row.sharded_eid), int(row.sharded_index))
         self.teacher_map = tmap
 
@@ -132,10 +138,12 @@ class ReSharder:
     def build(self, compression=None, chunk0: int = 64):
         # Take on from each experiment in order (Round Robin)
         rows_by_eid = defaultdict(list)
+        # Each sample with same eid is aggregated for later usage.
         for record in self.student_df.itertuples(index=False):
             rows_by_eid[str(record.eid)].append(record)
 
-        active_eids = deque(rows_by_eid.keys())
+        active_eid_collection = deque(rows_by_eid.keys())
+        # Pos tracks how many times one element was used
         pos = {eid: 0 for eid in rows_by_eid.keys()}
 
         shard_id: int = 0
@@ -146,24 +154,26 @@ class ReSharder:
             h5=h5, shard_id=shard_id, shard_size=0
         )
 
-        # TODO csv sbalgiato? nomi migliori
-        while active_eids:
-            eid = active_eids.popleft()
-            p = pos[eid]
+        last_read_filesize = 0
+        pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
+        while active_eid_collection:
+            eid = active_eid_collection.popleft()
             bucket = rows_by_eid[eid]
+            # If all were placed we just stop using the current eid
+            if pos[eid] >= len(bucket):
+                self.logger.info(f"eid:{eid} exhausted")
+                continue
 
-            if p >= len(bucket):
-                continue  # this eid exhausted
-
-            record = bucket[p]
-            pos[eid] = p + 1
-            active_eids.append(eid)  # still active (unless it becomes exhausted later)
+            record = bucket[pos[eid]]
+            pos[eid] += 1
+            active_eid_collection.append(eid)  # Still active (unless it becomes exhausted later)
 
             idx = int(record.index)
 
             # This mapping should be solid but no harm in checking TODO
             teacher_location = self.teacher_map.get((eid, idx))
             if teacher_location is None:
+                self.logger.warn(f"Missing record for tuple ({eid}, {idx}) in teacher!")
                 continue  # No existing row
 
             student_shard, student_i = str(record.sharded_eid), int(record.sharded_index)
@@ -184,6 +194,7 @@ class ReSharder:
 
             eid_ds[i_in_shard] = eid
             idx_ds[i_in_shard] = idx
+
             self.append_records(h5, student_record, "student", i_in_shard, chunk0=chunk0, compression=compression)
             self.append_records(h5, teacher_record, "teacher", i_in_shard, chunk0=chunk0, compression=compression)
 
@@ -191,7 +202,18 @@ class ReSharder:
             total_written += 1
             if (total_written % 256) == 0:  # don’t stat every sample
                 h5.flush()
+
+                pbar.update(os.path.getsize(current_path) - last_read_filesize)
+                last_read_filesize = os.path.getsize(current_path)
+
                 if os.path.getsize(current_path) >= self.shard_size_bytes:
+                    pbar.close()
+                    pbar = tqdm(total=self.shard_size_bytes, desc=f"Shard {shard_id}",
+                                unit="B", unit_scale=True, unit_divisor=1024)
+                    # Reset the read filesize
+                    last_read_filesize = 0
+
+                    logging.info(f"Creating new shard #{shard_id}")
                     h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
                         h5=h5, shard_id=shard_id, shard_size=i_in_shard
                     )
@@ -202,6 +224,3 @@ class ReSharder:
             h5.close()
 
         return self.output_path
-
-    # TODO: Potrebbe essere improvement fare round robin [1,1,1,1,2,2,2,2,3,3,3,3]->[1,2,3,1,2,3,1,2,3]
-    #       ma vediamo poi per il momento cosi va bene. Anzi fai!
