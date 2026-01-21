@@ -4,6 +4,7 @@
 # - On load of a shard for first time in epoch shuffle it. Take the first B samples available (exhaustion map  to track what not to take)
 import logging
 import os
+import random
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Optional
@@ -32,8 +33,8 @@ def to_numpy(x: torch.Tensor):
 
 
 class ReSharder:
-    # TODO Generalize but for now works just fine given how we are setup
-    def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str, shard_size_gb=4):
+    def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str,
+                 shard_size_gb=4, compression=None, min_chunk_size: int = 1, max_chunk_size: int = 4096):
         self.logger = make_logger(self.__class__.__name__)
         self.student_path = Path(student_spec_path).parent
         self.student_df = pd.read_csv(student_spec_path)
@@ -56,6 +57,12 @@ class ReSharder:
         self.teacher_current_td: Optional[TensorDict] = None
         self.current_teacher_name: Optional[str] = None
 
+        self.min_chunk_size: int = min_chunk_size
+        self.max_chunk_size: int = max_chunk_size
+        # Commonly accepted heuristic on size of chunks for I/O and CPU tradeoff
+        self.target_chunk_mb = 8
+
+        self.compression = compression
         self.prefix: str = "ds"
 
     def load_student_shard(self, shard_name: str):
@@ -107,11 +114,20 @@ class ReSharder:
 
         return h5, output_path, shard_id, shard_name, eid_ds, idx_ds, i_in_shard
 
-    @staticmethod
-    def ensure_tensor_ds_appendable(h5: h5py.File, path: str, sample: np.ndarray, chunk0: int = 64, compression=None):
+    def choose_chunk0(self, sample: np.ndarray):
+        bytes_per_sample = sample.nbytes
+        if bytes_per_sample == 0:
+            return 1
+
+        target_bytes = self.target_chunk_mb * 1024 * 1024
+        chunk0 = max(self.min_chunk_size, target_bytes // bytes_per_sample)
+        return int(max(self.min_chunk_size, min(chunk0, self.max_chunk_size)))
+
+    def ensure_tensor_ds_appendable(self, h5: h5py.File, path: str, sample: np.ndarray):
         if path in h5:
             return h5[path]
 
+        chunk0 = self.choose_chunk0(sample)
         has_shape = sample.shape != ()
         return h5.create_dataset(
             path,
@@ -119,28 +135,33 @@ class ReSharder:
             shape=(0,) + sample.shape if has_shape else (0,),
             maxshape=(None,) + sample.shape if has_shape else (None,),
             chunks=(chunk0,) + sample.shape if has_shape else (chunk0,),
-            compression=compression
+            compression=self.compression,
+            shuffle=True,  # Recommended if you use gzip
         )
 
-    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int, chunk0: int = 64, compression=None):
+    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int):
         for modality, container in td.items():
             for key, value in container.items():
                 arr = to_numpy(value)
                 ds_path: str = f"{base}/{modality}/{key}"
 
-                ds = self.ensure_tensor_ds_appendable(h5, ds_path, arr, chunk0=chunk0, compression=compression)
-
+                ds = self.ensure_tensor_ds_appendable(h5, ds_path, arr)
                 if ds.shape[0] <= i:
                     ds.resize((i + 1,) + ds.shape[1:])
 
                 ds[i, ...] = arr
 
-    def build(self, compression=None, chunk0: int = 64):
+    def build(self):
         # Take on from each experiment in order (Round Robin)
         rows_by_eid = defaultdict(list)
         # Each sample with same eid is aggregated for later usage.
         for record in self.student_df.itertuples(index=False):
             rows_by_eid[str(record.eid)].append(record)
+
+        # Seed for reproducibility
+        rng = random.Random(123)
+        for eid, bucket in rows_by_eid.items():
+            rng.shuffle(bucket)
 
         active_eid_collection = deque(rows_by_eid.keys())
         # Pos tracks how many times one element was used
@@ -195,8 +216,8 @@ class ReSharder:
             eid_ds[i_in_shard] = eid
             idx_ds[i_in_shard] = idx
 
-            self.append_records(h5, student_record, "student", i_in_shard, chunk0=chunk0, compression=compression)
-            self.append_records(h5, teacher_record, "teacher", i_in_shard, chunk0=chunk0, compression=compression)
+            self.append_records(h5, student_record, "student", i_in_shard)
+            self.append_records(h5, teacher_record, "teacher", i_in_shard)
 
             i_in_shard += 1
             total_written += 1

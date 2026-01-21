@@ -26,7 +26,8 @@ def main(cfg: Config):
         student_spec_path=cfg.target.student_spec_path,
         teacher_spec_path=cfg.target.teacher_spec_path,
         output_path=cfg.target.output_path,
-        shard_size_gb=cfg.shard_size_gb
+        shard_size_gb=cfg.shard_size_gb,
+        compression="lzf"
     )
 
     sharder.build()
