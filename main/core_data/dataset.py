@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Tuple, Iterator, List, Optional, Any
 
 import h5py
+import numpy as np
 import pandas as pd
 import tensordict
 import torch
@@ -24,6 +25,11 @@ from torch import device
 from torch.utils.data import Sampler, Subset, IterableDataset
 from torch.utils.data import get_worker_info
 
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.text import Text
+from main.core_data.media.video import Video
 from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
 from main.dataset.quantization import Float16ToInt8Quantizer
 from main.utils.logging import make_logger
@@ -149,6 +155,7 @@ class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, item):
         # todo verify this acces
+
         shard_name = self.sharded_eid[item]
         idx_in_shard = int(self.sharded_idx[item])
 
@@ -174,10 +181,61 @@ class SampleReference:
     local_idx: int
 
 
+class H5ModalityShardExtractor:
+    def __init__(self, modalities: dict[str, list[str]]):
+        # deep structures are not supported as we don't need them
+        self.modalities: dict[str, list[str]] = modalities
+        self.state: dict = None
+
+    @staticmethod
+    def default():
+        return H5ModalityShardExtractor({
+            Video.modality_code(): ["data", "mask", "scales"],
+            Audio.modality_code(): ["data", "mask", "scales"],
+            Text.modality_code(): ["data", "mask", "scales"],
+            EEG.modality_code(): ["data", "mask", "scales"],
+            ECG.modality_code(): ["data", "mask", "scales"]
+        })
+
+    def take(self, idx: int):
+        out = {}
+        # todo misura per vedere performance
+        for modality, field_map in self.state.items():
+            modality_object = {}
+            for field, arr in field_map.items():
+                modality_object[field] = arr[idx]
+            out[modality] = modality_object
+
+        return out
+
+    def make(self, h5: h5py.File, start: int, end: int) -> dict:
+        self.state = {}
+        for modality, fields in self.modalities.items():
+            if modality not in h5:
+                # Modality ignored as isn't there
+                continue
+
+            modality_object = {}
+
+            for field in fields:
+                if f"{modality}/{field}" in h5:
+                    modality_object[field] = h5[f"{modality}/{field}"][start:end]
+
+            self.state[modality] = modality_object
+
+        return self.state
+
+
 # todo iterable dataset
 class H5KdSourceDataset(IterableDataset):
-    def __init__(self, shards_path: str, buffer_size: int = 1024, seed: int = 42,
-                 selected_device="cpu", index_cache_name="index.json"):
+    def __init__(self,
+                 shards_path: str,
+                 student_shard_extractor: H5ModalityShardExtractor = H5ModalityShardExtractor.default(),
+                 teacher_shard_extractor: H5ModalityShardExtractor = H5ModalityShardExtractor.default(),
+                 buffer_size: int = 1024,
+                 seed: int = 42,
+                 selected_device="cpu",
+                 index_cache_name="index.json"):
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
 
@@ -201,6 +259,8 @@ class H5KdSourceDataset(IterableDataset):
 
         cache_path = os.path.join(shards_path, index_cache_name)
         self.shard_lengths: list[int] = self.load_lengths(cache_path)
+        self.student_shards_extractor: H5ModalityShardExtractor = student_shard_extractor
+        self.teacher_shards_extractor: H5ModalityShardExtractor = teacher_shard_extractor
 
     def set_epoch(self, epoch: int):
         self.epoch = int(epoch)
@@ -245,41 +305,19 @@ class H5KdSourceDataset(IterableDataset):
         n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
         for start in range(0, n, self.block_size):
             end = min(start + self.block_size, n)
-
             # Read meta in one go
             eid_list = h5["meta/eid"][start:end]
             idx_list = h5["meta/index"][start:end]
 
-            student_vid = {
-                "data": h5["student/vid/data"][start:end],
-                "mask": h5["student/vid/mask"][start:end],
-                "scales": h5["student/vid/scales"][start:end],
-            }
-
-            teacher_vid = {
-                "data": h5["teacher/vid/data"][start:end],
-                "mask": h5["teacher/vid/mask"][start:end],
-                "scales": h5["teacher/vid/scales"][start:end],
-            }
+            self.student_shards_extractor.make(h5["student"], start, end)
+            self.teacher_shards_extractor.make(h5["teacher"], start, end)
 
             for i in range(end - start):
                 yield {
-                    "eid": eid_list[i],
+                    "eid": eid_list[i].decode() if hasattr(eid_list[i], "decode") else eid_list[i],
                     "idx": idx_list[i],
-                    "student": {
-                        "vid": {
-                            "data": student_vid["data"][i],
-                            "mask": student_vid["mask"][i],
-                            "scales": student_vid["scales"][i],
-                        }
-                    },
-                    "teacher": {
-                        "vid": {
-                            "data": teacher_vid["data"][i],
-                            "mask": teacher_vid["mask"][i],
-                            "scales": teacher_vid["scales"][i],
-                        }
-                    }
+                    "student": self.student_shards_extractor.take(i),
+                    "teacher": self.teacher_shards_extractor.take(i)
                 }
 
     # todo Buffer shuffle (best compromise):
@@ -356,6 +394,40 @@ class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
         return len(self.df)
 
 
+class RoundRobinMultiDataset(IterableDataset):
+    def __init__(self, datasets: list[IterableDataset], weights, seed: int):
+        super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+        self.datasets: list[IterableDataset] = datasets
+
+        w = np.asarray(weights, dtype=np.float64)
+        self.weights = w / w.sum()
+
+        self.epoch = 0
+        self.seed = seed
+
+    def set_epoch(self, epoch: int):
+        self.epoch = int(epoch)
+        for dataset in self.datasets:
+            if hasattr(dataset, "set_epoch"):
+                dataset.set_epoch(epoch)
+
+    def __iter__(self):
+        worker_info = get_worker_info()
+        # todo use torn rand to only stay on one
+        rng = np.random.default_rng(self.seed + self.epoch + (0 if worker_info is None else 10_000 * worker_info.id))
+        iters = [iter(ds) for ds in self.datasets]
+
+        while True:
+            k = int(rng.choice(len(iters), p=self.weights))
+            try:
+                yield next(iters[k])
+            except StopIteration:
+                # restart that dataset (cycle)
+                iters[k] = iter(self.datasets[k])
+
+
+# todo make version for multiIterableDataset
 # So we did it to make the fusion/KD training signal cleaner and more stable, and to reduce unintended bias from batch composition
 class MultiDataset(torch.utils.data.Dataset):
     def __init__(self, datasets: list[torch.utils.data.Dataset]):

@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from main.core_data.dataset import RequiredKey, FlexibleEmbeddingsSpecMediaDatasetSlow, MultiDataset, \
     MultiDatasetQueueBatchSampler, SequentialPerDatasetBatchSampler, CachingQuantizedSpecMediaDataset, \
-    CachableDatasetDescriptor
+    CachableDatasetDescriptor, H5KdSourceDataset
 from main.model.kd_dataset_wrapper import KdDatasetWrapper
 
 
@@ -31,7 +31,7 @@ def default_collate_fn(batch):
 class KdTrainDataModule(lightning.LightningDataModule):
     def __init__(self,
                  student_keys: list[RequiredKey], teacher_keys: list[RequiredKey],
-                 dataset_paths: list[tuple[CachableDatasetDescriptor, CachableDatasetDescriptor]],
+                 dataset_paths: list[CachableDatasetDescriptor],
                  # Parameters for stuff less related to the data itself
                  batch_size: int, batches_per_epoch: int,
                  seed: int, collate_fn=default_collate_fn):
@@ -44,7 +44,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         super().__init__()
         self.student_keys: list[RequiredKey] = student_keys
         self.teacher_keys: list[RequiredKey] = teacher_keys
-        self.dataset_paths: list[tuple[CachableDatasetDescriptor, CachableDatasetDescriptor]] = dataset_paths
+        self.shards_path: list[CachableDatasetDescriptor] = dataset_paths
 
         self.train_dataset: Optional[MultiDataset] = None
         self.valid_dataset: Optional[MultiDataset] = None
@@ -58,18 +58,11 @@ class KdTrainDataModule(lightning.LightningDataModule):
 
     def setup(self, stage: str) -> None:
         dataset_pairs = []
-        for student, teacher in self.dataset_paths:
-            dataset_pairs.append(
-                KdDatasetWrapper(
-                    student=CachingQuantizedSpecMediaDataset(
-                        dataset_spec_file=student.dataset_spec_file, cache_path=student.cache_path
-                    ),
-                    teacher=CachingQuantizedSpecMediaDataset(
-                        dataset_spec_file=teacher.dataset_spec_file, cache_path=teacher.cache_path
-                    )
-                )
-            )
+        for shards_path in self.shards_path:
+            dataset_pairs.append(H5KdSourceDataset(shards_path.dataset_spec_file))
+
         ds = MultiDataset(dataset_pairs)
+        # todo non penso di poterlo fare
         self.train_dataset, self.valid_dataset, self.test_dataset = ds.split(0.75, 0.15, seed=self.seed)
 
     def _move(self, x, device):
@@ -92,13 +85,6 @@ class KdTrainDataModule(lightning.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
-            batch_sampler=MultiDatasetQueueBatchSampler(
-                multi=self.train_dataset,
-                batch_size=self.batch_size,
-                batches_per_epoch=self.batches_per_epoch,  # To allow small ds to be present and not too repetitive
-                alpha=0.0,  # Probability normalization or stuff like that on the draws from different ds based on size
-                generator=torch.Generator().manual_seed(self.seed)
-            ),
             collate_fn=self.collate_fn,
             num_workers=2,
             prefetch_factor=2,
