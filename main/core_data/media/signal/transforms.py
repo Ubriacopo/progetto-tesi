@@ -11,28 +11,6 @@ class SignalToTensor(nn.Module):
         return torch.from_numpy(x.data.get_data())
 
 
-class DataAsMneRaw(nn.Module):
-    def __init__(self, channel_names: list[str], channel_types: list[str], verbose: bool = False):
-        super().__init__()
-        self.channel_names = channel_names
-        self.channel_types = channel_types
-        self.verbose: bool = verbose
-
-    def forward(self, x: Signal) -> Signal:
-        # Convertion already happened
-        if isinstance(x.data, mne.io.RawArray):
-            return x
-
-        if x.data.shape[0] != len(self.channel_names):
-            x.data = x.data.T
-
-        info = mne.create_info(ch_names=self.channel_names, ch_types=self.channel_types, sfreq=x.fs)
-        raw = mne.io.RawArray(x.data, info=info, verbose=self.verbose)
-        x.data = raw
-
-        return x
-
-
 class SubclipMneRaw(nn.Module):
     # noinspection PyMethodMayBeStatic
     def forward(self, x: Signal) -> Signal:

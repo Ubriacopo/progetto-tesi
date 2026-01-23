@@ -27,24 +27,6 @@ class EEGToTensor(nn.Module):
         return x
 
 
-class AddMneAnnotation(nn.Module):
-    # noinspection PyMethodMayBeStatic
-    def forward(self, x: EEG):
-        raw: mne.io.BaseRaw = x.data
-        if not isinstance(raw, mne.io.BaseRaw):
-            raise TypeError("To call this pipeline you have to turn to MNE object first ")
-        if x.eid is None:
-            raise ValueError("A valid descriptor to identify the annotation is required")
-
-        start, stop = x.interval
-        new_annotation = mne.Annotations(onset=[start], duration=[stop - start], description=x.eid, orig_time=None)
-        existing = getattr(raw, 'annotations', None)
-
-        merged = new_annotation if existing is None else existing + new_annotation
-        raw.set_annotations(merged)
-        return x
-
-
 class EEGResample(nn.Module):
     def __init__(self, tfreq: int, sfreq: int = None, verbose: bool = False):
         super().__init__()
@@ -156,7 +138,7 @@ class EegTimePadding(nn.Module):
 
         # Set time steps first. We get a simpler MASK like this.
         data = rearrange(data, "c t d -> t c d")  # (T, C, D)
-        mask = rearrange(mask, "c t -> t c")      # (T, C)
+        mask = rearrange(mask, "c t -> t c")  # (T, C)
         return data if self.drop_mask else {"data": data, "mask": mask}
 
 
@@ -200,30 +182,3 @@ class CanonicalOrderTransform(nn.Module):
     def forward(self, x: torch.Tensor) -> MaskedValue:
         x, mask = self.canonical_order.adapt(x, self.eeg_order)
         return {"data": x, "mask": mask}
-
-
-class MaskedPooling(nn.Module):
-    """
-    Simple fusion pooling on mask
-    """
-
-    # noinspection PyMethodMayBeStatic
-    def forward(self, z: torch.Tensor, mask=None) -> torch.Tensor:
-        norm_factor = mask.float().sum(dim=-1, keepdim=True)
-        norm_factor = norm_factor.clamp_min(1e-6)
-        z = (z * mask.unsqueeze(-1)).sum(dim=-2) / norm_factor
-
-        return z
-
-
-class TimePooling(nn.Module):
-    def __init__(self, to_seconds: int):
-        super().__init__()
-        self.to_seconds: int = to_seconds
-
-    # TODO VERIFICA
-    def forward(self, x: MaskedValue) -> MaskedValue:
-        data = rearrange(x['data'], "c (t f) d -> c t f d", f=self.to_seconds)
-        mask = rearrange(x['mask'], "c (t f) -> c t f", f=self.to_seconds)
-        x['data'] = MaskedPooling()(data, mask)
-        return x

@@ -8,7 +8,7 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 
-from main.dataset.quantization import Float16ToInt8Quantizer
+from main.core_data.quantization import Float16ToInt8Quantizer
 from main.utils.logging import make_logger
 
 

@@ -158,6 +158,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         return y
 
     def export(self, x: list[FlexibleDatasetPoint], output_path: str) -> None:
+        # todo apply quantizartion + export to h5 with teacher sample
         objects = [TensorDict(s.to_dict()) if hasattr(s, "to_dict") else TensorDict(s) for s in x]
         tensor_dict = stack(objects, dim=0)
         Path(output_path).mkdir(parents=True, exist_ok=True)

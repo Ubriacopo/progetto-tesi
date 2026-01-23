@@ -1,18 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
-import fcntl
 import glob
 import json
 import os
 import shutil
-import subprocess
-import time
 import uuid
-from abc import ABC
-from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, Iterator, List, Optional, Any
+from typing import Tuple, Iterator, Optional, Any
 
 import h5py
 import numpy as np
@@ -21,7 +16,6 @@ import tensordict
 import torch
 from cachetools import LRUCache
 from tensordict import TensorDict
-from torch import device
 from torch.utils.data import Sampler, Subset, IterableDataset
 from torch.utils.data import get_worker_info
 
@@ -30,8 +24,7 @@ from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
-from main.core_data.data_point import FlexibleDatasetTransformWrapper, FlexibleDatasetPoint
-from main.dataset.quantization import Float16ToInt8Quantizer
+from main.core_data.quantization import Float16ToInt8Quantizer
 from main.utils.logging import make_logger
 
 
@@ -422,8 +415,9 @@ class RoundRobinMultiDataset(IterableDataset):
             k = int(rng.choice(len(iters), p=self.weights))
             try:
                 yield next(iters[k])
+
             except StopIteration:
-                # restart that dataset (cycle)
+                # Restart that dataset (cycle)
                 iters[k] = iter(self.datasets[k])
 
 
@@ -495,107 +489,6 @@ class MultiDataset(torch.utils.data.Dataset):
 class QueueState:
     perm: torch.Tensor  # permutation of [0..length-1]
     ptr: int  # next position to read
-
-
-# TODO document
-class MultiDatasetQueueBatchSampler(Sampler[list[int]]):
-    def __init__(self, multi: MultiDataset, batch_size: int,
-                 batches_per_epoch: int, alpha=.0, generator: torch.Generator | None = None):
-        super().__init__()
-        # Initialize the parameters
-        self.dataset: MultiDataset = multi
-        self.batch_size: int = batch_size
-        self.batches_per_epoch: int = batches_per_epoch
-        self.gen = generator if generator is not None else torch.Generator()
-
-        ranges = multi.dataset_ranges
-        self.starts = torch.tensor([s for s, l in ranges], dtype=torch.long)
-        self.lengths = torch.tensor([l for s, l in ranges], dtype=torch.long)
-        if (self.lengths < self.batch_size).any():
-            bad = torch.nonzero(self.lengths < self.batch_size, as_tuple=False).flatten().tolist()
-            raise ValueError(
-                f"Datasets smaller than batch_size={self.batch_size}: {bad} (lengths={self.lengths.tolist()})"
-            )
-
-        # Presence of each dataset in the random draws
-        weights = self.lengths.float().pow(alpha)
-        self.probs = weights / weights.sum()
-        self._states: list[QueueState] = []
-        for length in self.lengths.tolist():
-            perm = torch.randperm(length, generator=self.gen)
-            self._states.append(QueueState(perm=perm, ptr=0))
-
-    def __len__(self) -> int:
-        return self.batches_per_epoch
-
-    def _reshuffle(self, d: int) -> None:
-        length = int(self.lengths[d].item())
-        self._states[d].perm = torch.randperm(length, generator=self.gen)
-        self._states[d].ptr = 0
-
-    def _next_local_batch(self, dataset_idx: int) -> torch.Tensor:
-        current_state = self._states[dataset_idx]
-        length = int(self.lengths[dataset_idx].item())
-
-        # If enough contiguous items left in queue, take them.
-        if current_state.ptr + self.batch_size <= length:
-            out = current_state.perm[current_state.ptr: current_state.ptr + self.batch_size]
-            current_state.ptr += self.batch_size
-            return out
-
-        # Not enough left.
-        # Discard tail and reshuffle for a fresh full batch
-        self._reshuffle(dataset_idx)
-        current_state = self._states[dataset_idx]
-
-        out = current_state.perm[0:self.batch_size]
-        current_state.ptr = self.batch_size
-
-        return out
-
-    def __iter__(self) -> Iterator[List[int]]:
-        for _ in range(self.batches_per_epoch):
-            d = int(torch.multinomial(self.probs, 1, replacement=True, generator=self.gen).item())
-            start = int(self.starts[d].item())
-
-            local = self._next_local_batch(d)
-            yield (local + start).tolist()
-
-
-class DatasetFirstBatchSampler(Sampler[list[int]]):
-    def __init__(self, multi: MultiDataset, batch_size: int,
-                 batches_per_epoch: int, alpha=.0, generator: torch.Generator | None = None):
-        super().__init__()
-        # Initialize the parameters
-        self.dataset: MultiDataset = multi
-        self.batch_size: int = batch_size
-        self.batches_per_epoch: int = batches_per_epoch
-        self.gen = generator if generator is not None else torch.Generator()
-
-        ranges = multi.dataset_ranges
-        self.starts = torch.tensor([s for s, l in ranges], dtype=torch.long)
-        self.lengths = torch.tensor([l for s, l in ranges], dtype=torch.long)
-
-        weights = (self.lengths.float() ** alpha)
-        self.probs = weights / weights.sum()
-
-    def __len__(self):
-        return self.batches_per_epoch
-
-    def __iter__(self):
-        for _ in range(self.batches_per_epoch):
-            dataset_id = torch.multinomial(self.probs, 1, replacement=True, generator=self.gen).item()
-            start = self.starts[dataset_id].item()
-            length = self.lengths[dataset_id].item()
-
-            if length < self.batch_size:
-                raise ValueError(
-                    f"Dataset {dataset_id} has length {length}, " f"which is smaller than batch_size={self.batch_size}."
-                    f"Thus we cannot sample a unique batch."
-                )
-
-            local = torch.randperm(length, generator=self.gen)[:self.batch_size].tolist()
-            yield [start + j for j in local]
 
 
 # todo rename

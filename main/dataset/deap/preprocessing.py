@@ -17,7 +17,7 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
             vid_vivit_interleaved_transform_pipe(config),
             eeg_transform_pipe(config),
             # Audio and text do not exist so we cannot use them :(
-            assessment_transform_pipe(),
+            # assessment_transform_pipe(),
             (Metadata.modality_code(), MetadataToTensor())
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(

@@ -1,15 +1,12 @@
-import dataclasses
-from typing import Optional, Any
+from typing import Optional
 
 import lightning
 import tensordict
 import torch
 from torch.utils.data import DataLoader
 
-from main.core_data.dataset import RequiredKey, FlexibleEmbeddingsSpecMediaDatasetSlow, MultiDataset, \
-    MultiDatasetQueueBatchSampler, SequentialPerDatasetBatchSampler, CachingQuantizedSpecMediaDataset, \
-    CachableDatasetDescriptor, H5KdSourceDataset
-from main.model.kd_dataset_wrapper import KdDatasetWrapper
+from main.core_data.dataset import RequiredKey, MultiDataset, \
+    SequentialPerDatasetBatchSampler, CachableDatasetDescriptor, H5KdSourceDataset
 
 
 def olddefault_collate_fn(batch):

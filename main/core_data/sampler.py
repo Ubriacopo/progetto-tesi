@@ -377,9 +377,5 @@ class RandomizedSizeIntervalsSegmenter(Segmenter):
             start = np.random.rand(1) * max_start
             stop = start + dur
             segments.append((start, stop))
+
         return segments
-
-
-class SpecSegmenter(Segmenter):
-    def compute_segments(self, sample: FlexibleDatasetPoint, num_segments: int = None) -> list[tuple[int, int]]:
-        pass

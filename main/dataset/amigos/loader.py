@@ -92,7 +92,7 @@ class AmigosPointsLoader(DataPointsLoader):
                           filepath=media_path).as_mod_tuple(),
                     Audio(data=clip.audio, fs=clip.audio.fps, eid=nei, filepath=media_path).as_mod_tuple(),
                     Text(eid=nei, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
-                    Assessment(data=assessments[0][0], eid=nei).as_mod_tuple(),
+                    # Assessment(data=assessments[0][0], eid=nei).as_mod_tuple(), no longer of use
                     Metadata(data=metadata, eid=nei).as_mod_tuple()
                 )
 

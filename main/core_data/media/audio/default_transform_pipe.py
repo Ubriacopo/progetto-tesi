@@ -33,19 +33,6 @@ def aud_wav2vec_interleaved_txt_extract_transform_pipe(config: DatasetConfig) ->
     )
 
 
-def aud_wav2vec_default_txt_extract_transform_pipe(target_config: AudTargetConfig, fs: int, max_length: int) \
-        -> tuple[str, nn.Module]:
-    return Audio.modality_code(), nn.Sequential(
-        SubclipAudio(),  # In the split interval
-        AudioToTensor(),  # Transform to a tensor object
-        ToMono(),  # Drop the dual channel audio and go to Mono
-        Resample(orig_freq=fs, new_freq=target_config.fs),  # TODO vedi se questo crea problemi
-        SignalZeroMasking(max_length, target_config.fs, channels_first=False),
-        WavLmFeatureExtractorTransform(sampling_rate=target_config.fs),
-        WavLmEmbedderTransform()
-    )
-
-
 def aud_vate_basic_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     return Audio.modality_code(), SequentialWithFallback(
         SubclipAudio(),  # In the split interval
