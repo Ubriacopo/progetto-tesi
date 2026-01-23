@@ -4,6 +4,7 @@ import dataclasses
 import glob
 import json
 import os
+import random
 import shutil
 import uuid
 from pathlib import Path
@@ -15,7 +16,6 @@ import pandas as pd
 import tensordict
 import torch
 from cachetools import LRUCache
-from tensordict import TensorDict
 from torch.utils.data import Sampler, Subset, IterableDataset
 from torch.utils.data import get_worker_info
 
@@ -24,7 +24,6 @@ from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
-from main.core_data.quantization import Float16ToInt8Quantizer
 from main.utils.logging import make_logger
 
 
@@ -89,89 +88,9 @@ class SimpleDiskLRU:
 
 @dataclasses.dataclass
 class CachableDatasetDescriptor:
-    dataset_spec_file: str
+    dataset_path: str
     cache_path: Optional[str]
-
-
-# todo verify
-class CachingQuantizedSpecMediaDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_spec_file: str, cache_path: str, selected_device='cpu'):
-        self.logger = make_logger(self.__class__.__name__)
-        self.device = selected_device
-
-        self.quantizer = Float16ToInt8Quantizer()
-
-        self.base_path: str = str(Path(dataset_spec_file).parent)
-        self.cache_path: str = cache_path
-        # Read the spec
-        self.df = pd.read_csv(dataset_spec_file, index_col=False)
-        # If the cache path is the same as the dataset path we are using a cached version directly (AMIGOS, ..)
-        # if the cache path is not given also no caching enabled
-        self.lru_caching_enabled = self.cache_path is not None and self.base_path != self.cache_path
-
-        # Initialized differently for each worker
-        self.disk_lru = None
-
-        self.open_shard_td: Optional[TensorDict] = None
-        self.open_shard_name: Optional[str] = None
-
-        self.inner_idx = self.df["index"].to_numpy()
-        self.eid_list = self.df["eid"].astype(str).to_numpy()
-        self.sharded_eid = self.df["sharded_eid"].to_numpy()
-        self.sharded_idx = self.df["sharded_index"].to_numpy()
-
-    @staticmethod
-    def _worker_cache_dir(base_cache_dir: str) -> str:
-        worker_info = get_worker_info()
-        return base_cache_dir if worker_info is None else str(Path(base_cache_dir) / f"w{worker_info.id}")
-
-    def _get_lru(self):
-        if self.disk_lru is None and self.lru_caching_enabled:
-            worker_info = get_worker_info()
-            num_workers = worker_info.num_workers if worker_info else 1
-
-            self.disk_lru = SimpleDiskLRU(
-                self.base_path, self._worker_cache_dir(self.cache_path), max(4, 30 // num_workers), shard_gb=4
-            )
-
-        # Return the currently set instance (might be None if lru_caching is disabled.
-        return self.disk_lru
-
-    def get_shard_td(self, shard_path: Path, shard_name: str):
-        # Avoid re-opening memmap for every sample so we store in current memory
-        if self.open_shard_name != shard_name:
-            self.open_shard_td = tensordict.load_memmap(shard_path)
-            # Used for checking if the tensordict is open
-            self.open_shard_name = shard_name
-
-        return self.open_shard_td
-
-    def __getitem__(self, item):
-        # todo verify this acces
-
-        shard_name = self.sharded_eid[item]
-        idx_in_shard = int(self.sharded_idx[item])
-
-        lru = self._get_lru()
-        if lru is None:
-            shard_path = Path(self.base_path) / str(shard_name)
-        else:
-            shard_path = lru.get(str(shard_name))
-
-        shard = self.get_shard_td(shard_path, str(shard_name))
-        sample = shard[idx_in_shard]
-        # In hope to speed up training
-        sample.pop("meta", None)
-        return sample
-
-    def __len__(self):
-        return len(self.df)
-
-
-@dataclasses.dataclass(frozen=True)
-class SampleReference:
-    shard_idx: int
-    local_idx: int
+    dataset_weight: float
 
 
 class H5ModalityShardExtractor:
@@ -219,13 +138,71 @@ class H5ModalityShardExtractor:
         return self.state
 
 
-# todo iterable dataset
 class H5KdSourceDataset(IterableDataset):
+    @staticmethod
+    def shard_num_samples(path: Path) -> int:
+        with h5py.File(path, "r") as h5:
+            return int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+
+    @staticmethod
+    def write_split_manifest(shards_path: str, out_path: str, block_size: int = 256, seed: int = 42,
+                             val_fraction: float = 0.1, test_fraction: float = 0.15, shuffle_shards: bool = True):
+        shards_path: Path = Path(shards_path)
+        out_path: Path = Path(out_path)
+        out_path.mkdir(parents=True, exist_ok=True)
+
+        # Read possible shards
+        shards = sorted(shards_path.glob("*.h5"))
+        assert shards, f"No .h5 in {shards_path}"
+
+        shard_info = [(p.name, H5KdSourceDataset.shard_num_samples(p)) for p in shards]
+        total = sum(n for _, n in shard_info)
+
+        n_val, n_test = int(round(val_fraction * total)), int(round(test_fraction * total))
+        n_train = total - n_val - n_test
+
+        order = shard_info[:]
+        if shuffle_shards:
+            rng = random.Random(seed)
+            rng.shuffle(order)
+
+        split_names = ["train", "val", "test"]
+        splits = {
+            "train": {"target": n_train, "rows": [], "count": 0},
+            "val": {"target": n_val, "rows": [], "count": 0},
+            "test": {"target": n_test, "rows": [], "count": 0},
+        }
+
+        cur = 0  # which split we're filling
+        for shard_name, n in order:
+            start = 0
+            while start < n:
+                stop = min(start + block_size, n)
+
+                while cur < len(split_names) and splits[split_names[cur]]["count"] >= splits[split_names[cur]][
+                    "target"]:
+                    cur += 1
+                if cur >= len(split_names):
+                    # should not happen, but just in case due to rounding
+                    cur = len(split_names) - 1
+                split_name = split_names[cur]
+                splits[split_name]["rows"].append((shard_name, start, stop))
+                splits[split_name]["count"] += stop - start
+
+                start = stop
+
+        for split_name in split_names:
+            df = pd.DataFrame(splits[split_name]["rows"], columns=["shard", "start", "end"])
+            df.to_csv(out_path / f"{split_name}.csv", index=False)
+        return {k: splits[k]["count"] for k in splits}, total
+
     def __init__(self,
                  shards_path: str,
+                 manifest_csv_name: str,
                  student_shard_extractor: H5ModalityShardExtractor = H5ModalityShardExtractor.default(),
                  teacher_shard_extractor: H5ModalityShardExtractor = H5ModalityShardExtractor.default(),
                  buffer_size: int = 1024,
+                 block_size: int = 256,
                  seed: int = 42,
                  selected_device="cpu",
                  index_cache_name="index.json"):
@@ -237,6 +214,7 @@ class H5KdSourceDataset(IterableDataset):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # todo use pathlib
+        self.shards_root: str = shards_path
         self.shard_paths: list[str] = sorted(glob.glob(os.path.join(shards_path, "*.h5")))
         if not self.shard_paths:
             raise FileNotFoundError(f"No .h5 shards found in: {shards_path}")
@@ -248,15 +226,27 @@ class H5KdSourceDataset(IterableDataset):
         self.seed: int = seed
         self.epoch: int = 0
 
-        self.block_size: int = 256  # todo what isi t purely performance wise no effect on results
-
+        self.block_size: int = block_size
         cache_path = os.path.join(shards_path, index_cache_name)
         self.shard_lengths: list[int] = self.load_lengths(cache_path)
         self.student_shards_extractor: H5ModalityShardExtractor = student_shard_extractor
         self.teacher_shards_extractor: H5ModalityShardExtractor = teacher_shard_extractor
 
+        df = pd.read_csv(shards_path + "/" + manifest_csv_name, dtype={"shard": str, "start": int, "end": int})
+        self.entries = list(df.itertuples(index=False, name=None))
+        self.length = int(sum(end - start for _, start, end in self.entries))
+
     def set_epoch(self, epoch: int):
         self.epoch = int(epoch)
+
+    def entries_for_worker(self, g: torch.Generator):
+        perm = torch.randperm(len(self.entries), generator=g).tolist()
+        entries = [self.entries[i] for i in perm]
+
+        if get_worker_info() is not None:
+            entries = entries[get_worker_info().id:: get_worker_info().num_workers]
+
+        return entries
 
     # todo meh
     def load_lengths(self, cache_path: str):
@@ -294,18 +284,26 @@ class H5KdSourceDataset(IterableDataset):
 
         return shard_paths
 
-    def iter_shard(self, h5: h5py.File) -> Iterator[dict[str, dict]]:
+    def iter_shard(self, h5: h5py.File, start: int, stop: int) -> Iterator[dict[str, dict]]:
         n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
-        for start in range(0, n, self.block_size):
-            end = min(start + self.block_size, n)
+
+        # Clamp
+        start = max(0, int(start))
+        stop = min(int(stop), n)
+
+        if stop <= start:
+            return
+
+        for s in range(start, stop, self.block_size):
+            e = min(s + self.block_size, stop)
             # Read meta in one go
-            eid_list = h5["meta/eid"][start:end]
-            idx_list = h5["meta/index"][start:end]
+            eid_list = h5["meta/eid"][s:e]
+            idx_list = h5["meta/index"][s:e]
 
-            self.student_shards_extractor.make(h5["student"], start, end)
-            self.teacher_shards_extractor.make(h5["teacher"], start, end)
+            self.student_shards_extractor.make(h5["student"], s, e)
+            self.teacher_shards_extractor.make(h5["teacher"], s, e)
 
-            for i in range(end - start):
+            for i in range(e - s):
                 yield {
                     "eid": eid_list[i].decode() if hasattr(eid_list[i], "decode") else eid_list[i],
                     "idx": idx_list[i],
@@ -313,7 +311,6 @@ class H5KdSourceDataset(IterableDataset):
                     "teacher": self.teacher_shards_extractor.take(i)
                 }
 
-    # todo Buffer shuffle (best compromise):
     def __iter__(self):
         # Use a different RNG per worker (and rank), but deterministic across epochs
         worker_info = get_worker_info()
@@ -322,25 +319,40 @@ class H5KdSourceDataset(IterableDataset):
         # This generator behaves the same for all the workers
         global_g = torch.Generator()
         global_g.manual_seed(self.seed + self.epoch)
-
         # Worker specific
         g = torch.Generator()
         g.manual_seed(self.seed + self.epoch + 10 * worker_id)
 
+        warmup: int = min(512, self.buffer_size)
+        buffer_growth_rate: int = 64  # How fast I fill the buffer if I am still loading
+        ingested_since_yield: int = 0  # Iteration counter to know passed yields
+
         buffer: list[dict[str, Any]] = []
-        for path in self.get_shards_for_worker(global_g):
-            with h5py.File(path, "r") as h5:
-                for sample in self.iter_shard(h5):
+        for shard_name, start, stop in self.entries_for_worker(global_g):
+            with h5py.File(str(Path(self.shards_root) / shard_name), "r", "r") as h5:
+                for sample in self.iter_shard(h5, start=start, stop=stop):
                     buffer.append(sample)
-                    if len(buffer) >= self.buffer_size:
-                        yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
+
+                    if len(buffer) < warmup:
+                        continue  # You have to at least fill warmup size
+
+                    ingested_since_yield += 1
+                    if len(buffer) < self.buffer_size:
+                        if ingested_since_yield < buffer_growth_rate:
+                            continue
+                        ingested_since_yield = 0
+                    else:
+                        # This if for the 1-in / 1-out
+                        ingested_since_yield = 0
+
+                    # Give a random element
+                    yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
 
         while buffer:
             yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
 
     def __len__(self) -> int:
-        # IterableDataset len is optional; this is a reasonable estimate/true value here.
-        return int(sum(self.shard_lengths))
+        return self.length
 
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
@@ -360,7 +372,7 @@ class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.base_path: str = str(Path(dataset_spec_file).parent)
-        self.df = pd.read_csv(dataset_spec_file, index_col=False)
+        self.df = pd.read_csv(dataset_spec_file, index_col=False, )
         self.inner_idx = self.df["index"].to_numpy()
         self.eid_list = self.df["eid"].astype(str).to_numpy()
 
@@ -393,8 +405,8 @@ class RoundRobinMultiDataset(IterableDataset):
         self.logger = make_logger(self.__class__.__name__)
         self.datasets: list[IterableDataset] = datasets
 
-        w = np.asarray(weights, dtype=np.float64)
-        self.weights = w / w.sum()
+        w = torch.tensor(weights, dtype=torch.float)
+        self.weights = w
 
         self.epoch = 0
         self.seed = seed
@@ -407,12 +419,13 @@ class RoundRobinMultiDataset(IterableDataset):
 
     def __iter__(self):
         worker_info = get_worker_info()
-        # todo use torn rand to only stay on one
-        rng = np.random.default_rng(self.seed + self.epoch + (0 if worker_info is None else 10_000 * worker_info.id))
-        iters = [iter(ds) for ds in self.datasets]
 
+        g = torch.Generator()
+        g.manual_seed(self.seed + self.epoch + (0 if worker_info is None else 10000 * worker_info.id))
+
+        iters = [iter(ds) for ds in self.datasets]
         while True:
-            k = int(rng.choice(len(iters), p=self.weights))
+            k = int(torch.multinomial(self.weights, num_samples=1, replacement=True).item())
             try:
                 yield next(iters[k])
 

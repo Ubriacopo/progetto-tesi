@@ -9,7 +9,7 @@ from torch import nn
 
 from main.core_data.media.eeg.eeg import EEG
 from main.core_data.utils import timed
-from main.dataset.channel_canonical_order import EegCanonicalOrder
+from main.core_data.media.eeg.channel_canonical_order import EegCanonicalOrder
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 

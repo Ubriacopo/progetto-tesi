@@ -9,7 +9,7 @@ from main.app_config import AppConfig
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
 from main.model.script import hydra_utils
 from main.model.script.hydra_beans import KdConfig
-from main.model.train_utils import KdTrainDataModule
+from main.model.neegavi.train_utils import KdTrainDataModule
 from main.utils.logging import make_logger
 
 
