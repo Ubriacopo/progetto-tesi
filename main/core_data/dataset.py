@@ -143,7 +143,8 @@ class H5KdSourceDataset(IterableDataset):
     def shard_num_samples(path: Path) -> int:
         with h5py.File(path, "r") as h5:
             return int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
-
+    # todo split on eid? on person? On both?
+    # todo mi serve metadata anche quando faccio compressione.
     @staticmethod
     def write_split_manifest(shards_path: str, out_path: str, block_size: int = 256, seed: int = 42,
                              val_fraction: float = 0.1, test_fraction: float = 0.15, shuffle_shards: bool = True):
