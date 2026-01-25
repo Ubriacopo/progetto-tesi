@@ -2,12 +2,13 @@
 # - Each shard contains samples from across the whole dataset (Local ds so AMIGOS only AMIGOS) randomly picked
 # - For performance reasons having both teacher and student inputs -> One record has to contain both teacher student value and no longer 2 different partitions.
 # - On load of a shard for first time in epoch shuffle it. Take the first B samples available (exhaustion map  to track what not to take)
+import dataclasses
 import logging
 import os
 import random
 from collections import defaultdict, deque
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import h5py
 import numpy as np
@@ -30,6 +31,15 @@ def materialize(x):
 
 def to_numpy(x: torch.Tensor):
     return materialize(x).detach().cpu().numpy()
+
+
+@dataclasses.dataclass()
+class MetaInformation:
+    eid_ds: h5py.Dataset
+    idx_ds: h5py.Dataset
+    ds_id: h5py.Dataset
+    experiment: h5py.Dataset
+    interval: h5py.Dataset
 
 
 class KdDataSharder:
@@ -89,6 +99,105 @@ class KdDataSharder:
             self.current_teacher_name = shard_name
         return self.teacher_current_td
 
+    @staticmethod
+    def ensure_meta_appendable(h5: h5py.File) -> MetaInformation:
+        exp_key = "meta/experiment"
+        int_key = "meta/interval"
+        if "meta/eid" in h5 and "meta/index" in h5 and "meta/dataset_id" in h5 and exp_key in h5 and int_key in h5:
+            return MetaInformation(h5["meta/eid"], h5["meta/index"], h5["meta/dataset_id"], h5[exp_key], h5[int_key])
+
+        str_datatype = h5py.string_dtype(encoding="utf-8")
+        return MetaInformation(
+            eid_ds=h5.create_dataset("meta/eid", shape=(0,), maxshape=(None,), dtype=str_datatype, chunks=(1024,)),
+            idx_ds=h5.create_dataset("meta/index", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,)),
+            ds_id=h5.create_dataset("meta/dataset_id", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,)),
+            experiment=h5.create_dataset(exp_key, shape=(0,), maxshape=(None,), dtype=str_datatype, chunks=(1024,)),
+            interval=h5.create_dataset(int_key, shape=(0, 2), maxshape=(None, 2), dtype=np.float16, chunks=(1024, 2))
+        )
+
+    def open_new_shard(self, h5: Optional[h5py.File], shard_id: int, shard_size: int, shard_name: str):
+        if h5 is not None:
+            h5.attrs["num_samples"] = shard_size
+
+            # Close the current shard
+            h5.flush()
+            h5.close()
+
+        shard_name = f"{shard_name}_{shard_id:03d}.h5"
+        output_path = self.output_path / shard_name
+
+        h5 = h5py.File(output_path, "w")
+        meta = self.ensure_meta_appendable(h5)
+        # Returns the h5, path, new shard_id, meta_ds collection and i_in_shard
+        return h5, output_path, shard_id + 1, meta, 0
+
+    def extract_val_test(self) -> tuple[list[str], list[str]]:
+        pass
+
+    def build(self):
+        rows_by_eid = defaultdict(list)
+
+        val_eid_list, test_eid_list = self.extract_val_test()
+        for record in self.student_df.itertuples(index=False):
+            if str(record.eid) not in val_eid_list and str(record.eid) not in test_eid_list:
+                rows_by_eid[str(record.eid)].append(record)
+
+        # Seed for reproducibility
+        rng = random.Random(123)
+        for eid, bucket in rows_by_eid.items():
+            rng.shuffle(bucket)
+
+        active_eid_collection = deque(rows_by_eid.keys())
+        # Pos tracks how many times one element was used
+        pos = {eid: 0 for eid in rows_by_eid.keys()}
+
+        # Startup init
+        total_written: int = 0
+
+        h5: h5py.File
+        shard_id: int  # We start at 0 of course
+        h5, current_path, shard_id, meta_ds_collection, i_in_shard = self.open_new_shard(
+            h5=None, shard_id=0, shard_size=0, shard_name="train"
+        )
+
+        last_read_filesize: int = 0
+        pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
+        # todo make fn so I call it uguale for val/test
+        while active_eid_collection:
+            self.consume_collection(active_eid_collection)
+
+        while val_eid_list:
+            self.consume_collection(deque(val_eid_list))
+
+        while test_eid_list:
+            self.consume_collection(deque(test_eid_list))
+
+    def consume_collection(self, eid_collection: deque[Any], pos_track: dict, rows_by_eid: dict):
+        eid = eid_collection.popleft()
+        bucket = rows_by_eid[eid]
+        if pos_track[eid] >= len(bucket):
+            self.logger.info(f"eid:{eid} exhausted")
+            return
+
+        record = bucket[pos_track[eid]]
+        pos_track[eid] += 1  # Increase the positions used tracker
+        eid_collection.append(eid)  # Still active (unless it becomes exhausted later)
+
+        idx = int(record.index)
+
+        teacher_location = self.teacher_map.get((eid, idx))
+        if teacher_location is None:
+            self.logger.warn(f"Missing record for tuple ({eid}, {idx}) in teacher!")
+            return  # No existing row so we stop for this sample
+
+        student_shard, student_i = str(record.sharded_eid), int(record.sharded_index)
+        teacher_shard, teacher_i = teacher_location
+
+        student_td = self.load_student_shard(student_shard)
+        teacher_td = self.load_teacher_shard(teacher_shard)
+
+        if not (teacher_td["meta"][teacher_i] == student_td["meta"][student_i]).all():
+            raise ValueError("Sample mismatch!")
 
 
 # Hold out 1 experiment (or at most ~10–20% of experiments) across all training participants
