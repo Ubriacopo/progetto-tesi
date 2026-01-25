@@ -157,8 +157,12 @@ class ReSharder:
         str_dt = h5py.string_dtype(encoding="utf-8")
         eid_ds = h5.create_dataset("meta/eid", shape=(0,), maxshape=(None,), dtype=str_dt, chunks=(1024,))
         idx_ds = h5.create_dataset("meta/index", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,))
+        ds_id = h5.create_dataset("meta/dataset_id", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,))
+        experiment = h5.create_dataset("meta/experiment", shape=(0,), maxshape=(None,), dtype=str_dt, chunks=(1024,))
+        interval = h5.create_dataset("meta/interval", shape=(0, 2), maxshape=(None, 2), dtype=np.float64,
+                                     chunks=(1024, 2))
 
-        return eid_ds, idx_ds
+        return eid_ds, idx_ds, ds_id, experiment, interval
 
     def open_new_shard(self, h5: h5py.File, shard_id: int, shard_size: int):
         if h5 is not None:
@@ -171,11 +175,11 @@ class ReSharder:
         output_path = self.output_path / shard_name
         h5 = h5py.File(output_path, "w")
 
-        eid_ds, idx_ds = self.ensure_meta_appendable(h5)
+        eid_ds, idx_ds, ds_id, experiment, interval = self.ensure_meta_appendable(h5)
         i_in_shard: int = 0
         shard_id += 1
 
-        return h5, output_path, shard_id, shard_name, eid_ds, idx_ds, i_in_shard
+        return h5, output_path, shard_id, shard_name, eid_ds, idx_ds, ds_id, experiment, interval, i_in_shard
 
     def choose_chunk0(self, sample: np.ndarray):
         bytes_per_sample = sample.nbytes
@@ -202,8 +206,11 @@ class ReSharder:
             shuffle=True,  # Recommended if you use gzip
         )
 
-    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int):
+    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int,
+                       ignore_modalities: list[str] = ("meta",)):
         for modality, container in td.items():
+            if modality in ignore_modalities:
+                continue
             for key, value in container.items():
                 arr = to_numpy(value)
                 ds_path: str = f"{base}/{modality}/{key}"
@@ -234,7 +241,7 @@ class ReSharder:
         h5: Optional[h5py.File] = None
         total_written: int = 0
 
-        h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
+        h5, current_path, shard_id, current_name, eid_ds, idx_ds, ds_id, experiment_ds, interval_ds, i_in_shard = self.open_new_shard(
             h5=h5, shard_id=shard_id, shard_size=0
         )
 
@@ -264,10 +271,14 @@ class ReSharder:
             teacher_shard, teacher_i = teacher_location
 
             student_td = self.load_student_shard(student_shard)
-            student_td["meta"].pop("experiment", None)  # TODO arricchiro il csv
+            meta_student = student_td["meta"]
 
             teacher_td = self.load_teacher_shard(teacher_shard)
-            teacher_td["meta"].pop("experiment", None)
+            meta_teacher = teacher_td["meta"]
+
+            # todo check meta student and teacher eq
+            if not (meta_teacher[teacher_i] == meta_student[student_i]).all():
+                raise ValueError("Sample mismatch!")
 
             student_record = student_td[student_i]
             teacher_record = teacher_td[teacher_i]
@@ -275,9 +286,15 @@ class ReSharder:
             if eid_ds.shape[0] <= i_in_shard:
                 eid_ds.resize((i_in_shard + 1,))
                 idx_ds.resize((i_in_shard + 1,))
+                ds_id.resize((i_in_shard + 1,))
+                experiment_ds.resize((i_in_shard + 1,))
+                interval_ds.resize((i_in_shard + 1, 2))
 
+            ds_id[i_in_shard] = meta_student["dataset_id"][student_i]
             eid_ds[i_in_shard] = eid
             idx_ds[i_in_shard] = idx
+            experiment_ds[i_in_shard] = meta_student["experiment"][student_i]
+            interval_ds[i_in_shard, :] = to_numpy(meta_student["interval"][student_i])
 
             self.append_records(h5, student_record, "student", i_in_shard)
             self.append_records(h5, teacher_record, "teacher", i_in_shard)
@@ -299,7 +316,7 @@ class ReSharder:
                     last_read_filesize = 0
 
                     logging.info(f"Creating new shard #{shard_id}")
-                    h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
+                    h5, current_path, shard_id, current_name, eid_ds, idx_ds, ds_id, experiment_ds, interval_ds, i_in_shard = self.open_new_shard(
                         h5=h5, shard_id=shard_id, shard_size=i_in_shard
                     )
                 self.logger.info(f"Written a total ")
