@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Tuple, Iterator, Optional, Any
 
 import h5py
-import numpy as np
 import pandas as pd
 import tensordict
 import torch
@@ -145,9 +144,12 @@ class H5KdSourceDataset(IterableDataset):
             return int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
 
     @staticmethod
-    def write_split_manifest(shards_path: str, out_path: str, block_size: int = 256, seed: int = 42,
+    def write_split_manifest(shards_path: str, out_path: str = None, block_size: int = 256, seed: int = 42,
                              val_fraction: float = 0.1, test_fraction: float = 0.15, shuffle_shards: bool = True):
         shards_path: Path = Path(shards_path)
+
+        if out_path is None:
+            out_path = shards_path
         out_path: Path = Path(out_path)
         out_path.mkdir(parents=True, exist_ok=True)
 
@@ -329,7 +331,7 @@ class H5KdSourceDataset(IterableDataset):
 
         buffer: list[dict[str, Any]] = []
         for shard_name, start, stop in self.entries_for_worker(global_g):
-            with h5py.File(str(Path(self.shards_root) / shard_name), "r", "r") as h5:
+            with h5py.File(str(Path(self.shards_root) / shard_name), "r") as h5:
                 for sample in self.iter_shard(h5, start=start, stop=stop):
                     buffer.append(sample)
 

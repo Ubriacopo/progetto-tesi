@@ -32,6 +32,68 @@ def to_numpy(x: torch.Tensor):
     return materialize(x).detach().cpu().numpy()
 
 
+class KdDataSharder:
+    def __init__(self,
+                 student_spec_path: str,
+                 teacher_spec_path: str,
+                 output_path: str,
+                 shard_size_gb=4,
+                 compression=None,
+                 val_participants: int = 0,
+                 test_participants: int = 0,
+                 min_chunk_size: int = 1,
+                 max_chunk_size: int = 4096
+                 ):
+        self.logger = make_logger(self.__class__.__name__)
+
+        self.student_path = Path(student_spec_path).parent
+        self.student_df = pd.read_csv(student_spec_path)
+
+        self.teacher_path = Path(teacher_spec_path).parent
+        self.teacher_df = pd.read_csv(teacher_spec_path)
+
+        tmap = {}
+        for row in self.teacher_df.itertuples(index=False):
+            # Expects columns: eid, index, sharded_eid, sharded_index
+            tmap[(str(row.eid), row.index)] = (str(row.sharded_eid), int(row.sharded_index))
+
+        self.teacher_map = tmap
+
+        self.output_path: Path = Path(output_path)
+        Path(self.output_path).mkdir(parents=True, exist_ok=True)
+        self.shard_size_bytes = int(shard_size_gb * (1024 ** 3))
+
+        self.student_current_td: Optional[TensorDict] = None
+        self.current_student_name: Optional[str] = None
+        self.teacher_current_td: Optional[TensorDict] = None
+        self.current_teacher_name: Optional[str] = None
+
+        self.min_chunk_size: int = min_chunk_size
+        self.max_chunk_size: int = max_chunk_size
+        # Commonly accepted heuristic on size of chunks for I/O and CPU tradeoff
+        self.target_chunk_mb = 8
+
+        self.compression = compression
+
+        # todo build hjold out sets (test/val) by removing people. + some experiment entirely (while not getting too big) tkae 25% of people?
+
+    def load_student_shard(self, shard_name: str):
+        if shard_name != self.current_student_name:
+            self.student_current_td = tensordict.load_memmap(self.student_path / shard_name)
+            self.current_student_name = shard_name
+        return self.student_current_td
+
+    def load_teacher_shard(self, shard_name: str):
+        if shard_name != self.current_teacher_name:
+            self.teacher_current_td = tensordict.load_memmap(self.teacher_path / shard_name)
+            self.current_teacher_name = shard_name
+        return self.teacher_current_td
+
+
+
+# Hold out 1 experiment (or at most ~10–20% of experiments) across all training participants
+# your test percentage should be defined in participants (or participant×experiment groups), not in windows
+# TODO holdout AMIGOS 6 EAV 6 DEAP 5 (15%)
 class ReSharder:
     def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str,
                  shard_size_gb=4, compression=None, min_chunk_size: int = 1, max_chunk_size: int = 4096):
@@ -46,6 +108,7 @@ class ReSharder:
         for row in self.teacher_df.itertuples(index=False):
             # Expects columns: eid, index, sharded_eid, sharded_index
             tmap[(str(row.eid), row.index)] = (str(row.sharded_eid), int(row.sharded_index))
+
         self.teacher_map = tmap
 
         self.output_path: Path = Path(output_path)
@@ -225,6 +288,7 @@ class ReSharder:
                 h5.flush()
 
                 pbar.update(os.path.getsize(current_path) - last_read_filesize)
+                pbar.set_postfix(samples_done=total_written)
                 last_read_filesize = os.path.getsize(current_path)
 
                 if os.path.getsize(current_path) >= self.shard_size_bytes:
@@ -238,6 +302,7 @@ class ReSharder:
                     h5, current_path, shard_id, current_name, eid_ds, idx_ds, i_in_shard = self.open_new_shard(
                         h5=h5, shard_id=shard_id, shard_size=i_in_shard
                     )
+                self.logger.info(f"Written a total ")
 
         if h5 is not None:
             h5.attrs["num_samples"] = i_in_shard
