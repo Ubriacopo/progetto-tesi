@@ -60,7 +60,6 @@ class AmigosPointsLoader(DataPointsLoader):
 
                 video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
                 eeg_data = participant_data[person]["joined_data"][video_index]
-                assessments = participant_data[person]["labels_selfassessment"][video_index]
 
                 media_path: str = str(v.resolve())
                 clip = VideoFileClip(media_path)

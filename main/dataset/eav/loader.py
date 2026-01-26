@@ -87,7 +87,7 @@ class EavPointsLoader(DataPointsLoader):
                         nei = self.dataset_uid_store.uid(subject_id, str(index) + "_" + emotion, "EAV")
                         # Store the current to fs so that we have it ready
                         self.dataset_uid_store.store_dictionary()
-
+                        # todo rigid structure
                         metadata = {"experiment": str(index), "dataset_id": self.DATASET_ID}
 
                         # EEG data part

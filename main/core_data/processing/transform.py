@@ -189,10 +189,20 @@ class EmptyQuantizedObjectTransform(EmptyObjectTransform):
 
 
 class DataQuantizationTransform(nn.Module):
-    def __init__(self):
+    def __init__(self, aggressive_check: bool = True):
         super().__init__()
         self.quantizer = Float16ToInt8Quantizer()
+        self.aggressive_check: bool = aggressive_check
+        self.logger = make_logger(str(self.__class__.__name__))
 
     def forward(self, x: MaskedValue) -> QuantizedMaskedValue:
         data, scales = self.quantizer.quantize(x['data'])
+
+        if self.aggressive_check:
+            self_similarity, similarity = self.quantizer.check_loss(x["data"], data, scales)
+            if float(self_similarity.mean().half()) != 1.:
+                self.logger.warn(f"Self similarity value is strange: {self_similarity}")
+            if float(similarity.mean()) < 0.7:
+                self.logger.warn(f"Quantization led to a noticeable loss of information: {similarity}")
+
         return QuantizedMaskedValue(data=data, mask=x["mask"], scales=scales)

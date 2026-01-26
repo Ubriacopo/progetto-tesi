@@ -5,6 +5,13 @@ from main.core_data.media import Media
 
 
 @dataclasses.dataclass
+class MetaObject:
+    experiment: str | int
+    dataset_id: str | int
+    person_id: str | int
+
+
+@dataclasses.dataclass
 class Metadata(Media):
     @staticmethod
     def modality_code() -> str:

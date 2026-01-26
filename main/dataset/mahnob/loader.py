@@ -1,4 +1,5 @@
 import logging
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +12,7 @@ from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
-from main.core_data.media.metadata.metadata import Metadata
+from main.core_data.media.metadata.metadata import Metadata, MetaObject
 from main.core_data.media.video import Video
 from main.dataset.mahnob.config import MahnobConfig
 from main.dataset.utils import DatasetUidStore
@@ -46,6 +47,8 @@ class MahnobPointsLoader(DataPointsLoader):
                 raw: Optional[RawEDF] = None
                 clip: Optional[VideoFileClip] = None
 
+                participant_id: int = None
+
                 offset = 30  # Delay of videocamera start
                 for file in i.iterdir():
                     if file.suffix == ".bdf":
@@ -60,12 +63,18 @@ class MahnobPointsLoader(DataPointsLoader):
 
                     elif file.suffix == ".avi":
                         clip = VideoFileClip(str(file))
+                        participant_id = int(file.name.split("-")[0][1:])
 
                 # Manhob always has both so we might match errors
                 assert clip is not None and raw is not None, f"Problem was met, the experiment {experiment_id} misses a modality"
 
                 nei = self.dataset_uid_store.uid(experiment_id, experiment_id, "MANHOB")
-                metadata = {"experiment": str(experiment_id), "dataset_id": self.DATASET_ID}
+                metadata = MetaObject(
+                    experiment=int(experiment_id),
+                    dataset_id=self.DATASET_ID,
+                    person_id=participant_id
+                )
+
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
                 yield FlexibleDatasetPoint(
@@ -76,7 +85,7 @@ class MahnobPointsLoader(DataPointsLoader):
                     # All MANHOB videos have 30s offset
                     Video(data=clip, fps=clip.fps, resolution=clip.size, eid=nei,
                           offset=offset, filepath=clip.filename).as_mod_tuple(),
-                    Metadata(data=metadata, eid=nei).as_mod_tuple()
+                    Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )
             except Exception as e:
                 self.logger.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")

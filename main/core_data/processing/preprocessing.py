@@ -1,16 +1,24 @@
 import math
 from abc import abstractmethod, ABC
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from itertools import batched
 from pathlib import Path
-from typing import Optional, TypeVar, Generic
+from typing import Optional, TypeVar, Generic, Literal
 
 import numpy as np
 import pandas as pd
-from tensordict import TensorDict, stack
+from tensordict import TensorDict, stack, tensordict
 
 from main.core_data.data_point import FlexibleDatasetPoint, FlexibleDatasetTransformWrapper
 from main.core_data.loader import DataPointsLoader
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.metadata.metadata import Metadata
+from main.core_data.media.text import Text
+from main.core_data.media.video import Video
+from main.core_data.quantization import Float16ToInt8Quantizer
 from main.core_data.utils import sanitize_for_ast, timed
 from main.utils.logging import make_logger
 
@@ -118,7 +126,6 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
-
         segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
         if self.shared_pipeline is not None:
             x = self.shared_pipeline.call(x, keep_type=True)
@@ -131,9 +138,15 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
         output_path: str = self.output_path + f'{x.eid}'
         self.export(x_segments, output_path)
+
         # Return file specification
+        base_object = {}
+        if "meta" in x:
+            # We have metaobject to pass to the csv. Better have it redundant than not enough.
+            base_object = {key: value for key, value in asdict(x.meta.data).items()}
+
         return_segments = [
-            {"index": idx, x.get_identifier(): x.eid, "segment": segment}
+            base_object | {"index": idx, x.get_identifier(): x.eid, "segment": segment}
             for idx, (seg, segment) in enumerate(zip(x_segments, segments))
         ]
         return_segments = sanitize_for_ast(return_segments)
@@ -159,7 +172,103 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
     def export(self, x: list[FlexibleDatasetPoint], output_path: str) -> None:
         # todo apply quantizartion + export to h5 with teacher sample
-        objects = [TensorDict(s.to_dict()) if hasattr(s, "to_dict") else TensorDict(s) for s in x]
+        objects = [
+            TensorDict(s.to_dict()) if hasattr(s, "to_dict") else TensorDict(s) for s in x
+        ]
+
         tensor_dict = stack(objects, dim=0)
         Path(output_path).mkdir(parents=True, exist_ok=True)
         tensor_dict.memmap(output_path)
+
+
+class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
+    def __init__(self, output_path: str,
+                 # Specs folder to give
+                 extraction_data_folder: str,
+                 # In order to work with EEG data
+                 student_segment_pipeline: FlexibleDatasetTransformWrapper,
+                 teacher_segment_pipeline: FlexibleDatasetTransformWrapper,
+                 student_sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
+                 teacher_sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
+                 quantization_keys: list[str] = (),
+                 ):
+        super().__init__(output_path)
+        self.student_shared_pipeline: FlexibleDatasetTransformWrapper = student_sample_pipeline
+        self.student_pipeline: FlexibleDatasetTransformWrapper = student_segment_pipeline
+
+        self.teacher_shared_pipeline: FlexibleDatasetTransformWrapper = teacher_sample_pipeline
+        self.teacher_pipeline: FlexibleDatasetTransformWrapper = teacher_segment_pipeline
+        self.extraction_data_folder: str = extraction_data_folder
+        self.quantizer = Float16ToInt8Quantizer()
+        self.quantization_keys: list[str] = quantization_keys
+
+    @timed()
+    def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
+        segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
+        student_x, teacher_x = x, x
+        if self.student_shared_pipeline is not None:
+            student_x = self.student_shared_pipeline.call(x, keep_type=True)
+        if self.teacher_shared_pipeline is not None:
+            teacher_x = self.teacher_shared_pipeline.call(x, keep_type=True)
+
+        student_x_segments = []
+        teacher_x_segments = []
+        total_elements = len(segments)
+        for idx, segment in enumerate(segments):
+            self.logger.info(f"About to process the element {idx + 1}/{total_elements} for {student_x.eid}")
+            student_segment = self.preprocess_segment(student_x, (segment["start"], segment["stop"]), "student")
+            student_x_segments.append(student_segment)
+
+            teacher_segment = self.preprocess_segment(teacher_x, (segment["start"], segment["stop"]), "teacher")
+            teacher_x_segments.append(teacher_segment)
+
+        out_path = Path(self.output_path) / str(x.eid)
+        self.export(student=student_x_segments, teacher=teacher_x_segments, output_path=out_path)
+
+        # Return file specification
+        base_object = {}
+        if hasattr(student_x, Metadata.modality_code()):
+            # We have metaobject to pass to the csv. Better have it redundant than not enough.
+            base_object = {key: value for key, value in student_x.meta.data.items()}
+
+        return_segments = [
+            base_object | {"index": idx, student_x.get_identifier(): student_x.eid, "interval": segment}
+            for idx, (seg, segment) in enumerate(zip(student_x_segments, segments))
+        ]
+
+        return_segments = sanitize_for_ast(return_segments)
+
+        return return_segments
+
+    @timed(suppress=False)
+    def preprocess_segment(self, x: FlexibleDatasetPoint,
+                           segment: tuple[int | float | np.ndarray, int | float | np.ndarray],
+                           target: Literal['student', 'teacher']
+                           ) -> FlexibleDatasetPoint:
+        if isinstance(segment[0], np.ndarray):
+            segment = (segment[0].item(), segment[1].item())
+
+        y = x.clone(x.eid)  # entry_id is useless for this approach
+        for arg, value in y.__dict__.items():
+            if hasattr(value, "interval"):
+                value.__setattr__("interval", segment)
+
+        if self.student_pipeline is None:
+            raise ValueError("pipeline is required for preprocessing")
+
+        pipeline = self.teacher_pipeline if target == "teacher" else self.student_pipeline
+        y = pipeline.call(y)
+
+        return y
+
+    def export(self, output_path: Path, **x: list[FlexibleDatasetPoint]) -> None:
+        return_object = {}
+
+        for key, value in x.items():
+            objects = [TensorDict(s.to_dict()) if hasattr(s, "to_dict") else TensorDict(s) for s in value]
+            td = stack(objects, dim=0)
+            return_object[key] = td
+
+        # now we add h5 and we are done here
+        output_path.mkdir(parents=True, exist_ok=True)
+        TensorDict(return_object).memmap(str(output_path))

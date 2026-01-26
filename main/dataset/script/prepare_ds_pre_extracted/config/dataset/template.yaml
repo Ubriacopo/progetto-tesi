@@ -8,7 +8,7 @@ loader_classpath: main.dataset.${dataset.name}.loader.${dataset.DatasetName}Poin
 data_path: ${base_path}${dataset.DATASETNAME}/
 extraction_data_folder: ${base_path}EEGAVI/${dataset.DATASETNAME}/extraction-data/
 # Where output has to go to
-output_path: ${base_path}EEGAVI/${dataset.DATASETNAME}/${target_model.out_folder_name}_quantized/
+output_path: ${base_path}EEGAVI/${dataset.DATASETNAME}/${target_model.out_folder_name}/
 # Objects have to be defined
 uid_store_path: ${base_path}/EEGAVI/uid_store.csv
 output_max_length: 32
