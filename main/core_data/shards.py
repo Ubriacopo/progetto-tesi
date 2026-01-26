@@ -51,6 +51,7 @@ class KdDataSharder:
                  compression=None,
                  val_participants: int = 0,
                  test_participants: int = 0,
+                 uid_store_path: str = None,
                  min_chunk_size: int = 1,
                  max_chunk_size: int = 4096
                  ):
@@ -84,6 +85,9 @@ class KdDataSharder:
         self.target_chunk_mb = 8
 
         self.compression = compression
+        self.uid_store_path: str = uid_store_path
+        self.val_participants: float = val_participants
+        self.test_participants: float = test_participants
 
         # todo build hjold out sets (test/val) by removing people. + some experiment entirely (while not getting too big) tkae 25% of people?
 
@@ -116,13 +120,7 @@ class KdDataSharder:
         )
 
     def open_new_shard(self, h5: Optional[h5py.File], shard_id: int, shard_size: int, shard_name: str):
-        if h5 is not None:
-            h5.attrs["num_samples"] = shard_size
-
-            # Close the current shard
-            h5.flush()
-            h5.close()
-
+        self._close_danling_shard(h5, shard_size)
         shard_name = f"{shard_name}_{shard_id:03d}.h5"
         output_path = self.output_path / shard_name
 
@@ -131,173 +129,98 @@ class KdDataSharder:
         # Returns the h5, path, new shard_id, meta_ds collection and i_in_shard
         return h5, output_path, shard_id + 1, meta, 0
 
-    def extract_val_test(self) -> tuple[list[str], list[str]]:
-        pass
+    def extract_rows_by_eid(self) -> tuple[defaultdict[Any, list], defaultdict[Any, list], defaultdict[Any, list]]:
+        # THis extracts the rows based on persons for test/val (We build based on unseen people)
+        missing_val, missing_test = self.val_participants, self.test_participants
+        train_eid, val_eid, test_eid = defaultdict(list), defaultdict(list), defaultdict(list)
+
+        for record in self.student_df.itertuples(index=False):
+            # todo check person id not eid. Posso usare uid stored? No perche non ha eid quindi useless
+            #       in preprocessing dovrei estrarre anche persona su csv metadata. A questo punto posso anche shufflare quali prendere.
+            # EID is combination of person + experiment
+            if missing_val > 0:
+                val_eid[str(record.eid)].append(record)
+                missing_val -= 1
+            elif missing_test > 0:
+                test_eid[str(record.eid)].append(record)
+                missing_test -= 1
+            else:
+                train_eid[str(record.eid)].append(record)
+
+        return train_eid, val_eid, test_eid
+
+    @staticmethod
+    def _close_danling_shard(h5: Optional[h5py.File], i: int):
+        if h5 is not None:
+            h5.attrs["num_samples"] = i
+
+            h5.flush()
+            h5.close()
 
     def build(self):
-        rows_by_eid = defaultdict(list)
-
-        val_eid_list, test_eid_list = self.extract_val_test()
-        for record in self.student_df.itertuples(index=False):
-            if str(record.eid) not in val_eid_list and str(record.eid) not in test_eid_list:
-                rows_by_eid[str(record.eid)].append(record)
+        train_by_eid, val_by_eid, test_by_eid = self.extract_rows_by_eid()
 
         # Seed for reproducibility
         rng = random.Random(123)
-        for eid, bucket in rows_by_eid.items():
+        for eid, bucket in train_by_eid.items():
             rng.shuffle(bucket)
 
+        self.elaborate_for_modality("train", train_by_eid)
+        if self.val_participants > 0:
+            self.elaborate_for_modality("val", val_by_eid)
+        if self.test_participants > 0:
+            self.elaborate_for_modality("test", test_by_eid)
+
+    def elaborate_for_modality(self, modality: str, rows_by_eid: defaultdict[Any, list]):
+        self.logger.info(f"Working for modality: {modality}")
         active_eid_collection = deque(rows_by_eid.keys())
-        # Pos tracks how many times one element was used
         pos = {eid: 0 for eid in rows_by_eid.keys()}
 
-        # Startup init
         total_written: int = 0
 
         h5: h5py.File
         shard_id: int  # We start at 0 of course
         h5, current_path, shard_id, meta_ds_collection, i_in_shard = self.open_new_shard(
-            h5=None, shard_id=0, shard_size=0, shard_name="train"
+            h5=None, shard_id=0, shard_size=0, shard_name=modality
         )
 
         last_read_filesize: int = 0
         pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
-        # todo make fn so I call it uguale for val/test
+
         while active_eid_collection:
-            self.consume_collection(active_eid_collection)
+            curr_i = self.consume_collection(
+                h5=h5,
+                eid_collection=active_eid_collection,
+                pos_track=pos,
+                rows_by_eid=rows_by_eid,
+                meta_ds_collection=meta_ds_collection,
+                i_in_shard=i_in_shard
+            )
 
-        while val_eid_list:
-            self.consume_collection(deque(val_eid_list))
+            if curr_i != i_in_shard:
+                total_written += 1
 
-        while test_eid_list:
-            self.consume_collection(deque(test_eid_list))
+            i_in_shard = curr_i
+            if total_written % 256 == 0:
+                h5.flush()
 
-    def consume_collection(self, eid_collection: deque[Any], pos_track: dict, rows_by_eid: dict):
-        eid = eid_collection.popleft()
-        bucket = rows_by_eid[eid]
-        if pos_track[eid] >= len(bucket):
-            self.logger.info(f"eid:{eid} exhausted")
-            return
+                pbar.update(os.path.getsize(current_path) - last_read_filesize)
+                pbar.set_postfix(samples_done=total_written)
+                last_read_filesize = os.path.getsize(current_path)
 
-        record = bucket[pos_track[eid]]
-        pos_track[eid] += 1  # Increase the positions used tracker
-        eid_collection.append(eid)  # Still active (unless it becomes exhausted later)
+                if os.path.getsize(current_path) >= self.shard_size_bytes:
+                    pbar.close()
+                    pbar = tqdm(total=self.shard_size_bytes, desc=f"Shard {shard_id}",
+                                unit="B", unit_scale=True, unit_divisor=1024)
 
-        idx = int(record.index)
+                    # Reset the read filesize
+                    last_read_filesize = 0
+                    logging.info(f"Creating new shard #{shard_id}")
+                    h5, current_path, shard_id, meta_ds_collection, i_in_shard = self.open_new_shard(
+                        h5=h5, shard_id=shard_id, shard_size=i_in_shard, shard_name="train"
+                    )
 
-        teacher_location = self.teacher_map.get((eid, idx))
-        if teacher_location is None:
-            self.logger.warn(f"Missing record for tuple ({eid}, {idx}) in teacher!")
-            return  # No existing row so we stop for this sample
-
-        student_shard, student_i = str(record.sharded_eid), int(record.sharded_index)
-        teacher_shard, teacher_i = teacher_location
-
-        student_td = self.load_student_shard(student_shard)
-        teacher_td = self.load_teacher_shard(teacher_shard)
-
-        if not (teacher_td["meta"][teacher_i] == student_td["meta"][student_i]).all():
-            raise ValueError("Sample mismatch!")
-
-
-# Hold out 1 experiment (or at most ~10–20% of experiments) across all training participants
-# your test percentage should be defined in participants (or participant×experiment groups), not in windows
-# TODO holdout AMIGOS 6 EAV 6 DEAP 5 (15%)
-class ReSharder:
-    def __init__(self, student_spec_path: str, teacher_spec_path: str, output_path: str,
-                 shard_size_gb=4, compression=None, min_chunk_size: int = 1, max_chunk_size: int = 4096):
-        self.logger = make_logger(self.__class__.__name__)
-        self.student_path = Path(student_spec_path).parent
-        self.student_df = pd.read_csv(student_spec_path)
-
-        self.teacher_path = Path(teacher_spec_path).parent
-        self.teacher_df = pd.read_csv(teacher_spec_path)
-
-        tmap = {}
-        for row in self.teacher_df.itertuples(index=False):
-            # Expects columns: eid, index, sharded_eid, sharded_index
-            tmap[(str(row.eid), row.index)] = (str(row.sharded_eid), int(row.sharded_index))
-
-        self.teacher_map = tmap
-
-        self.output_path: Path = Path(output_path)
-        Path(self.output_path).mkdir(parents=True, exist_ok=True)
-        self.shard_size_bytes = int(shard_size_gb * (1024 ** 3))
-
-        self.student_current_td: Optional[TensorDict] = None
-        self.current_student_name: Optional[str] = None
-        self.teacher_current_td: Optional[TensorDict] = None
-        self.current_teacher_name: Optional[str] = None
-
-        self.min_chunk_size: int = min_chunk_size
-        self.max_chunk_size: int = max_chunk_size
-        # Commonly accepted heuristic on size of chunks for I/O and CPU tradeoff
-        self.target_chunk_mb = 8
-
-        self.compression = compression
-        self.prefix: str = "ds"
-
-    def load_student_shard(self, shard_name: str):
-        if shard_name != self.current_student_name:
-            self.student_current_td = tensordict.load_memmap(self.student_path / shard_name)
-            self.current_student_name = shard_name
-        return self.student_current_td
-
-    def load_teacher_shard(self, shard_name: str):
-        if shard_name != self.current_teacher_name:
-            self.teacher_current_td = tensordict.load_memmap(self.teacher_path / shard_name)
-            self.current_teacher_name = shard_name
-        return self.teacher_current_td
-
-    def count_samples(self):
-        count: int = 0
-        for record in self.student_df.itertuples(index=False):
-            # Only if the teacher equivalent exists
-            if (str(record.eid), int(record.index)) in self.teacher_map:
-                count += 1
-
-        return count
-
-    @staticmethod
-    def ensure_meta_appendable(h5: h5py.File):
-        if "meta/eid" in h5 and "meta/index" in h5:
-            return h5["meta/eid"], h5["meta/index"]
-
-        str_dt = h5py.string_dtype(encoding="utf-8")
-        eid_ds = h5.create_dataset("meta/eid", shape=(0,), maxshape=(None,), dtype=str_dt, chunks=(1024,))
-        idx_ds = h5.create_dataset("meta/index", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,))
-        ds_id = h5.create_dataset("meta/dataset_id", shape=(0,), maxshape=(None,), dtype=np.int64, chunks=(1024,))
-        experiment = h5.create_dataset("meta/experiment", shape=(0,), maxshape=(None,), dtype=str_dt, chunks=(1024,))
-        interval = h5.create_dataset("meta/interval", shape=(0, 2), maxshape=(None, 2), dtype=np.float64,
-                                     chunks=(1024, 2))
-
-        return eid_ds, idx_ds, ds_id, experiment, interval
-
-    def open_new_shard(self, h5: h5py.File, shard_id: int, shard_size: int):
-        if h5 is not None:
-            h5.attrs["num_samples"] = shard_size
-            # Close the current shard
-            h5.flush()
-            h5.close()
-
-        shard_name = f"{self.prefix}_{shard_id:03d}.h5"
-        output_path = self.output_path / shard_name
-        h5 = h5py.File(output_path, "w")
-
-        eid_ds, idx_ds, ds_id, experiment, interval = self.ensure_meta_appendable(h5)
-        i_in_shard: int = 0
-        shard_id += 1
-
-        return h5, output_path, shard_id, shard_name, eid_ds, idx_ds, ds_id, experiment, interval, i_in_shard
-
-    def choose_chunk0(self, sample: np.ndarray):
-        bytes_per_sample = sample.nbytes
-        if bytes_per_sample == 0:
-            return 1
-
-        target_bytes = self.target_chunk_mb * 1024 * 1024
-        chunk0 = max(self.min_chunk_size, target_bytes // bytes_per_sample)
-        return int(max(self.min_chunk_size, min(chunk0, self.max_chunk_size)))
+        self._close_danling_shard(h5, i_in_shard)
 
     def ensure_tensor_ds_appendable(self, h5: h5py.File, path: str, sample: np.ndarray):
         if path in h5:
@@ -315,10 +238,18 @@ class ReSharder:
             shuffle=True,  # Recommended if you use gzip
         )
 
-    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int,
-                       ignore_modalities: list[str] = ("meta",)):
+    def choose_chunk0(self, sample: np.ndarray):
+        bytes_per_sample = sample.nbytes
+        if bytes_per_sample == 0:
+            return 1
+
+        target_bytes = self.target_chunk_mb * 1024 * 1024
+        chunk0 = max(self.min_chunk_size, target_bytes // bytes_per_sample)
+        return int(max(self.min_chunk_size, min(chunk0, self.max_chunk_size)))
+
+    def append_records(self, h5: h5py.File, td: TensorDict, base: str, i: int, skip_modalities: list[str] = ("meta",)):
         for modality, container in td.items():
-            if modality in ignore_modalities:
+            if modality in skip_modalities:
                 continue
             for key, value in container.items():
                 arr = to_numpy(value)
@@ -330,109 +261,54 @@ class ReSharder:
 
                 ds[i, ...] = arr
 
-    def build(self):
-        # Take on from each experiment in order (Round Robin)
-        rows_by_eid = defaultdict(list)
-        # Each sample with same eid is aggregated for later usage.
-        for record in self.student_df.itertuples(index=False):
-            rows_by_eid[str(record.eid)].append(record)
+    def consume_collection(self, h5: h5py.File, eid_collection: deque[Any], pos_track: dict, rows_by_eid: dict,
+                           meta_ds_collection: MetaInformation, i_in_shard: int):
+        eid = eid_collection.popleft()
+        bucket = rows_by_eid[eid]
+        if pos_track[eid] >= len(bucket):
+            self.logger.info(f"eid:{eid} exhausted")
+            return i_in_shard
 
-        # Seed for reproducibility
-        rng = random.Random(123)
-        for eid, bucket in rows_by_eid.items():
-            rng.shuffle(bucket)
+        record = bucket[pos_track[eid]]
+        pos_track[eid] += 1  # Increase the positions used tracker
+        eid_collection.append(eid)  # Still active (unless it becomes exhausted later)
 
-        active_eid_collection = deque(rows_by_eid.keys())
-        # Pos tracks how many times one element was used
-        pos = {eid: 0 for eid in rows_by_eid.keys()}
+        idx = int(record.index)
 
-        shard_id: int = 0
-        h5: Optional[h5py.File] = None
-        total_written: int = 0
+        teacher_location = self.teacher_map.get((eid, idx))
+        if teacher_location is None:
+            self.logger.warn(f"Missing record for tuple ({eid}, {idx}) in teacher!")
+            return i_in_shard  # No existing row so we stop for this sample
 
-        h5, current_path, shard_id, current_name, eid_ds, idx_ds, ds_id, experiment_ds, interval_ds, i_in_shard = self.open_new_shard(
-            h5=h5, shard_id=shard_id, shard_size=0
-        )
+        student_shard, student_i = str(record.sharded_eid), int(record.sharded_index)
+        teacher_shard, teacher_i = teacher_location
 
-        last_read_filesize = 0
-        pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
-        while active_eid_collection:
-            eid = active_eid_collection.popleft()
-            bucket = rows_by_eid[eid]
-            # If all were placed we just stop using the current eid
-            if pos[eid] >= len(bucket):
-                self.logger.info(f"eid:{eid} exhausted")
-                continue
+        student_td = self.load_student_shard(student_shard)
+        teacher_td = self.load_teacher_shard(teacher_shard)
 
-            record = bucket[pos[eid]]
-            pos[eid] += 1
-            active_eid_collection.append(eid)  # Still active (unless it becomes exhausted later)
+        if not (teacher_td["meta"][teacher_i] == student_td["meta"][student_i]).all():
+            raise ValueError("Sample mismatch!")
 
-            idx = int(record.index)
+        if meta_ds_collection.eid_ds.shape[0] <= i_in_shard:
+            meta_ds_collection.eid_ds.resize((i_in_shard + 1,))
+            meta_ds_collection.idx_ds.resize((i_in_shard + 1,))
+            meta_ds_collection.ds_id.resize((i_in_shard + 1,))
+            meta_ds_collection.experiment.resize((i_in_shard + 1,))
+            meta_ds_collection.interval.resize((i_in_shard + 1, 2))
 
-            # This mapping should be solid but no harm in checking TODO
-            teacher_location = self.teacher_map.get((eid, idx))
-            if teacher_location is None:
-                self.logger.warn(f"Missing record for tuple ({eid}, {idx}) in teacher!")
-                continue  # No existing row
+        meta_ds_collection.ds_id[i_in_shard] = student_td["meta"]["dataset_id"][student_i]
+        meta_ds_collection.eid_ds[i_in_shard] = eid
+        meta_ds_collection.idx_ds[i_in_shard] = idx
+        meta_ds_collection.experiment[i_in_shard] = student_td["meta"]["experiment"][student_i]
+        meta_ds_collection.interval[i_in_shard, :] = to_numpy(student_td["meta"]["interval"][student_i])
 
-            student_shard, student_i = str(record.sharded_eid), int(record.sharded_index)
-            teacher_shard, teacher_i = teacher_location
+        self.append_records(h5, student_td[student_i], "student", i_in_shard)
+        self.append_records(h5, teacher_td[teacher_i], "teacher", i_in_shard)
 
-            student_td = self.load_student_shard(student_shard)
-            meta_student = student_td["meta"]
+        # Add one element
+        return i_in_shard + 1
 
-            teacher_td = self.load_teacher_shard(teacher_shard)
-            meta_teacher = teacher_td["meta"]
 
-            # todo check meta student and teacher eq
-            if not (meta_teacher[teacher_i] == meta_student[student_i]).all():
-                raise ValueError("Sample mismatch!")
-
-            student_record = student_td[student_i]
-            teacher_record = teacher_td[teacher_i]
-
-            if eid_ds.shape[0] <= i_in_shard:
-                eid_ds.resize((i_in_shard + 1,))
-                idx_ds.resize((i_in_shard + 1,))
-                ds_id.resize((i_in_shard + 1,))
-                experiment_ds.resize((i_in_shard + 1,))
-                interval_ds.resize((i_in_shard + 1, 2))
-
-            ds_id[i_in_shard] = meta_student["dataset_id"][student_i]
-            eid_ds[i_in_shard] = eid
-            idx_ds[i_in_shard] = idx
-            experiment_ds[i_in_shard] = meta_student["experiment"][student_i]
-            interval_ds[i_in_shard, :] = to_numpy(meta_student["interval"][student_i])
-
-            self.append_records(h5, student_record, "student", i_in_shard)
-            self.append_records(h5, teacher_record, "teacher", i_in_shard)
-
-            i_in_shard += 1
-            total_written += 1
-            if (total_written % 256) == 0:  # don’t stat every sample
-                h5.flush()
-
-                pbar.update(os.path.getsize(current_path) - last_read_filesize)
-                pbar.set_postfix(samples_done=total_written)
-                last_read_filesize = os.path.getsize(current_path)
-
-                if os.path.getsize(current_path) >= self.shard_size_bytes:
-                    pbar.close()
-                    pbar = tqdm(total=self.shard_size_bytes, desc=f"Shard {shard_id}",
-                                unit="B", unit_scale=True, unit_divisor=1024)
-                    # Reset the read filesize
-                    last_read_filesize = 0
-
-                    logging.info(f"Creating new shard #{shard_id}")
-                    h5, current_path, shard_id, current_name, eid_ds, idx_ds, ds_id, experiment_ds, interval_ds, i_in_shard = self.open_new_shard(
-                        h5=h5, shard_id=shard_id, shard_size=i_in_shard
-                    )
-                self.logger.info(f"Written a total ")
-
-        if h5 is not None:
-            h5.attrs["num_samples"] = i_in_shard
-            h5.flush()
-            h5.close()
-
-        return self.output_path
+# Hold out 1 experiment (or at most ~10–20% of experiments) across all training participants
+# your test percentage should be defined in participants (or participant×experiment groups), not in windows
+# TODO holdout AMIGOS 6 EAV 6 DEAP 5 (15%)
