@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from pathlib import Path
 from typing import Iterator
 
@@ -6,16 +7,17 @@ import numpy as np
 from moviepy import VideoFileClip
 
 from main.core_data.data_point import FlexibleDatasetPoint
-from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.eeg import EEG
 from main.core_data.loader import DataPointsLoader
-from main.core_data.media.metadata.metadata import Metadata
+from main.core_data.media.eeg import EEG
+from main.core_data.media.metadata.metadata import Metadata, MetaObject
 from main.core_data.media.video import Video
 from main.dataset.deap.config import DeapConfig
 from main.dataset.utils import DatasetUidStore
 
 
 class DeapPointsLoader(DataPointsLoader):
+    DATASET_ID: int = 3
+
     def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore, config: DeapConfig = DeapConfig()):
         super().__init__(dataset_uid_store)
         self.base_path = base_path
@@ -64,12 +66,16 @@ class DeapPointsLoader(DataPointsLoader):
                     clip = VideoFileClip(media_path)
                     fps = clip.fps
 
+                    metadata = MetaObject(
+                        experiment=eid, dataset_id=self.DATASET_ID, person_id=int(uid.split("s")[1])
+                    )
+
                     yield FlexibleDatasetPoint(
                         nei,
                         EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
                         Video(eid=nei, data=clip, fps=fps, resolution=clip.size, filepath=media_path).as_mod_tuple(),
                         # Assessment(eid=nei, data=labels).as_mod_tuple(),
-                        Metadata(eid=nei, data={"experiment": str(eid), "dataset_id": 3}).as_mod_tuple()
+                        Metadata(eid=nei, data=asdict(metadata)).as_mod_tuple()
                     )
 
             except Exception as e:

@@ -4,6 +4,10 @@ from hydra.utils import get_object
 from torch import nn
 from torchvision.transforms import v2
 
+from core_data.media.audio import Audio
+from core_data.media.ecg import ECG
+from core_data.media.eeg import EEG
+from core_data.media.video import Video
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.assessment import Assessment
 from main.core_data.media.assessment.transform import SliceAssessments, ToTensorData, \
@@ -20,7 +24,8 @@ from main.core_data.media.text.default_transform_pipe import txt_from_aud_interl
 from main.core_data.media.text.transforms import RestoreTextExtract
 from main.core_data.media.video.default_transform_pipe import vid_vivit_interleaved_transform_pipe, \
     vid_vate_basic_transform_pipe
-from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
+from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor, \
+    TorchExportsKdSegmentsReadyPreprocessor
 from main.dataset.amigos.config import AmigosConfig
 from main.dataset.amigos.loader import AmigosPointsLoader
 from main.dataset.utils import PreprocessingConfig, DatasetUidStore
@@ -51,7 +56,7 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
             (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
-            assessment_transform_pipe(),
+            # assessment_transform_pipe(),
             eeg_sample_pipeline(config)
         ),
         extraction_data_folder=extraction_data_folder
@@ -73,4 +78,47 @@ def vate_preprocessor(output_path: str, extraction_data_folder: str, config: Ami
             "shared_interleaved_preprocessor",
             (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder))
         ),
+    )
+
+
+def combined_preprocessor(output_path: str, extraction_data_folder: str, config: AmigosConfig):
+    return TorchExportsKdSegmentsReadyPreprocessor(
+        output_path=output_path,
+        extraction_data_folder=extraction_data_folder,
+        student_segment_pipeline=FlexibleDatasetTransformWrapper(
+            "AMIGOS_interleaved_preprocessor",
+            aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
+            vid_vivit_interleaved_transform_pipe(config),
+            eeg_transform_pipe(config),
+            ecg_interleaved_transform_pipe(config),
+            txt_from_aud_interleaved_txt_extract_transform_pipe(config),
+            (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data))),
+            (Metadata.modality_code(), MetadataToTensor())
+        ),
+        student_sample_pipeline=FlexibleDatasetTransformWrapper(
+            "AMIGOS_shared_interleaved_preprocessor",
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
+            # assessment_transform_pipe(),
+            eeg_sample_pipeline(config)
+        ),
+        teacher_segment_pipeline=FlexibleDatasetTransformWrapper(
+            "AMIGOS_vate_default_preprocessor",
+            vid_vate_basic_transform_pipe(config),
+            aud_vate_basic_transform_pipe(config),
+            txt_vate_basic_transform_pipe(),
+            (Metadata.modality_code(), MetadataToTensor())
+        ),
+
+        teacher_sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_preprocessor",
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder))
+        ),
+
+        quantization_keys=[
+            Video.modality_code(),
+            Audio.modality_code(),
+            Text.modality_code(),
+            EEG.modality_code(),
+            ECG.modality_code(),
+        ]
     )

@@ -1,4 +1,5 @@
 import re
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +9,7 @@ from mne.io import RawArray
 from moviepy import VideoFileClip, AudioFileClip
 from scipy.io import loadmat
 
+from core_data.media.metadata.metadata import MetaObject
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.audio import Audio
@@ -87,8 +89,9 @@ class EavPointsLoader(DataPointsLoader):
                         nei = self.dataset_uid_store.uid(subject_id, str(index) + "_" + emotion, "EAV")
                         # Store the current to fs so that we have it ready
                         self.dataset_uid_store.store_dictionary()
-                        # todo rigid structure
-                        metadata = {"experiment": str(index), "dataset_id": self.DATASET_ID}
+                        metadata = MetaObject(
+                            experiment=index, dataset_id=self.DATASET_ID, person_id=subject_id
+                        )
 
                         # EEG data part
                         info = mne.create_info(
@@ -109,7 +112,7 @@ class EavPointsLoader(DataPointsLoader):
                                   filepath=str(video_file.resolve())).as_mod_tuple(),
                             Audio(eid=nei, data=audio, fs=audio_fs, filepath=audio_filepath).as_mod_tuple(),
                             Text(eid=nei, data=audio_copy, base_audio=audio_copy).as_mod_tuple(),
-                            Metadata(data=metadata, eid=nei).as_mod_tuple()
+                            Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                         )
 
                     except Exception as e:

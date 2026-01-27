@@ -1,2 +1,0 @@
-out_folder_name: vate
-preprocessing_pipeline: main.dataset.${dataset.name}.preprocessing.vate_preprocessor

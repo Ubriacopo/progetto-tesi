@@ -9,6 +9,7 @@ class MetaObject:
     experiment: str | int
     dataset_id: str | int
     person_id: str | int
+    trial: str | int
 
 
 @dataclasses.dataclass

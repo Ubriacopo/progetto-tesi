@@ -1,4 +1,5 @@
 import re
+from dataclasses import asdict
 from pathlib import Path
 from typing import Iterator
 
@@ -8,7 +9,7 @@ import pandas as pd
 from moviepy import VideoFileClip
 
 from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.metadata.metadata import Metadata
+from main.core_data.media.metadata.metadata import Metadata, MetaObject
 from main.dataset.amigos.config import AmigosConfig
 from main.dataset.amigos.utils import extract_trial_data, load_participant_data
 from main.core_data.media.audio.audio import Audio
@@ -22,6 +23,8 @@ from main.dataset.utils import DatasetUidStore
 
 
 class AmigosPointsLoader(DataPointsLoader):
+    DATASET_ID: int = 0
+
     def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore):
         super().__init__(dataset_uid_store)
         self.base_path: str = base_path
@@ -75,7 +78,10 @@ class AmigosPointsLoader(DataPointsLoader):
                 raw = mne.io.RawArray(eeg_data[0].T, info=info, verbose=False)
 
                 nei = self.dataset_uid_store.uid(person[1:], video_id, "amigos")
-                metadata = {"experiment": str(experiment_id), "dataset_id": 0}
+                metadata = MetaObject(
+                    experiment=experiment_id, dataset_id=self.DATASET_ID, person_id=int(person[1:]), trial=video_id,
+                )
+
                 # Store the current to fs so that we have it ready
                 self.dataset_uid_store.store_dictionary()
 
@@ -92,7 +98,7 @@ class AmigosPointsLoader(DataPointsLoader):
                     Audio(data=clip.audio, fs=clip.audio.fps, eid=nei, filepath=media_path).as_mod_tuple(),
                     Text(eid=nei, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
                     # Assessment(data=assessments[0][0], eid=nei).as_mod_tuple(), no longer of use
-                    Metadata(data=metadata, eid=nei).as_mod_tuple()
+                    Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )
 
             except Exception as e:
