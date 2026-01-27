@@ -78,6 +78,5 @@ class DeapPointsLoader(DataPointsLoader):
                     )
 
             except Exception as e:
-                # TODO robust logging
                 self.logger.error(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
                 self.logger.error(e)
