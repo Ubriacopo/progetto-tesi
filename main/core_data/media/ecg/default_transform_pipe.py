@@ -10,11 +10,9 @@ from main.core_data.processing.transform import MultimediaPadding, SequentialWit
 from main.dataset.base_config import DatasetConfig
 
 
-# todo rivisiona
 def ecg_interleaved_transform_pipe(config: DatasetConfig) -> tuple[str, nn.Module]:
     max_length = math.ceil(config.max_length / config.unit_seconds)
-    latent_size: int = 256
-    patches: int = 32
+    latent_size, patches = 256, 32
     return ECG.modality_code(), SequentialWithFallback(
         SubclipMneRaw(),
         EcgDataToTensor(),

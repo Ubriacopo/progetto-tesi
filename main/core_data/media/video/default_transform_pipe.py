@@ -7,20 +7,16 @@ from torchvision.transforms import v2
 from main.core_data.media.video import Video
 from main.core_data.media.video.transforms import ViVitImageProcessorTransform, \
     VideoSequenceResampling, RegularFrameResampling, ViVitEmbedderTransform, VateVideoResamplerTransform, \
-    ViVitForVideoClassificationEmbedderTransform, ViVitPyramidPatchPooling, VideoSubclipTensorRead, \
+    ViVitForVideoClassificationEmbedderTransform, VideoSubclipTensorRead, \
     ViVitVideoTensorImageProcessorTransform, DropBatchFromViVitProcessingTransform, ViVit2DPooling
 from main.core_data.processing.transform import MultimediaPadding, ToSimpleMaskedObject, SequentialWithFallback, \
-    EmptyObjectTransform, DataQuantizationTransform, EmptyQuantizedObjectTransform
+    DataQuantizationTransform, EmptyQuantizedObjectTransform
 from main.dataset.base_config import DatasetConfig
 
 
 def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         -> tuple[str, nn.Module]:
     max_length = math.ceil(config.max_length / config.unit_seconds)
-    # To handle empty rows
-    vivit_latent = 768  # VIVIT Configuration
-    patches = 400  # From our ViVit 2D pooling
-
     return Video.modality_code(), SequentialWithFallback(
         VideoSubclipTensorRead(target_fps=32),
         ViVitVideoTensorImageProcessorTransform(),
@@ -33,8 +29,8 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         ViVit2DPooling(2, 3),
         MultimediaPadding(max_length=max_length),
         DataQuantizationTransform(),
-        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, patches, vivit_latent),
-                                                    mask_shape=(max_length,)),
+        # From our ViVit 2D pooling we get 400 patches while 768 is just the output size of ViViT
+        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, 400, 768), mask_shape=(max_length,)),
     )
 
 

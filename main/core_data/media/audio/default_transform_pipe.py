@@ -4,7 +4,6 @@ from torch import nn
 from torchaudio.transforms import Resample
 from torchvision.transforms import v2
 
-from main.core_data.media.audio import AudTargetConfig
 from main.core_data.media.audio import Audio
 from main.core_data.media.audio.transforms import SubclipAudio, AudioToTensor, ToMono, MonoAudioSequencePartitioning, \
     WavLmEmbedderTransform, WavLmFeatureExtractorTransform, HubertBaseComputeFeature, HubertFeatureExtractor
