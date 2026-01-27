@@ -4,6 +4,13 @@ defaults:
   - dataset: ???
   - preprocessing: ???
 
+hydra:
+  job:
+    name: preprocessing
+
+  run:
+    dir: outputs/${dataset.name}/${hydra.job.name}
+
 
 dataset:
   eeg_config:
