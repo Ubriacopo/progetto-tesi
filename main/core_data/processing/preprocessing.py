@@ -62,7 +62,7 @@ class Preprocessor(ABC, Generic[T]):
 
                 df.to_csv(self.output_path + "spec.csv", index=False)
                 existing_df = df
-                self.logger.info("Progress", extra={"processed": i, "total": total})
+                self.logger.info(f"Processed {i}/{total}")
 
             self.logger.info("Procedure finished correctly.")
             self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")

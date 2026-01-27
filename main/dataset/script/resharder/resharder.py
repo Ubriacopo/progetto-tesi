@@ -2,7 +2,7 @@ import dataclasses
 
 import hydra
 
-from main.core_data.shards import ReSharder
+from main.core_data.shards import KdDataSharder
 
 
 @dataclasses.dataclass
@@ -22,7 +22,7 @@ class Config:
 
 @hydra.main(version_base=None, config_name="base", config_path="config")
 def main(cfg: Config):
-    sharder = ReSharder(
+    sharder = KdDataSharder(
         student_spec_path=cfg.target.student_spec_path,
         teacher_spec_path=cfg.target.teacher_spec_path,
         output_path=cfg.target.output_path,
@@ -35,4 +35,3 @@ def main(cfg: Config):
 
 if __name__ == "__main__":
     main()
-# 22151

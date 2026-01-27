@@ -1,26 +1,28 @@
 # Since the data is too big we reduce in size using quantization.
 # Each float16 can be readapted as an int8 tensor + float16 scale 1d tensor
+import math
+
 import torch
 
 from main.utils.logging import make_logger
 
 
 class Float16ToInt8Quantizer:
+    to_warn_on_fp32: bool = True
+
     def __init__(self):
         self.logger = make_logger(self.__class__.__name__)
         self.scale_range = (-127, 127)
         self.eps = 1e-8
 
-        self.to_warn_on_fp32: bool = True
-
     def quantize(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.dtype == torch.float32:
-            self.to_warn_on_fp32 and self.logger.warn(
+            Float16ToInt8Quantizer.to_warn_on_fp32 and self.logger.warn(
                 "The passed tensor is a float32. We will still proceed conversion by halving."
                 "So will be for all further input tensors. This message won't be displayed again."
             )
 
-            self.to_warn_on_fp32 = False
+            Float16ToInt8Quantizer.to_warn_on_fp32 = False
             x = x.half()
 
         scales = x.abs().amax(dim=-1, keepdim=True) / float(self.scale_range[1])
@@ -48,7 +50,7 @@ class Float16ToInt8Quantizer:
         similarity = (og * new).sum(dim=1)
 
         self_similarity = self_cos.mean()
-        if float(self_similarity.mean().item()) != 1.:
+        if not math.isclose(float(self_similarity.mean().item()), 1., rel_tol=1e-4):
             self.logger.warning("[SANITY CHECK FAILED] self-cos-sim:" + str(self_similarity))
 
         if float(similarity.mean().item()) < 0.7:

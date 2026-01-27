@@ -42,7 +42,6 @@ class MetaInformation:
     interval: h5py.Dataset
 
 
-
 class KdDataSharder:
     def __init__(self,
                  student_spec_path: str,
@@ -309,6 +308,17 @@ class KdDataSharder:
         # Add one element
         return i_in_shard + 1
 
+
 # Hold out 1 experiment (or at most ~10–20% of experiments) across all training participants
 # your test percentage should be defined in participants (or participant×experiment groups), not in windows
 # TODO holdout AMIGOS 6 EAV 6 DEAP 5 (15%)
+
+
+class FusedDataSharder:
+    def __init__(self, spec_path: str, output_path: str, shard_size_gb: int = 4, compression=None,
+                 val_participants: int = 0, test_participants: int = 0, uid_store_path: str = None,
+                 min_chunk_size: int = 1, max_chunk_size: int = 4096):
+        pass
+
+    def run(self):
+        pass
