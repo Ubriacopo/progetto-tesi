@@ -1,15 +1,19 @@
 import dataclasses
 
 import hydra
+from hydra.core.config_store import ConfigStore
 from hydra.utils import get_object
 from omegaconf import OmegaConf
 
-from core_data.processing.preprocessing import Preprocessor
-from dataset.base_config import DatasetConfig
-from dataset.script.configs import PreprocessingTargetConfig
-from dataset.utils import PreprocessingConfig, DatasetUidStore
-from utils.logging import make_logger
+from main.core_data.processing.preprocessing import Preprocessor
+from main.dataset.base_config import DatasetConfig
+from main.dataset.script.configs import PreprocessingTargetConfig
+from main.dataset.utils import PreprocessingConfig, DatasetUidStore
+from main.utils.logging import make_logger
 
+cs = ConfigStore.instance()
+OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
+OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
 @dataclasses.dataclass
 class Config:
@@ -17,7 +21,7 @@ class Config:
     preprocessing: PreprocessingTargetConfig
 
 
-@hydra.main(version_base=None, config_name="preprocessing", config_path="conf")
+@hydra.main(version_base=None, config_name="preprocessing", config_path="../../../conf")
 def main(cfg: Config):
     logger = make_logger("preprocess")
     logger.info(OmegaConf.to_yaml(cfg))

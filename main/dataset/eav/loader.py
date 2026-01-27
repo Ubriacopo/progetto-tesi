@@ -9,7 +9,7 @@ from mne.io import RawArray
 from moviepy import VideoFileClip, AudioFileClip
 from scipy.io import loadmat
 
-from core_data.media.metadata.metadata import MetaObject
+from main.core_data.media.metadata.metadata import MetaObject
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.audio import Audio

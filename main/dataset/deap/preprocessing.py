@@ -1,8 +1,8 @@
-from core_data.media.audio import Audio
-from core_data.media.ecg import ECG
-from core_data.media.eeg import EEG
-from core_data.media.text import Text
-from core_data.media.video import Video
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.text import Text
+from main.core_data.media.video import Video
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
 from main.core_data.media.metadata.metadata import Metadata

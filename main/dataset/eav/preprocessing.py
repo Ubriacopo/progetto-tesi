@@ -1,7 +1,7 @@
-from core_data.media.audio import Audio
-from core_data.media.ecg import ECG
-from core_data.media.eeg import EEG
-from core_data.media.video import Video
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.video import Video
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
