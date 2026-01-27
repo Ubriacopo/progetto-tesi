@@ -6,10 +6,10 @@ from main.core_data.media import Media
 
 @dataclasses.dataclass
 class MetaObject:
-    experiment: str | int
-    dataset_id: str | int
-    person_id: str | int
-    trial: str | int
+    experiment: str | int # Unique experiment id (eid)
+    dataset_id: str | int # The id of the dataset the sample belongs to
+    person_id: str | int # id of the person of the experiment
+    trial: str | int # Trial identifier that composes up the experiment by tuple (person_id, trial)
 
 
 @dataclasses.dataclass

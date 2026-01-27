@@ -67,7 +67,7 @@ class DeapPointsLoader(DataPointsLoader):
                     fps = clip.fps
 
                     metadata = MetaObject(
-                        experiment=eid, dataset_id=self.DATASET_ID, person_id=int(uid.split("s")[1])
+                        experiment=eid, dataset_id=self.DATASET_ID, person_id=int(uid.split("s")[1]), trial=idx
                     )
 
                     yield FlexibleDatasetPoint(

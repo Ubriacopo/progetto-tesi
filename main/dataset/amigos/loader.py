@@ -8,17 +8,16 @@ import numpy as np
 import pandas as pd
 from moviepy import VideoFileClip
 
-from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.metadata.metadata import Metadata, MetaObject
-from main.dataset.amigos.config import AmigosConfig
-from main.dataset.amigos.utils import extract_trial_data, load_participant_data
-from main.core_data.media.audio.audio import Audio
 from main.core_data.data_point import FlexibleDatasetPoint
+from main.core_data.loader import DataPointsLoader
+from main.core_data.media.audio.audio import Audio
 from main.core_data.media.ecg.ecg import ECG
 from main.core_data.media.eeg import EEG
-from main.core_data.loader import DataPointsLoader
+from main.core_data.media.metadata.metadata import Metadata, MetaObject
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
+from main.dataset.amigos.config import AmigosConfig
+from main.dataset.amigos.utils import extract_trial_data, load_participant_data
 from main.dataset.utils import DatasetUidStore
 
 
@@ -59,8 +58,6 @@ class AmigosPointsLoader(DataPointsLoader):
                 # Add missing prefix zero to match the np data
                 person = re.sub(r'([A-Z])(\d)\b', r'\g<1>0\2', person)
 
-                experiment_id = person + "_" + video_id
-
                 video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
                 eeg_data = participant_data[person]["joined_data"][video_index]
 
@@ -79,7 +76,7 @@ class AmigosPointsLoader(DataPointsLoader):
 
                 nei = self.dataset_uid_store.uid(person[1:], video_id, "amigos")
                 metadata = MetaObject(
-                    experiment=experiment_id, dataset_id=self.DATASET_ID, person_id=int(person[1:]), trial=video_id,
+                    experiment=nei, dataset_id=self.DATASET_ID, person_id=int(person[1:]), trial=video_id,
                 )
 
                 # Store the current to fs so that we have it ready
