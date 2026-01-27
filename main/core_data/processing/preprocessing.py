@@ -246,4 +246,5 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
 
         # now we add h5 and we are done here
         output_path.mkdir(parents=True, exist_ok=True)
-        TensorDict(return_object).memmap(str(output_path))
+        bs = len(next(iter(x.values())))
+        TensorDict(return_object, batch_size=bs).memmap(str(output_path))

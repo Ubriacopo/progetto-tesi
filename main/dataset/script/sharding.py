@@ -36,3 +36,6 @@ def main(cfg: Config):
 
     sharder.run()
     logger.info("Sharding is done!")
+
+if __name__ == "__main__":
+    main()

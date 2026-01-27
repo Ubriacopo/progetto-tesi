@@ -20,6 +20,7 @@ from tensordict import TensorDict
 from tensordict._tensorcollection import TensorCollection
 from tqdm import tqdm
 
+from main.core_data.media.metadata.metadata import Metadata
 from main.utils.logging import make_logger
 
 
@@ -344,16 +345,32 @@ class FusedDataSharder:
         # For creating val/test sets based on people
         self.val_participants: float = val_participants
         self.test_participants: float = test_participants
+        # Optimization choice
+        self.capacity_by_path: dict[str, int] = {}
+        self.grow_by: int = 256  # tune: 256/1024/4096
 
     def load_td(self, td_name: str):
         if td_name != self.current_td_name:
-            self.current_td = tensordict.load_memmap(self.data_path / td_name)
+            self.current_td = tensordict.load_memmap(self.data_path / str(td_name))
             self.current_td_name = td_name
 
         return self.current_td
 
+    @staticmethod
+    def trim(h5: h5py.File, n: int):
+        def _visit(name, obj):
+            if not isinstance(obj, h5py.Dataset) or obj.ndim < 1:
+                return
+
+            if obj.maxshape is None or obj.maxshape[0] is None:
+                if obj.shape[0] > n:
+                    obj.resize((n,) + obj.shape[1:])
+
+        h5.visititems(_visit)
+
     def close_dandling_shard(self, h5: Optional[h5py.File], i: int) -> None:
         if h5 is not None:
+            self.trim(h5, i)
             h5.attrs["num_samples"] = i
             h5.close()
 
@@ -367,6 +384,10 @@ class FusedDataSharder:
     def extract_rows(self):
         # Considers train/test/val for eid partitioning
         persons = self.df["person_id"].unique().tolist()
+
+        if self.val_participants + self.test_participants > len(persons):
+            raise ValueError("val_participants + test_participants > number of unique persons")
+
         rng = random.Random(42)
         rng.shuffle(persons)
 
@@ -425,43 +446,38 @@ class FusedDataSharder:
             compression=self.compression if not is_str else None,
         )
 
-    def _normalize_for_h5(self, arr: np.ndarray):
-        """
-        Returns (arr_to_write, dtype_for_dataset, compression_ok)
-        """
-        # scalar -> 0d array; keep as-is
-        if arr.dtype == object:
-            # object could be strings, mixed, python scalars; force to str
-            arr = arr.astype(str)
-            return arr, h5py.string_dtype("utf-8"), False
+    def do_append(self, h5: h5py.File, wrapper: TensorCollection, prefix: str, count: int):
+        for key, value in wrapper.items():
+            arr = to_numpy(value)
+            if arr.dtype.kind in ("U", "S") or arr.dtype == object:
+                continue
 
-        if arr.dtype.kind in ("U", "S"):
-            # Unicode / bytes fixed-width -> store as vlen utf8
-            if arr.dtype.kind == "S":
-                # bytes -> decode best-effort
-                arr = arr.astype("U")
-            return arr, h5py.string_dtype("utf-8"), False
+            ds_path = f"{prefix}/{key}"
+            ds = self.ensure_tensor_ds_appendable(h5, ds_path, arr)
 
-        # normal numeric/bool
-        return arr, arr.dtype, True
+            cap = self.capacity_by_path.get(ds_path, ds.shape[0])
+            if count >= cap:
+                new_cap = max(count + 1, cap + self.grow_by)
+                ds.resize((new_cap,) + ds.shape[1:])
+
+                self.capacity_by_path[ds_path] = new_cap
+
+            if arr.shape == ():
+                ds[count] = arr.item()
+            else:
+                ds[count, ...] = arr
 
     def append_records(self, h5: h5py.File, td: TensorDict, count: int):
         # This is where the class is a little ugly.
         for wrapper_key, wrapper in td.items():
             modality: TensorCollection  # We have dicts of dicts
+
+            if wrapper_key == Metadata.modality_code():
+                self.do_append(h5, wrapper, wrapper_key, count)
+                continue  # Metadata handler
+
             for modality_key, modality in wrapper.items():
-                for key, value in modality.items():
-                    # todo strings?
-                    arr = to_numpy(value)
-                    if arr.dtype.kind in ("U", "S") or arr.dtype == object:
-                        continue
-
-                    ds_path = f"{wrapper_key}/{modality_key}/{key}"
-                    ds = self.ensure_tensor_ds_appendable(h5, ds_path, arr)
-                    if ds.shape[0] <= count:
-                        ds.resize((count + 1,) + ds.shape[1:])
-
-                    ds[count, ...] = arr
+                self.do_append(h5, modality, f"{wrapper_key}/{modality_key}", count)
 
     def consume(self, h5: h5py.File, eid: str, pos_track: dict, rows_by_eid: dict, count: int):
         bucket = rows_by_eid[eid]
@@ -471,6 +487,7 @@ class FusedDataSharder:
             return count
 
         record = bucket[pos_track[eid]]
+        pos_track[eid] += 1  # Increase the positions used tracker
         idx = record.index
 
         td = self.load_td(eid)
@@ -491,6 +508,7 @@ class FusedDataSharder:
         total_written = 0
         pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
         while active_eid_collection:
+            # todo per qualche motivo doppio?
             eid = active_eid_collection.popleft()
             current = self.consume(
                 h5=h5,
@@ -501,7 +519,7 @@ class FusedDataSharder:
             )
 
             if current != count:
-                active_eid_collection.appendleft(eid)
+                active_eid_collection.append(eid)
                 total_written += 1
 
             count = current
@@ -521,7 +539,7 @@ class FusedDataSharder:
                     # Reset the read filesize
                     last_read_filesize = 0
                     logging.info(f"Creating new shard #{shard_id}")
-                    h5, current_path, shard_id, i_in_shard = self.open_new_shard(
+                    h5, current_path, shard_id, count = self.open_new_shard(
                         h5=h5, shard_id=shard_id, shard_size=count, shard_name=modality
                     )
 
