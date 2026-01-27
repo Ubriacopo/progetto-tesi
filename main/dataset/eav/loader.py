@@ -105,11 +105,12 @@ class EavPointsLoader(DataPointsLoader):
                         audio_fs = audio.fps if audio is not None else 0
                         audio_copy = audio.copy() if audio is not None else None
 
+                        vfp = str(video_file.resolve())  # Video file path
+
                         yield FlexibleDatasetPoint(
                             nei,
                             EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
-                            Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size,
-                                  filepath=str(video_file.resolve())).as_mod_tuple(),
+                            Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size, filepath=vfp).as_mod_tuple(),
                             Audio(eid=nei, data=audio, fs=audio_fs, filepath=audio_filepath).as_mod_tuple(),
                             Text(eid=nei, data=audio_copy, base_audio=audio_copy).as_mod_tuple(),
                             Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()

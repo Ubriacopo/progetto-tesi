@@ -47,9 +47,9 @@ class MahnobPointsLoader(DataPointsLoader):
                 raw: Optional[RawEDF] = None
                 clip: Optional[VideoFileClip] = None
 
-                participant_id: int = None
+                participant_id: Optional[int] = None
 
-                offset = 30  # Delay of videocamera start
+                offset = 30  # Delay of video camera start
                 for file in i.iterdir():
                     if file.suffix == ".bdf":
                         raw: RawEDF = mne.io.read_raw_bdf(str(file), preload=True)
@@ -80,11 +80,12 @@ class MahnobPointsLoader(DataPointsLoader):
                     EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
                     ECG(eid=nei, data=raw.copy().pick(self.config.eeg_source_config.ECG_CHANNELS),
                         fs=raw.info['sfreq'], leads=self.config.ecg_source_config.LEAD_NAMES).as_mod_tuple(),
-                    # All MANHOB videos have 30s offset
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=nei,
-                          offset=offset, filepath=clip.filename).as_mod_tuple(),
+                    # All MAHNOB videos have 30s offset
+                    Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size, offset=offset,
+                          filepath=clip.filename).as_mod_tuple(),
                     Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )
+
             except Exception as e:
                 self.logger.info(f"Loading failed for {i.stem}. Procedure will continue and drop the element")
                 self.logger.error(e)
