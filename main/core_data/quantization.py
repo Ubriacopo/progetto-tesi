@@ -45,13 +45,14 @@ class Float16ToInt8Quantizer:
         new = torch.nn.functional.normalize(new, dim=-1)
 
         self_cos = (og * og).sum(dim=1)
-        cos = (og * new).sum(dim=1)
-        self_cos_mean = self_cos.mean()
-        if self_cos_mean != 1 and self_cos_mean != 1.:
-            self.logger.warn("[SANITY CHECK FAILED] self-cos-sim:" + str(self_cos_mean))
+        similarity = (og * new).sum(dim=1)
 
-        if cos.mean() < 0.9:
-            self.logger.warn("You loose some information on this sample be wary!")
-            self.logger.info("cos-sim:" + str(cos.mean()))
+        self_similarity = self_cos.mean()
+        if float(self_similarity.mean().item()) != 1:
+            self.logger.warning("[SANITY CHECK FAILED] self-cos-sim:" + str(self_similarity))
+
+        if float(similarity.mean().item()) < 0.7:
+            self.logger.warning("You loose some information on this sample be wary! "
+                                "Similarity of:" + str(similarity.mean()))
 
         return (og * og).sum(dim=1), (og * new).sum(dim=1)

@@ -1,0 +1,10 @@
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/
+defaults:
+  - hydra-setup
+  - dataset: ???
+  - preprocessing: ???
+
+
+dataset:
+  eeg_config:
+    model_weights_path: /home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth

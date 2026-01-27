@@ -1,0 +1,32 @@
+name: ???
+DatasetName: "${capitalize:${dataset.name}}"
+DATASETNAME: "${uppercase:${dataset.name}}"
+
+config_classpath: main.dataset.${dataset.name}.config.${dataset.DatasetName}Config
+loader_classpath: main.dataset.${dataset.name}.loader.${dataset.DatasetName}PointsLoader
+data_path: ${base_path}${dataset.DATASETNAME}/
+extraction_data_folder: ${base_path}EEGAVI/${dataset.DATASETNAME}/extraction-data/
+# Where output has to go to
+output_path: ${base_path}EEGAVI/${dataset.DATASETNAME}/${target_model.out_folder_name}/
+# Objects have to be defined
+uid_store_path: ${base_path}/EEGAVI/uid_store.csv
+output_max_length: 32
+
+vid_config:
+  max_frames: 32
+  target_fps: 25
+
+aud_config:
+  fs: 16000
+
+eeg_config:
+  fs: 200
+  model_weights_path: ???
+
+txt_config:
+  # TODO Problema
+  extracted_base_path: ${base_path}/data/${dataset.name}/extraction_data/
+
+ecg_config:
+  fs: 128
+  fm_endpoint: localhost:7860/extract_features

@@ -8,16 +8,12 @@ from typing import Optional, TypeVar, Generic, Literal
 
 import numpy as np
 import pandas as pd
-from tensordict import TensorDict, stack, tensordict
+from tensordict import TensorDict, stack
+from tqdm import tqdm
 
 from main.core_data.data_point import FlexibleDatasetPoint, FlexibleDatasetTransformWrapper
 from main.core_data.loader import DataPointsLoader
-from main.core_data.media.audio import Audio
-from main.core_data.media.ecg import ECG
-from main.core_data.media.eeg import EEG
 from main.core_data.media.metadata.metadata import Metadata
-from main.core_data.media.text import Text
-from main.core_data.media.video import Video
 from main.core_data.quantization import Float16ToInt8Quantizer
 from main.core_data.utils import sanitize_for_ast, timed
 from main.utils.logging import make_logger
@@ -44,7 +40,7 @@ class Preprocessor(ABC, Generic[T]):
         pass
 
     @timed()
-    def run(self, loader: DataPointsLoader, workers: int = 1) -> bool:
+    def run(self, loader: DataPointsLoader) -> bool:
         try:
             # Read an existing spec if it was computed.
             existing_df: Optional[pd.DataFrame] = None
@@ -52,46 +48,11 @@ class Preprocessor(ABC, Generic[T]):
             Path(self.output_path).mkdir(parents=True, exist_ok=True)
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
-
-            # How many items will be processed
-            total_elements = len(loader)
-            leading = math.ceil(math.log(total_elements, 10))
-            current_element = 0
-            if workers > 1:
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    for block in batched(loader.scan(), workers):
-                        docs = []
-                        for i in block:
-                            key = i.get_identifier()
-                            if existing_df is not None and (existing_df[key] == i.eid).any():
-                                continue  # This element was already processed.
-                            docs.append(executor.submit(self.preprocess, i))
-
-                        if not docs:
-                            continue
-
-                        block_results = ([res for d in docs if (res := d.result()) is not None])
-                        if not block_results:
-                            continue
-
-                        df = pd.DataFrame(block_results)
-                        if existing_df is not None:
-                            df = pd.concat([df, existing_df], ignore_index=True)
-
-                        df.to_csv(self.output_path + "spec.csv", index=False)
-                        existing_df = df
-
-                self.logger.info("Procedure finished correctly.")
-                self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")
-                return True
-
-            for i in loader.scan():
-                current_element += 1
-                self.logger.info(f"({current_element:0{leading}}/{total_elements}) "
-                                 f"Processing element with eid {i.eid}")
+            total: int = len(loader)
+            for i in tqdm(loader.scan(), total=total, desc="Processing"):
                 key = i.get_identifier()
                 if existing_df is not None and (existing_df[key] == i.eid).any():
-                    self.logger.info(f"Element {key} will be skipped as it was already processed.")
+                    tqdm.write(f"Element {key} will be skipped as it was already processed.")
                     continue  # This element was already processed.
 
                 docs = [e for e in self.preprocess(i)]
@@ -101,6 +62,7 @@ class Preprocessor(ABC, Generic[T]):
 
                 df.to_csv(self.output_path + "spec.csv", index=False)
                 existing_df = df
+                self.logger.info("Progress", extra={"processed": i, "total": total})
 
             self.logger.info("Procedure finished correctly.")
             self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")

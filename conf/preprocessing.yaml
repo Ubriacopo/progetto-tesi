@@ -1,0 +1,11 @@
+base_path: /mnt/turing-datasets/
+
+defaults:
+  - hydra-setup
+  - dataset: ???
+  - preprocessing: ???
+
+
+dataset:
+  eeg_config:
+    model_weights_path: /root/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth

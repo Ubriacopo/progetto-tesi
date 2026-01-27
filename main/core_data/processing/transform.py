@@ -197,12 +197,7 @@ class DataQuantizationTransform(nn.Module):
 
     def forward(self, x: MaskedValue) -> QuantizedMaskedValue:
         data, scales = self.quantizer.quantize(x['data'])
-
         if self.aggressive_check:
-            self_similarity, similarity = self.quantizer.check_loss(x["data"], data, scales)
-            if float(self_similarity.mean().half()) != 1.:
-                self.logger.warn(f"Self similarity value is strange: {self_similarity}")
-            if float(similarity.mean()) < 0.7:
-                self.logger.warn(f"Quantization led to a noticeable loss of information: {similarity}")
+            self.quantizer.check_loss(x["data"], data, scales)
 
         return QuantizedMaskedValue(data=data, mask=x["mask"], scales=scales)

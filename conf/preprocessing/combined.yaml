@@ -1,0 +1,2 @@
+out_folder_name: combined
+preprocessing_pipeline: main.dataset.${dataset.name}.preprocessing.combined_preprocessor
