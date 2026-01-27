@@ -21,7 +21,7 @@ class Config:
     preprocessing: PreprocessingTargetConfig
 
 
-@hydra.main(version_base=None, config_name="preprocessing", config_path="../../../conf")
+@hydra.main(version_base=None, config_name="preprocessing-local", config_path="../../../conf")
 def main(cfg: Config):
     logger = make_logger("preprocess")
     logger.info(OmegaConf.to_yaml(cfg))

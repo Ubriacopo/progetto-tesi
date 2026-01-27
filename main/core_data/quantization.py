@@ -48,7 +48,7 @@ class Float16ToInt8Quantizer:
         similarity = (og * new).sum(dim=1)
 
         self_similarity = self_cos.mean()
-        if float(self_similarity.mean().item()) != 1:
+        if float(self_similarity.mean().item()) != 1.:
             self.logger.warning("[SANITY CHECK FAILED] self-cos-sim:" + str(self_similarity))
 
         if float(similarity.mean().item()) < 0.7:
