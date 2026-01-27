@@ -3,6 +3,8 @@ defaults:
 
 name: amigos
 
-# Todo trova valori per % su ds
-test_participants: 7
-val_participants: 4
+test_participants: 6 # 15%
+val_participants: 4 # 10%
+
+spec_path: ${base_path}AMIGOS/combined/spec.csv
+output_dir: ${base_path}AMIGOS/combined/

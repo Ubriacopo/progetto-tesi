@@ -3,6 +3,8 @@ defaults:
 
 name: deap
 
-# Todo trova valori per % su ds
-test_participants: ???
-val_participants: ???
+test_participants: 5 # 15%
+val_participants: 3 # 10%
+
+spec_path: ${base_path}DEAP/combined/spec.csv
+output_dir: ${base_path}DEAP/combined/

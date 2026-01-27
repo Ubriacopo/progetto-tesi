@@ -3,6 +3,8 @@ defaults:
 
 name: eav
 
-# Todo trova valori per % su ds
-test_participants: ???
-val_participants: ???
+test_participants: 6 # 15%
+val_participants: 4 # 10%
+
+spec_path: ${base_path}EAV/combined/spec.csv
+output_dir: ${base_path}EAV/combined/

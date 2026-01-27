@@ -1,9 +1,3 @@
-DATASETNAME: "${uppercase:${sharding.name}}"
-
-
-spec_path: ${base_path}EEGAVI/${sharding.DATASET_NAME/combined/
-output_dir: ${base_path}EEGAVI/${sharding.DATASET_NAME}/combined/
-
 shard_size_gb: 16
 compression: 'lzf'
 

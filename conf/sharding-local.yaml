@@ -1,4 +1,4 @@
-base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/EEGAVI/
 defaults:
   - hydra-setup
   - sharding: ???
@@ -8,7 +8,7 @@ hydra:
     name: preprocessing
 
   run:
-    dir: outputs/${hydra.job.name}/${dataset.name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${hydra.job.name}/${sharding.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 dataset:
   eeg_config:
