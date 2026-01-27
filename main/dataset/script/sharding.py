@@ -24,7 +24,7 @@ class Config:
 @hydra.main(version_base=None, config_name="sharding-local", config_path="../../../conf")
 def main(cfg: Config):
     logger = make_logger("sharder")
-
+    # todo provare
     sharder = FusedDataSharder(
         spec_path=cfg.sharding.spec_path,
         output_path=cfg.sharding.output_dir,

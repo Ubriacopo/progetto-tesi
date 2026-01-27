@@ -70,7 +70,7 @@ class MahnobPointsLoader(DataPointsLoader):
 
                 nei = self.dataset_uid_store.uid(experiment_id, experiment_id, "MANHOB")
                 metadata = MetaObject(
-                    experiment=nei, dataset_id=self.DATASET_ID, person_id=participant_id, trial=experiment_id
+                    experiment=nei, dataset_id=self.DATASET_ID, person_id=participant_id, trial=int(experiment_id)
                 )
 
                 # Store the current to fs so that we have it ready
