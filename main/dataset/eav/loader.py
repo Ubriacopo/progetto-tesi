@@ -90,7 +90,7 @@ class EavPointsLoader(DataPointsLoader):
                         # Store the current to fs so that we have it ready
                         self.dataset_uid_store.store_dictionary()
                         metadata = MetaObject(
-                            experiment=nei, dataset_id=self.DATASET_ID, person_id=subject_id, trial=index
+                            experiment=nei, dataset_id=self.DATASET_ID, person_id=int(subject_id), trial=index
                         )
 
                         # EEG data part

@@ -1,0 +1,8 @@
+defaults:
+  - template
+
+name: amigos
+
+# Todo trova valori per % su ds
+test_participants: 7
+val_participants: 4

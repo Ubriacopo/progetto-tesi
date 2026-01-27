@@ -15,7 +15,9 @@ import numpy as np
 import pandas as pd
 import tensordict
 import torch
+from h5py import Dataset
 from tensordict import TensorDict
+from tensordict._tensorcollection import TensorCollection
 from tqdm import tqdm
 
 from main.utils.logging import make_logger
@@ -315,10 +317,212 @@ class KdDataSharder:
 
 
 class FusedDataSharder:
-    def __init__(self, spec_path: str, output_path: str, shard_size_gb: int = 4, compression=None,
-                 val_participants: int = 0, test_participants: int = 0, uid_store_path: str = None,
-                 min_chunk_size: int = 1, max_chunk_size: int = 4096):
-        pass
+    def __init__(
+            self,
+            spec_path: str, output_path: str,
+            val_participants: int = 0, test_participants: int = 0,
+            min_chunk_size: int = 1, max_chunk_size: int = 4096, shard_size_gb: int = 16, compression=None,
+    ):
+        self.logger = make_logger(self.__class__.__name__)
+        self.df = pd.read_csv(spec_path)
+
+        self.data_path: Path = Path(spec_path).parent
+        self.output_path: Path = Path(output_path)
+        Path(self.output_path).mkdir(parents=True, exist_ok=True)
+        self.shard_size_bytes = int(shard_size_gb * (1024 ** 3))
+
+        self.current_td: Optional[TensorDict] = None
+        self.current_td_name: Optional[str] = None
+
+        self.min_chunk_size: int = min_chunk_size
+        self.max_chunk_size: int = max_chunk_size
+
+        # Commonly accepted heuristic on size of chunks for I/O and CPU tradeoff
+        self.target_chunk_mb = 8
+        self.compression = compression
+
+        # For creating val/test sets based on people
+        self.val_participants: float = val_participants
+        self.test_participants: float = test_participants
+
+    def load_td(self, td_name: str):
+        if td_name != self.current_td_name:
+            self.current_td = tensordict.load_memmap(self.data_path / td_name)
+            self.current_td_name = td_name
+
+        return self.current_td
+
+    def close_dandling_shard(self, h5: Optional[h5py.File], i: int) -> None:
+        if h5 is not None:
+            h5.attrs["num_samples"] = i
+            h5.close()
+
+    def open_new_shard(self, h5: Optional[h5py.File], shard_id: int, shard_size: int, shard_name: str):
+        self.close_dandling_shard(h5, shard_size)
+        shard_name = f"{shard_name}_{shard_id:03d}.h5"
+        output_path = self.output_path / shard_name
+        # Returns the h5, path, new shard_id and i_in_shard
+        return h5py.File(output_path, "w"), output_path, shard_id + 1, 0
+
+    def extract_rows(self):
+        # Considers train/test/val for eid partitioning
+        persons = self.df["person_id"].unique().tolist()
+        rng = random.Random(42)
+        rng.shuffle(persons)
+
+        val_persons = set(persons[0:self.val_participants])
+        test_persons = set(persons[self.val_participants:self.val_participants + self.test_participants])
+
+        train_eid, val_eid, test_eid = defaultdict(list), defaultdict(list), defaultdict(list)
+
+        for record in self.df.itertuples(index=False):
+            if record.person_id in val_persons:
+                val_eid[record.eid].append(record)
+            elif record.person_id in test_persons:
+                test_eid[record.eid].append(record)
+            else:
+                train_eid[record.eid].append(record)
+
+        return train_eid, val_eid, test_eid
 
     def run(self):
-        pass
+        train_samples, validation_samples, test_samples = self.extract_rows()
+
+        rng = random.Random(123)
+        for eid, bucket in train_samples.items():
+            rng.shuffle(bucket)
+
+        self.elaborate_modality("train", train_samples)
+        if self.val_participants > 0:
+            self.elaborate_modality("val", validation_samples)
+        if self.test_participants > 0:
+            self.elaborate_modality("test", test_samples)
+
+    def choose_chunk0(self, sample: np.ndarray):
+        bytes_per_sample = sample.nbytes
+        if bytes_per_sample == 0:
+            return 1
+
+        target_bytes = self.target_chunk_mb * 1024 * 1024
+        chunk0 = max(self.min_chunk_size, target_bytes // bytes_per_sample)
+        return int(max(self.min_chunk_size, min(chunk0, self.max_chunk_size)))
+
+    def ensure_tensor_ds_appendable(self, h5: h5py.File, path: str, sample: np.ndarray) -> Dataset:
+        # todo make meta also correctly (strings?)
+        if path in h5:
+            return h5[path]
+
+        chunk0 = self.choose_chunk0(sample)
+        is_str = sample.dtype.kind in ("U", "S") or sample.dtype == object
+        has_shape = sample.shape != ()
+
+        return h5.create_dataset(
+            name=path,
+            shape=(0,) + sample.shape if has_shape else (0,),
+            maxshape=(None,) + sample.shape if has_shape else (None,),
+            dtype=h5py.string_dtype("utf-8") if is_str else sample.dtype,
+            chunks=(chunk0,) + sample.shape if has_shape else (chunk0,),
+            compression=self.compression if not is_str else None,
+        )
+
+    def _normalize_for_h5(self, arr: np.ndarray):
+        """
+        Returns (arr_to_write, dtype_for_dataset, compression_ok)
+        """
+        # scalar -> 0d array; keep as-is
+        if arr.dtype == object:
+            # object could be strings, mixed, python scalars; force to str
+            arr = arr.astype(str)
+            return arr, h5py.string_dtype("utf-8"), False
+
+        if arr.dtype.kind in ("U", "S"):
+            # Unicode / bytes fixed-width -> store as vlen utf8
+            if arr.dtype.kind == "S":
+                # bytes -> decode best-effort
+                arr = arr.astype("U")
+            return arr, h5py.string_dtype("utf-8"), False
+
+        # normal numeric/bool
+        return arr, arr.dtype, True
+
+    def append_records(self, h5: h5py.File, td: TensorDict, count: int):
+        # This is where the class is a little ugly.
+        for wrapper_key, wrapper in td.items():
+            modality: TensorCollection  # We have dicts of dicts
+            for modality_key, modality in wrapper.items():
+                for key, value in modality.items():
+                    # todo strings?
+                    arr = to_numpy(value)
+                    if arr.dtype.kind in ("U", "S") or arr.dtype == object:
+                        continue
+
+                    ds_path = f"{wrapper_key}/{modality_key}/{key}"
+                    ds = self.ensure_tensor_ds_appendable(h5, ds_path, arr)
+                    if ds.shape[0] <= count:
+                        ds.resize((count + 1,) + ds.shape[1:])
+
+                    ds[count, ...] = arr
+
+    def consume(self, h5: h5py.File, eid: str, pos_track: dict, rows_by_eid: dict, count: int):
+        bucket = rows_by_eid[eid]
+
+        if pos_track[eid] >= len(bucket):
+            self.logger.info(f"eid:{eid} exhausted")
+            return count
+
+        record = bucket[pos_track[eid]]
+        idx = record.index
+
+        td = self.load_td(eid)
+        self.append_records(h5, td[idx], count)
+        return count + 1
+
+    def elaborate_modality(self, modality: str, rows_by_eid: defaultdict[Any, list]):
+        self.logger.info(f"Working for modality: {modality}")
+
+        active_eid_collection = deque(rows_by_eid)
+
+        pos = {eid: 0 for eid in rows_by_eid.keys()}
+
+        last_read_filesize: int = 0
+        h5, current_path, shard_id, count = self.open_new_shard(
+            h5=None, shard_id=0, shard_size=0, shard_name=modality
+        )
+        total_written = 0
+        pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
+        while active_eid_collection:
+            eid = active_eid_collection.popleft()
+            current = self.consume(
+                h5=h5,
+                eid=eid,
+                pos_track=pos,
+                rows_by_eid=rows_by_eid,
+                count=count,
+            )
+
+            if current != count:
+                active_eid_collection.appendleft(eid)
+                total_written += 1
+
+            count = current
+
+            if total_written % 256 == 0:
+                h5.flush()
+
+                pbar.update(os.path.getsize(current_path) - last_read_filesize)
+                pbar.set_postfix(samples_done=total_written)
+                last_read_filesize = os.path.getsize(current_path)
+
+                if os.path.getsize(current_path) >= self.shard_size_bytes:
+                    pbar.close()
+                    pbar = tqdm(total=self.shard_size_bytes, desc=f"Shard {shard_id}",
+                                unit="B", unit_scale=True, unit_divisor=1024)
+
+                    # Reset the read filesize
+                    last_read_filesize = 0
+                    logging.info(f"Creating new shard #{shard_id}")
+                    h5, current_path, shard_id, i_in_shard = self.open_new_shard(
+                        h5=h5, shard_id=shard_id, shard_size=count, shard_name=modality
+                    )
+
+        self.close_dandling_shard(h5, count)

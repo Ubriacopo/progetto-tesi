@@ -1,0 +1,8 @@
+defaults:
+  - template
+
+name: eav
+
+# Todo trova valori per % su ds
+test_participants: ???
+val_participants: ???

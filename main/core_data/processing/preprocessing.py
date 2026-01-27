@@ -49,6 +49,7 @@ class Preprocessor(ABC, Generic[T]):
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
             total: int = len(loader)
+            counter: int = 0
             for i in tqdm(loader.scan(), total=total, desc="Processing"):
                 key = i.get_identifier()
                 if existing_df is not None and (existing_df[key] == i.eid).any():
@@ -62,7 +63,8 @@ class Preprocessor(ABC, Generic[T]):
 
                 df.to_csv(self.output_path + "spec.csv", index=False)
                 existing_df = df
-                self.logger.info(f"Processed {i}/{total}")
+                counter += 1
+                self.logger.info(f"Processed {counter}/{total}")
 
             self.logger.info("Procedure finished correctly.")
             self.logger.info(f"Spec file can be found at:{self.output_path} spec.csv")
@@ -225,11 +227,22 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
 
     def export(self, output_path: Path, **x: list[FlexibleDatasetPoint]) -> None:
         return_object = {}
+        # todo promote meta as they are identical
+
+        optional_meta = None
 
         for key, value in x.items():
             objects = [TensorDict(s.to_dict()) if hasattr(s, "to_dict") else TensorDict(s) for s in value]
             td = stack(objects, dim=0)
+
+            if Metadata.modality_code() in td:
+                if optional_meta is not None and not (optional_meta == td["meta"]).all():
+                    raise ValueError("meta does not match with previous meta found")
+                optional_meta = td.pop(Metadata.modality_code())
             return_object[key] = td
+
+        if optional_meta is not None:
+            return_object[Metadata.modality_code()] = optional_meta
 
         # now we add h5 and we are done here
         output_path.mkdir(parents=True, exist_ok=True)
