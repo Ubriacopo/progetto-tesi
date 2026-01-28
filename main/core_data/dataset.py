@@ -134,6 +134,42 @@ class H5KdDataset(IterableDataset):
             with h5py.File(file, "r") as h5:
                 yield int(h5.attrs.get("num_samples", 0))
 
+    def data_for_worker(self, g: torch.Generator):
+        num_workers = 1 if get_worker_info() is None else get_worker_info().num_workers
+        worker_id = 0 if get_worker_info() is None else get_worker_info().id
+
+        perm = torch.randperm(len(self.shard_files), generator=g).tolist()
+        files = [self.shard_files[i] for i in perm]
+        lengths = [self.shard_lengths[i] for i in perm]
+
+        if num_workers <= len(files):
+            files = files[worker_id:: num_workers]
+            lengths = lengths[worker_id:: num_workers]
+
+            for file, length in zip(files, lengths):
+                yield file, 0, length
+
+            return
+
+        for file, length in zip(files, lengths):
+            if length <= 0:
+                continue
+
+            num_blocks = (length + self.block_size - 1) // self.block_size
+            if num_blocks >= num_workers:
+                for block_start in range(0, length, self.block_size):
+                    block_id = block_start // self.block_size
+                    if block_id % num_workers == worker_id:
+                        yield file, block_start, min(block_start + self.block_size, length)
+
+            else:
+                step = max(1, length // num_workers)
+                start = worker_id * step
+                stop = length if worker_id == num_workers - 1 else min(length, (worker_id + 1) * step)
+
+                if start < stop:
+                    yield file, start, stop
+
     def files_for_worker(self, g: torch.Generator):
         perm = torch.randperm(len(self.shard_files), generator=g).tolist()
         files = [self.shard_files[i] for i in perm]
@@ -198,9 +234,9 @@ class H5KdDataset(IterableDataset):
         ingested_since_yield: int = 0  # Iteration counter to know passed yields
 
         buffer: list[TensorDict] = []
-        for shard_path, length in self.files_for_worker(global_g):
+        for shard_path, start, stop in self.data_for_worker(global_g):
             with h5py.File(str(shard_path), "r") as h5:
-                for sample in self.iter_shard(h5, start=0, stop=length):
+                for sample in self.iter_shard(h5, start=start, stop=stop):
                     buffer.append(sample)
 
                     if len(buffer) < warmup:
@@ -511,12 +547,17 @@ class RoundRobinMultiDataset(IterableDataset):
         g.manual_seed(self.seed + self.epoch + (0 if worker_info is None else 10000 * worker_info.id))
 
         iters = [iter(ds) for ds in self.datasets]
+        dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
-            k = int(torch.multinomial(self.weights, num_samples=1, replacement=True).item())
+            k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
             try:
                 yield next(iters[k])
+                dead[k] = 0
 
             except StopIteration:
+                dead[k] += 1
+                if dead[k] > 5:
+                    raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
                 # Restart that dataset (cycle)
                 iters[k] = iter(self.datasets[k])
 

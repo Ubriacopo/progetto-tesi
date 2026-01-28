@@ -6,13 +6,7 @@ from tensordict import TensorDict
 from torch.utils.data import DataLoader, IterableDataset
 
 from main.core_data.dataset import MultiDataset, \
-    CachableDatasetDescriptor, H5KdSourceDataset, RoundRobinMultiDataset
-
-
-def default_collate_fn(batch):
-    # For simplicity
-    td_list = [TensorDict(obj, batch_size=[]) for obj in batch]
-    return torch.stack(td_list, dim=0)
+    CachableDatasetDescriptor, H5KdSourceDataset, RoundRobinMultiDataset, H5KdDataset
 
 
 class KdTrainDataModule(lightning.LightningDataModule):
@@ -20,7 +14,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                  dataset_paths: list[CachableDatasetDescriptor],
                  # Parameters for stuff less related to the data itself
                  batch_size: int, batches_per_epoch: int,
-                 seed: int, collate_fn=default_collate_fn):
+                 seed: int, collate_fn=lambda x: torch.stack(x, dim=0)):
         """
         :param student_keys: list of keys that appear in the student records as tensor_dicts
         :param teacher_keys: list of keys that appear in the teacher records as tensor_dicts
@@ -31,7 +25,6 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.shards_path: list[CachableDatasetDescriptor] = dataset_paths
 
         self.train_dataset: Optional[IterableDataset] = None
-        # todo
         self.valid_dataset: Optional[MultiDataset] = None
         self.test_dataset: Optional[MultiDataset] = None
 
@@ -45,10 +38,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         datasets, weights = [], []
         for shards_path in self.shards_path:
             datasets.append(
-                H5KdSourceDataset(
-                    shards_path=shards_path.dataset_path,
-                    manifest_csv_name="train.csv"
-                )
+                H5KdDataset(dataset_path=shards_path.dataset_path, prefix="train")
             )
             weights.append(shards_path.dataset_weight)
 
