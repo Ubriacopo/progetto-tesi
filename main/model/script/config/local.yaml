@@ -7,13 +7,11 @@ base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
 
-student_dataset_path:
-  - dataset_spec_file: "/${base_path}data/EEGAVI/EAV/interleaved-quantized/spec.csv"
+dataset_descriptors:
+  - dataset_path: "/${base_path}data/EEGAVI/MAHNOB/combined/"
     cache_path: null
+    dataset_weight: 1.0
 
-teacher_dataset_path:
-  - dataset_spec_file: "/${base_path}data/EEGAVI/EAV/vate-quantized/spec.csv"
-    cache_path: null
 
 
 hydra:

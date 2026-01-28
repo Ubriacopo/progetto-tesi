@@ -40,7 +40,7 @@ def main(cfg: KdConfig):
     )
 
     kd_train_datamodule = KdTrainDataModule(
-        dataset_paths=list(zip(cfg.student_dataset_path, cfg.teacher_dataset_path)),
+        dataset_paths=cfg.dataset_descriptors,
         batch_size=cfg.trainer.batch_size,
         batches_per_epoch=cfg.trainer.batches_per_epoch,
         seed=AppConfig.SEED

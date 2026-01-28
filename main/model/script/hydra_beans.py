@@ -66,6 +66,5 @@ class KdConfig:
     model: ModelConfig
     teacher: TeacherConfig
 
-    student_dataset_path: list[CachableDatasetDescriptor]
-    teacher_dataset_path: list[CachableDatasetDescriptor]
+    dataset_descriptors: list[CachableDatasetDescriptor]
     teacher_weights_path: str

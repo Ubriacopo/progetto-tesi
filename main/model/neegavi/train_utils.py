@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, IterableDataset
 
 from main.core_data.dataset import MultiDataset, \
     CachableDatasetDescriptor, H5KdSourceDataset, RoundRobinMultiDataset, H5KdDataset
+import torch
 
 
 class KdTrainDataModule(lightning.LightningDataModule):
@@ -46,8 +47,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.train_dataset = ds
 
     def _move(self, x, device):
-        import torch
-        if isinstance(x, torch.Tensor):
+        if isinstance(x, torch.Tensor) or isinstance(x, TensorDict):
             return x.to(device, non_blocking=True)
         if isinstance(x, dict):
             return {k: self._move(v, device) for k, v in x.items()}
