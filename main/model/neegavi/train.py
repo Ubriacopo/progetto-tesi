@@ -201,6 +201,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def on_train_epoch_start(self) -> None:
         self._n_causal = 0
         self._n_bidirectional = 0
+        self
 
     def on_train_epoch_end(self) -> None:
         total = self._n_causal + self._n_bidirectional

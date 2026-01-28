@@ -6,8 +6,7 @@ from tensordict import TensorDict
 from torch.utils.data import DataLoader, IterableDataset
 
 from main.core_data.dataset import MultiDataset, \
-    CachableDatasetDescriptor, H5KdSourceDataset, RoundRobinMultiDataset, H5KdDataset
-import torch
+    CachableDatasetDescriptor, RoundRobinMultiDataset, H5KdDataset
 
 
 class KdTrainDataModule(lightning.LightningDataModule):
@@ -45,6 +44,10 @@ class KdTrainDataModule(lightning.LightningDataModule):
 
         ds = RoundRobinMultiDataset(datasets, weights, seed=self.seed)
         self.train_dataset = ds
+
+    def on_train_epoch_start(self) -> None:
+        if self.train_dataset is not None and hasattr(self.train_dataset, "set_epoch"):
+            self.train_dataset.set_epoch(self.trainer.current_epoch)
 
     def _move(self, x, device):
         if isinstance(x, torch.Tensor) or isinstance(x, TensorDict):

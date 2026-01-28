@@ -211,7 +211,7 @@ class H5KdDataset(IterableDataset):
             b = block_stop - block_start
 
             td = TensorDict(self.h5_chunk_to_dict(h5, block_start, block_stop), batch_size=[b])
-
+            td.pop("meta", None) # During training this is of little use.
             for i in range(b):
                 yield td[i]
 
