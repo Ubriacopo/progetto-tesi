@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Tuple, Iterator, Optional, Any
 
 import h5py
+import numpy as np
 import pandas as pd
 import tensordict
 import torch
 from cachetools import LRUCache
+from tensordict import TensorDict
 from torch.utils.data import Sampler, Subset, IterableDataset
 from torch.utils.data import get_worker_info
 
@@ -34,62 +36,27 @@ class RequiredKey:
     cannot_miss: bool = False
 
 
-def _worker_cache():
-    wi = get_worker_info()
-    # each worker has its own Dataset instance, so self-scoped cache is enough
-    return
-
-
-class SimpleDiskLRU:
-    def __init__(self, remote_dir: str, local_dir: str, max_gb: int, shard_gb: int = 4):
-        self.remote: Path = Path(remote_dir)
-        self.local: Path = Path(local_dir)
-        # Add the folder if it non existent
-        self.local.mkdir(parents=True, exist_ok=True)
-
-        self.max_items = max(1, int((max_gb * (1 << 30)) // (shard_gb * (1 << 30))))
-        self.cache = LRUCache(maxsize=self.max_items)
-
-    @staticmethod
-    def atomic_copy(src: Path, dst: Path):
-        if not src.is_dir():
-            raise ValueError(f"Expected directory source, got: {src}")
-
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dst.parent / (dst.name + f".tmp_{uuid.uuid4().hex}")
-        # Copy to TMP
-        shutil.copytree(src, tmp, dirs_exist_ok=False)
-        # Put into the correct path
-        os.replace(tmp, dst)
-
-    def get(self, shard_name: str):
-        shard: Path = self.cache.get(shard_name)
-        if shard is not None and shard.exists():
-            # Touch the existing shard to refresh recency
-            self.cache[shard_name] = shard
-            return shard
-
-        while len(self.cache) > self.max_items:
-            old_name, old_path = self.cache.popitem()  # LRU
-            try:
-                old_path.unlink()
-            except FileNotFoundError:
-                pass  # We failed for some reason but as long as we loose it we don't care
-
-        remote = self.remote / shard_name
-        local = self.local / shard_name
-        if not local.exists():
-            self.atomic_copy(remote, local)
-
-        self.cache[shard_name] = local
-        return local
-
-
 @dataclasses.dataclass
 class CachableDatasetDescriptor:
     dataset_path: str
     cache_path: Optional[str]
     dataset_weight: float
+
+
+class H5DataDictExtractor:
+    def __init__(self):
+        self.state: Optional[dict] = None
+
+    def slice_h5_to_dict(self, h5_obj: h5py.File | h5py.Group | h5py.Dataset, start: int, stop: int):
+        self.state = {}
+        for key, item in h5_obj.items():
+            if isinstance(item, h5py.Group):
+                self.state[key] = self.slice_h5_to_dict(item, start, stop)
+
+            elif isinstance(item, h5py.Dataset):
+                self.state[key] = item[start:stop]
+
+        return self.state
 
 
 class H5ModalityShardExtractor:
@@ -137,11 +104,128 @@ class H5ModalityShardExtractor:
         return self.state
 
 
+class H5KdDataset(IterableDataset):
+    def __init__(self, dataset_path: str, prefix: str, device="cpu", buffer_size: int = 1024,
+                 block_size: int = 256, seed: int = 42, ignore_paths: list[str] = None):
+        super().__init__()
+        self.logger = make_logger(self.__class__.__name__)
+
+        self.dataset_path: Path = Path(dataset_path)
+        self.prefix: str = prefix
+
+        self.device = device
+        self.shard_files = sorted(glob.glob(os.path.join(dataset_path, f"{prefix}*.h5")))
+        if not self.shard_files:
+            raise FileNotFoundError(f"No .h5 shards found in: {dataset_path} with prefix: {prefix}")
+
+        self.buffer_size: int = buffer_size
+        if self.buffer_size <= 0:
+            raise ValueError("buffer_size must be > 0")
+
+        self.seed: int = seed
+        self.epoch: int = 0
+
+        self.block_size: int = block_size
+        self.shard_lengths: list[int] = list(self.load_lengths())
+        self.ignore_paths: list[str] = ignore_paths
+
+    def load_lengths(self) -> Iterator[int]:
+        for file in self.shard_files:
+            with h5py.File(file, "r") as h5:
+                yield int(h5.attrs.get("num_samples", 0))
+
+    def files_for_worker(self, g: torch.Generator):
+        perm = torch.randperm(len(self.shard_files), generator=g).tolist()
+        files = [self.shard_files[i] for i in perm]
+        lengths = [self.shard_lengths[i] for i in perm]
+
+        worker_info = get_worker_info()
+        if worker_info is not None:
+            files = files[worker_info.id:: worker_info.num_workers]
+            lengths = lengths[worker_info.id:: worker_info.num_workers]
+
+        return zip(files, lengths)
+
+    @staticmethod
+    def h5_chunk_to_dict(h5_obj: h5py.File | h5py.Group, start: int, stop: int):
+        out = {}
+
+        for key, item in h5_obj.items():
+            if isinstance(item, h5py.Group):
+                out[key] = H5KdDataset.h5_chunk_to_dict(item, start, stop)
+            elif isinstance(item, h5py.Dataset):
+                arr = item[start:stop]
+                if isinstance(arr, np.ndarray) and arr.shape and arr.shape[0] == (stop - start):
+                    arr = torch.from_numpy(arr)
+                out[key] = arr
+
+        return out
+
+    def iter_shard(self, h5: h5py.File, start: int, stop: int):
+        n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+
+        # Clamp
+        start, stop = max(0, int(start)), min(int(stop), n)
+        if stop <= start:
+            self.logger.warning("Start precedes stop? Are you sure?")
+            return
+
+        for block_start in range(start, stop, self.block_size):
+            block_stop = min(block_start + self.block_size, stop)
+            b = block_stop - block_start
+
+            td = TensorDict(self.h5_chunk_to_dict(h5, block_start, block_stop), batch_size=[b])
+
+            for i in range(b):
+                yield td[i]
+
+    def __iter__(self):
+        # Use a different RNG per worker (and rank), but deterministic across epochs
+        worker_info = get_worker_info()
+        worker_id = 0 if worker_info is None else worker_info.id
+
+        # This generator behaves the same for all the workers
+        global_g = torch.Generator()
+        global_g.manual_seed(self.seed + self.epoch)
+
+        # Worker specific
+        g = torch.Generator()
+        g.manual_seed(self.seed + self.epoch + 10 * worker_id)
+
+        warmup: int = min(512, self.buffer_size)
+
+        buffer_growth_rate: int = 64  # How fast I fill the buffer if I am still loading
+        ingested_since_yield: int = 0  # Iteration counter to know passed yields
+
+        buffer: list[TensorDict] = []
+        for shard_path, length in self.files_for_worker(global_g):
+            with h5py.File(str(shard_path), "r") as h5:
+                for sample in self.iter_shard(h5, start=0, stop=length):
+                    buffer.append(sample)
+
+                    if len(buffer) < warmup:
+                        # You have to at least fill warmup size
+                        continue
+
+                    ingested_since_yield += 1
+                    if len(buffer) < self.buffer_size and ingested_since_yield < buffer_growth_rate:
+                        continue
+
+                    ingested_since_yield = 0
+                    # Give a random element
+                    yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
+
+        while buffer:
+            # Flush out everything remaining while I can (or else I'd be losing the tail)
+            yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
+
+
 class H5KdSourceDataset(IterableDataset):
     @staticmethod
     def shard_num_samples(path: Path) -> int:
         with h5py.File(path, "r") as h5:
             return int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+
     # todo split on eid? on person? On both?
     # todo mi serve metadata anche quando faccio compressione.
     @staticmethod
