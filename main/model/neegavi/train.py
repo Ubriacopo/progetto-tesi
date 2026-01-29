@@ -95,7 +95,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         ]
 
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
-        return torch.optim.Adam(weight_decay=.01, params=params)
+        return torch.optim.Adam(weight_decay=.01, params=params, fused=True)
 
     def _compute_step_metrics(self, stud: EegBaseModelOutputs,
                               teacher: MaskedContrastiveModelOutputs,
@@ -201,7 +201,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def on_train_epoch_start(self) -> None:
         self._n_causal = 0
         self._n_bidirectional = 0
-        self
 
     def on_train_epoch_end(self) -> None:
         total = self._n_causal + self._n_bidirectional
@@ -220,7 +219,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             for key, td in container.items():
                 if key in self.dequantize_keys:
-                    td = {"data": td["data"].to(dtype) * td["scales"], "mask": td["mask"]}
+                    data = td["data"].to(dtype=dtype, non_blocking=True)
+                    data.mul_(td["scales"])  # For optimization reasons (I dislike it)
+                    td = {"data": data, "mask": td["mask"]}
                 output[container_key][key] = td
 
         return output
@@ -281,7 +282,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             fused_z = outputs.pop(self.FUSED_KEY)
             pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
             # Compute and log the metrics.
-            self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
+            if batch_idx % 10 == 0:  # Every 10 batches
+                self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
 
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
         for mode, val in outputs.items():
