@@ -1,3 +1,4 @@
 shard_size_gb: 4
-compression: 'lzf'
+# compression: 'lzf'
+compression: null
 

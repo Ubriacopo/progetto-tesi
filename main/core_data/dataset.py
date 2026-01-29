@@ -203,6 +203,8 @@ class H5KdDataset(IterableDataset):
         for path, dataset in dsets.items():
             arr = dataset[start:stop]
             if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
+                if not arr.flags['C_CONTIGUOUS']:
+                    arr = np.ascontiguousarray(arr)  # Make contiguous if needed
                 arr = torch.from_numpy(arr)
             output[path] = arr
 
@@ -262,9 +264,9 @@ class H5KdDataset(IterableDataset):
         buffer_growth_rate: int = 64  # How fast I fill the buffer if I am still loading
         ingested_since_yield: int = 0  # Iteration counter to know passed yields
 
-        buffer: list[TensorDict] = []
+        buffer = []
         for shard_path, start, stop in self.data_for_worker(global_g):
-            with h5py.File(str(shard_path), "r") as h5:
+            with h5py.File(str(shard_path), "r", rdcc_nbytes=1024 ** 3, rdcc_w0=0.75, rdcc_nslots=100000) as h5:
                 for sample in self.iter_shard(h5, start=start, stop=stop):
                     buffer.append(sample)
 
