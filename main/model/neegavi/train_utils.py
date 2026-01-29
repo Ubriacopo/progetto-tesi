@@ -6,7 +6,11 @@ from tensordict import TensorDict
 from torch.utils.data import DataLoader, IterableDataset
 
 from main.core_data.dataset import MultiDataset, \
-    CachableDatasetDescriptor, RoundRobinMultiDataset, H5KdDataset
+    CachableDatasetDescriptor, RoundRobinBatchMultiDataset, H5KdDataset
+
+
+def collate(x):
+    return {k: torch.stack([s[k] for s in x], dim=0) for k in x[0].keys()}
 
 
 class KdTrainDataModule(lightning.LightningDataModule):
@@ -14,7 +18,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                  dataset_paths: list[CachableDatasetDescriptor],
                  # Parameters for stuff less related to the data itself
                  batch_size: int, batches_per_epoch: int,
-                 seed: int, collate_fn=lambda x: torch.stack(x, dim=0)):
+                 seed: int, collate_fn=collate):
         """
         :param student_keys: list of keys that appear in the student records as tensor_dicts
         :param teacher_keys: list of keys that appear in the teacher records as tensor_dicts
@@ -38,11 +42,11 @@ class KdTrainDataModule(lightning.LightningDataModule):
         datasets, weights = [], []
         for shards_path in self.shards_path:
             datasets.append(
-                H5KdDataset(dataset_path=shards_path.dataset_path, prefix="train")
+                H5KdDataset(dataset_path=shards_path.dataset_path, prefix="train", block_size=256)
             )
             weights.append(shards_path.dataset_weight)
 
-        ds = RoundRobinMultiDataset(datasets, weights, seed=self.seed)
+        ds = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, batch_size=self.batch_size)
         self.train_dataset = ds
 
     def on_train_epoch_start(self) -> None:
@@ -66,9 +70,9 @@ class KdTrainDataModule(lightning.LightningDataModule):
         fn = self.collate_fn
         return DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size,
+            batch_size=None,
             collate_fn=fn,
-            num_workers=2,
-            prefetch_factor=2,
-            persistent_workers=True
+            # num_workers=1,
+            # prefetch_factor=1,
+            # persistent_workers=True
         )

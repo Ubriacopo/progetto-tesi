@@ -212,20 +212,32 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.time_mask_switch_generator = torch.Generator(device=self.device)
         self.time_mask_switch_generator.manual_seed(self.base_seed)
 
-    def dequantize(self, batch: TensorDict, dtype=torch.float16):
+    def dequantize(self, batch: dict, dtype=torch.float16):
         # Student part:
-        bs = self.batch_size
-        output = TensorDict({}, batch_size=bs)
+        output = {}
         for container_key, container in batch.items():  # Student - Teacher
-            output[container_key] = TensorDict({}, batch_size=bs)
+            output[container_key] = {}
 
-            td: TensorDict
             for key, td in container.items():
                 if key in self.dequantize_keys:
-                    td = TensorDict({"data": td["data"].to(dtype) * td["scales"], "mask": td["mask"]}, batch_size=bs)
+                    td = {"data": td["data"].to(dtype) * td["scales"], "mask": td["mask"]}
                 output[container_key][key] = td
 
         return output
+
+    @staticmethod
+    def nest(flat):
+        root = {}
+        for key, value in flat.items():
+            parts = key.split("/")
+            current = root
+
+            for part in parts[:-1]:
+                current = current.setdefault(part, {})
+
+            current[parts[-1]] = value
+
+        return root
 
     def training_step(self, batch, batch_idx):
         # Randomly draw the modality we want to train on (For the time relations)
@@ -233,7 +245,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
         mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
         # Convert the batch to fp16 from quantized
-        batch = self.dequantize(batch, torch.float16)
+        batch = self.dequantize(self.nest(batch), torch.float16)
 
         if mode == "bidirectional":
             self._n_bidirectional += 1

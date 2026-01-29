@@ -105,7 +105,7 @@ class H5ModalityShardExtractor:
 
 
 class H5KdDataset(IterableDataset):
-    def __init__(self, dataset_path: str, prefix: str, device="cpu", buffer_size: int = 1024,
+    def __init__(self, dataset_path: str, prefix: str, device="cpu", buffer_size: int = 256,
                  block_size: int = 256, seed: int = 42, ignore_paths: list[str] = None):
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
@@ -128,6 +128,8 @@ class H5KdDataset(IterableDataset):
         self.block_size: int = block_size
         self.shard_lengths: list[int] = list(self.load_lengths())
         self.ignore_paths: list[str] = ignore_paths
+
+        self.paths: list[str] = None
 
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:
@@ -182,6 +184,31 @@ class H5KdDataset(IterableDataset):
 
         return zip(files, lengths)
 
+    def collect_h5_paths(self, h5: h5py.File, ignore_prefixes: list[str] = ("meta/",)):
+        if self.paths is not None:
+            return self.paths
+
+        self.paths = []
+
+        def visit(name, obj):
+            if isinstance(obj, h5py.Dataset) and not any(name.startswith(p) for p in ignore_prefixes):
+                self.paths.append(name)
+
+        h5.visititems(visit)
+        return self.paths
+
+    @staticmethod
+    def read_block(dsets: dict[str, h5py.Dataset], start: int, stop: int):
+        output = {}
+        for path, dataset in dsets.items():
+            arr = dataset[start:stop]
+            if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
+                arr = torch.from_numpy(arr)
+            output[path] = arr
+
+        return output
+
+    # todo so struttura posso evitare di fare cosi e tenere i paths salvati
     @staticmethod
     def h5_chunk_to_dict(h5_obj: h5py.File | h5py.Group, start: int, stop: int):
         out = {}
@@ -191,7 +218,8 @@ class H5KdDataset(IterableDataset):
                 out[key] = H5KdDataset.h5_chunk_to_dict(item, start, stop)
             elif isinstance(item, h5py.Dataset):
                 arr = item[start:stop]
-                if isinstance(arr, np.ndarray) and arr.shape and arr.shape[0] == (stop - start):
+                kind = arr.dtype.kind
+                if isinstance(arr, np.ndarray) and arr.shape and arr.shape[0] == (stop - start) and kind in "iufb":
                     arr = torch.from_numpy(arr)
                 out[key] = arr
 
@@ -199,21 +227,21 @@ class H5KdDataset(IterableDataset):
 
     def iter_shard(self, h5: h5py.File, start: int, stop: int):
         n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
-
         # Clamp
         start, stop = max(0, int(start)), min(int(stop), n)
         if stop <= start:
             self.logger.warning("Start precedes stop? Are you sure?")
             return
 
+        paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/", ])
+        dsets = {p: h5[p] for p in paths}
+
         for block_start in range(start, stop, self.block_size):
             block_stop = min(block_start + self.block_size, stop)
-            b = block_stop - block_start
+            block = self.read_block(dsets, block_start, block_stop)
 
-            td = TensorDict(self.h5_chunk_to_dict(h5, block_start, block_stop), batch_size=[b])
-            td.pop("meta", None) # During training this is of little use.
-            for i in range(b):
-                yield td[i]
+            for i in range(block_stop - block_start):
+                yield {k: v[i] for k, v in block.items()}
 
     def __iter__(self):
         # Use a different RNG per worker (and rank), but deterministic across epochs
@@ -227,8 +255,9 @@ class H5KdDataset(IterableDataset):
         # Worker specific
         g = torch.Generator()
         g.manual_seed(self.seed + self.epoch + 10 * worker_id)
+        rng = random.Random(self.seed + self.epoch + 10000 * worker_id)
 
-        warmup: int = min(512, self.buffer_size)
+        warmup: int = min(128, self.buffer_size)
 
         buffer_growth_rate: int = 64  # How fast I fill the buffer if I am still loading
         ingested_since_yield: int = 0  # Iteration counter to know passed yields
@@ -249,11 +278,11 @@ class H5KdDataset(IterableDataset):
 
                     ingested_since_yield = 0
                     # Give a random element
-                    yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
+                    yield buffer.pop(rng.randrange(len(buffer)))
 
         while buffer:
             # Flush out everything remaining while I can (or else I'd be losing the tail)
-            yield buffer.pop(torch.randint(len(buffer), (), generator=g).item())
+            yield buffer.pop(rng.randrange(len(buffer)))
 
 
 class H5KdSourceDataset(IterableDataset):
@@ -522,8 +551,8 @@ class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
         return len(self.df)
 
 
-class RoundRobinMultiDataset(IterableDataset):
-    def __init__(self, datasets: list[IterableDataset], weights, seed: int):
+class RoundRobinBatchMultiDataset(IterableDataset):
+    def __init__(self, datasets: list[IterableDataset], weights, seed: int, batch_size: int):
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
         self.datasets: list[IterableDataset] = datasets
@@ -533,6 +562,8 @@ class RoundRobinMultiDataset(IterableDataset):
 
         self.epoch = 0
         self.seed = seed
+
+        self.batch_size: int = batch_size
 
     def set_epoch(self, epoch: int):
         self.epoch = int(epoch)
@@ -550,16 +581,21 @@ class RoundRobinMultiDataset(IterableDataset):
         dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
             k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-            try:
-                yield next(iters[k])
-                dead[k] = 0
 
-            except StopIteration:
-                dead[k] += 1
-                if dead[k] > 5:
-                    raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
-                # Restart that dataset (cycle)
-                iters[k] = iter(self.datasets[k])
+            batch = []
+            while len(batch) < self.batch_size:
+                try:
+                    batch.append(next(iters[k]))
+                    dead[k] = 0
+
+                except StopIteration:
+                    dead[k] += 1
+                    if dead[k] > 5:
+                        raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
+                    # Restart that dataset (cycle)
+                    iters[k] = iter(self.datasets[k])
+            yield batch
+            # yield TensorDict.stack(batch, dim=0)
 
 
 # todo make version for multiIterableDataset

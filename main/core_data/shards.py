@@ -323,6 +323,7 @@ class FusedDataSharder:
             spec_path: str, output_path: str,
             val_participants: int = 0, test_participants: int = 0,
             min_chunk_size: int = 1, max_chunk_size: int = 4096, shard_size_gb: int = 16, compression=None,
+            chunk0: int = 256
     ):
         self.logger = make_logger(self.__class__.__name__)
         self.df = pd.read_csv(spec_path)
@@ -348,6 +349,8 @@ class FusedDataSharder:
         # Optimization choice
         self.capacity_by_path: dict[str, int] = {}
         self.grow_by: int = 256  # tune: 256/1024/4096
+
+        self.chunk0 = chunk0
 
     def load_td(self, td_name: str):
         if td_name != self.current_td_name:
@@ -433,7 +436,7 @@ class FusedDataSharder:
         if path in h5:
             return h5[path]
 
-        chunk0 = self.choose_chunk0(sample)
+        # chunk0 = self.choose_chunk0(sample)
         is_str = sample.dtype.kind in ("U", "S") or sample.dtype == object
         has_shape = sample.shape != ()
 
@@ -442,7 +445,7 @@ class FusedDataSharder:
             shape=(0,) + sample.shape if has_shape else (0,),
             maxshape=(None,) + sample.shape if has_shape else (None,),
             dtype=h5py.string_dtype("utf-8") if is_str else sample.dtype,
-            chunks=(chunk0,) + sample.shape if has_shape else (chunk0,),
+            chunks=(self.chunk0,) + sample.shape if has_shape else (self.chunk0,),
             compression=self.compression if not is_str else None,
         )
 
