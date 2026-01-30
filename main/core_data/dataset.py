@@ -245,6 +245,90 @@ class H5KdDataset(IterableDataset):
             for i in range(block_stop - block_start):
                 yield {k: v[i] for k, v in block.items()}
 
+    def iter_shard_blocks(self, h5: h5py.File, start: int, stop: int):
+        n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+        start, stop = max(0, int(start)), min(int(stop), n)
+        if stop <= start:
+            self.logger.warning("Start precedes stop? Are you sure?")
+            return
+
+        paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/"])
+        dsets = {p: h5[p] for p in paths}
+
+        for block_start in range(start, stop, self.block_size):
+            block_stop = min(block_start + self.block_size, stop)
+            # dict[str, np/torch array], len = block_stop-block_start
+            block = self.read_block(dsets, block_start, block_stop)
+            yield block
+
+    def iter_2(self):
+        worker_info = get_worker_info()
+        worker_id = 0 if worker_info is None else worker_info.id
+
+        global_g = torch.Generator()
+        global_g.manual_seed(self.seed + self.epoch)
+
+        g = torch.Generator()
+        g.manual_seed(self.seed + self.epoch + 10 * worker_id)
+        rng = random.Random(self.seed + self.epoch + 10000 * worker_id)
+
+        warmup: int = min(128, self.buffer_size)
+        buffer_growth_rate: int = 64
+        ingested_since_yield: int = 0
+
+        # We will buffer BLOCKS, not samples.
+        # Each entry: [block_dict, perm_list, cursor]
+        # cursor points to next position in perm_list to emit.
+        block_buffer = []
+        buffered_samples = 0  # total remaining samples across all buffered blocks
+
+        def add_block(block: dict):
+            nonlocal buffered_samples
+            block_len = len(next(iter(block.values())))
+            # Make a shuffled index order for this block
+            perm = list(range(block_len))
+            rng.shuffle(perm)
+            block_buffer.append([block, perm, 0])
+            buffered_samples += block_len
+
+        def pop_random_sample():
+            """Pick a random block, emit one sample from it, retire block if exhausted."""
+            nonlocal buffered_samples
+            j = rng.randrange(len(block_buffer))
+            block, perm, cur = block_buffer[j]
+            i = perm[cur]
+            cur += 1
+            buffered_samples -= 1
+
+            # Update or remove the block entry
+            if cur >= len(perm):
+                block_buffer.pop(j)
+            else:
+                block_buffer[j][2] = cur
+
+            return {k: v[i] for k, v in block.items()}
+
+        for shard_path, start, stop in self.data_for_worker(global_g):
+            with h5py.File(str(shard_path), "r", rdcc_nbytes=1024 ** 3, rdcc_w0=0.75, rdcc_nslots=100000, ) as h5:
+                for block in self.iter_shard_blocks(h5, start=start, stop=stop):
+                    add_block(block)
+
+                    # Warmup: ensure at least warmup samples are buffered before yielding
+                    if buffered_samples < warmup:
+                        continue
+
+                    ingested_since_yield += 1
+                    if buffered_samples < self.buffer_size and ingested_since_yield < buffer_growth_rate:
+                        continue
+
+                    ingested_since_yield = 0
+                    yield pop_random_sample()
+
+        # Flush remaining buffered samples
+        while block_buffer:
+            yield pop_random_sample()
+
+    # todo Much cheaper approach: buffer blocks, not samples.?
     def __iter__(self):
         # Use a different RNG per worker (and rank), but deterministic across epochs
         worker_info = get_worker_info()
