@@ -46,7 +46,7 @@ class PerceiverAttention(nn.Module):
         q = rearrange(q, 'b f (h d) -> b h f d', h=self.heads)
         k, v = rearrange_many((k, v), 'b n (h d) -> b h n d', h=self.heads)
 
-        sim = einsum('b h q d, b h f d -> b h q f', q * self.scale, k)
+        sim = einsum('b h q d, b h f d -> b h q f', q.float() * self.scale, k.float())
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
 
         if key_padding_mask is not None:
@@ -56,7 +56,7 @@ class PerceiverAttention(nn.Module):
             valid_full = torch.cat((valid_feat, torch.ones(b, n, dtype=torch.bool, device=valid_feat.device)), dim=1)
             sim = sim.masked_fill(~valid_full[:, None, None, :], float('-inf'))
 
-        attn = sim.softmax(dim=-1)
+        attn = sim.softmax(dim=-1).to(v.dtype)
 
         out = einsum('b h q f, b h f d -> b h q d', attn, v)
         out = rearrange(out, 'b h q d -> b q (h d)')

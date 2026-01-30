@@ -110,7 +110,7 @@ class MaskedCrossAttention(nn.Module):
         q *= self.scale
 
         # Check similarity between key and query
-        sim = einsum("... i d, ... j d -> ... i j", q, k)
+        sim = einsum("... i d, ... j d -> ... i j", q.float(), k.float())
         # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
         if kv_mask is not None:
             mask = ~kv_mask[:, None, None, :]  # shape [B,1,1,S], bool
@@ -125,7 +125,7 @@ class MaskedCrossAttention(nn.Module):
         sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
 
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1)
+        attn = sim.softmax(dim=-1).to(v.dtype)
         attn = attn * row_has_key
 
         # Zero invalid query steps defensively

@@ -4,7 +4,6 @@ import lightning as L
 import torch
 import torch.nn.functional as F
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
-from tensordict import TensorDict
 from torch import nn
 from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 
@@ -12,8 +11,8 @@ from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import SiglipLoss
 from main.model.neegavi.blocks import TimeMaskSwitchableProperties
-from main.model.neegavi.model import WeaklySupervisedEegInterAviModel, EegInterAviModel
-from main.model.neegavi.pooling import ClsPooling, MaskedMaxPooling, MaskedAvgPooling
+from main.model.neegavi.model import EegInterAviModel
+from main.model.neegavi.pooling import ClsPooling, MaskedAvgPooling
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
@@ -133,7 +132,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                                mode: Optional[Literal['bidirectional', 'causal']] = None):
         # Euclidean distance between the two embedding spaces
         dist = (pivot_z - fused_z).norm(dim=1).mean()
-        self.log(f"{step_type}/||eeg-fused||", dist, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(f"{step_type}/norm(eeg-fused)", dist, on_step=False, on_epoch=True, prog_bar=True)
         mode_prefix = "" if mode is None else f"{mode}/"
 
         for key, embedding in outputs.items():
@@ -277,13 +276,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         return out
 
     def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
+        # Every 10 batches we run the batch end operations
+        if not batch_idx % 10 == 0:
+            return
+
         _ = outputs.pop("loss")  # We have to ignore it
         if self.FUSED_KEY in outputs:
             fused_z = outputs.pop(self.FUSED_KEY)
             pivot_z = self._y_mean(outputs[self.PIVOT_KEY], self._get_y_valid(outputs[self.PIVOT_KEY]))
             # Compute and log the metrics.
-            if batch_idx % 10 == 0:  # Every 10 batches
-                self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
+            self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
 
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
         for mode, val in outputs.items():
@@ -314,7 +316,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=False, prog_bar=True)
             loss = loss + modality_loss
 
-        self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=True, prog_bar=True)
+        self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=False, prog_bar=True)
         return loss
 
     @staticmethod

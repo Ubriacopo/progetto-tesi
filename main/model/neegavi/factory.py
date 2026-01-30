@@ -8,11 +8,9 @@ from main.core_data.media.video import Video
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
     SimpleFeedForwardAdapter
 from main.model.neegavi.blocks import ModalityStream
-from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, PerceiverModalityConfig, \
-    MaskedFeedForwardConfig
+from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig
 from main.model.neegavi.kd import KDHead
-from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration, WeaklySupervisedEegInterAviModel, \
-    WeaklySupervisedWrapperModelConfiguration
+from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
 from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 
 
@@ -151,26 +149,3 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
 
     def pooling(self):
         return None
-
-
-class WeaklySupervisedDefaultEegInterAviFactory(DefaultEegInterAviFactory):
-
-    def __init__(self,
-                 wrapper_config: WeaklySupervisedWrapperModelConfiguration,
-                 eeg_config: EegModalityConfig,
-                 vid_config: KdPerceiverModalityConfig,
-                 aud_config: KdPerceiverModalityConfig,
-                 txt_config: KdPerceiverModalityConfig,
-                 ecg_config: PerceiverModalityConfig,
-                 disabled_supports: list[str],
-                 attention_config: int | list[GatedXAttentionCustomArgs],
-                 custom_config: EegInterAviModelConfiguration = None):
-        super().__init__(eeg_config, vid_config, aud_config, txt_config, ecg_config, disabled_supports,
-                         attention_config, custom_config)
-        self.wrapper_config: WeaklySupervisedWrapperModelConfiguration = wrapper_config
-
-    def build(self):
-        return WeaklySupervisedEegInterAviModel(
-            super().build(), base_model_out_size=self.eeg_modality_config.out_size,
-            hidden_size=self.wrapper_config.hidden_size, output_size=self.wrapper_config.output_size,
-        )

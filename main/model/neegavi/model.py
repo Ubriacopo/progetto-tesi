@@ -114,7 +114,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         self.cls_token = nn.Parameter(torch.randn(1, 1, config.output_size))
         self.use_cls: bool = hasattr(pooling, "cls_idx")  # todo check
 
-    def init_output(self, device):
+    @staticmethod
+    def init_output(device):
         empty = torch.zeros(1, device=device)
         return EegBaseModelOutputs(empty, MaskedValue(data=empty, mask=None), {}, {})
 
@@ -131,7 +132,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         out.multimodal_outs[code] = y
         return y["data"], y["mask"], time
 
-    def make_pivot_time_map(self, b: int, t: int, device) -> torch.Tensor:
+    @staticmethod
+    def make_pivot_time_map(b: int, t: int, device) -> torch.Tensor:
         return repeat(torch.arange(t, device=device), "t -> b t", b=b)
 
     @staticmethod
@@ -161,6 +163,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         """
+        TODO: Could this be cached by configuration?
         Allowance mask aligns the same timesteps and previous ones.
         If modality is window only a limited amount of past is preserved as context.
         :param t_q: Time map for query vector
@@ -187,7 +190,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         raise ValueError(f"Unknown mode: {self.modality.mode}")
 
     def process_support(self, x: MaskedValue, keep_idx: torch.Tensor, modality: ModalityStream,
-                        use_kd: bool, out: EegBaseModelOutputs, device):
+                        use_kd: bool, out: EegBaseModelOutputs):
         data, mask = x["data"], x.get("mask", None)
         b, t = data.shape[0:2]
         code = modality.get_code()
@@ -235,7 +238,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
                 continue
 
             support_out, support_mask, support_time = self.process_support(
-                x=x[modality.get_code()], keep_idx=keep_idx, modality=modality, use_kd=use_kd, out=out, device=device
+                x=x[modality.get_code()], keep_idx=keep_idx, modality=modality, use_kd=use_kd, out=out
             )
 
             # Add the found elements
@@ -257,20 +260,23 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         return support, mask, time
 
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
+        # Initialize current device and output object
         device = x[self.pivot.get_code()]["data"].device
         out = self.init_output(device=device)
 
+        # Process the pivot before fusion via xattn
         pivot_out, pivot_mask, pivot_time = self.process_pivot(
             x[self.pivot.get_code()], use_kd=use_kd, out=out, device=device
         )
 
         b = pivot_out.shape[0]
+        # Process the supports before fusion via xattn
         support_out, support_mask, support_time = self.process_supports(
             x, self.modality_dropout(b, device), use_kd, out, device, pivot_out.dtype
         )
 
+        # Add CLS token and adapt masks
         q, q_mask = pivot_out, pivot_mask
-
         q = torch.cat([q, self.cls_token.expand(q.shape[0], -1, -1)], dim=1)
         cls_mask = torch.ones(pivot_mask.shape[0], 1, device=q.device, dtype=q_mask.dtype)
         if not self.use_cls:
@@ -280,6 +286,9 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         cls_time = pivot_time.new_full((b, 1), pivot_time.size(1))
         pivot_time = torch.cat([pivot_time, cls_time], dim=1)  # length T+1
 
+        # Build the mask that maps visibility of timesteps to each other.
+        # A timestep i can maybe see j < i but not any j > i (This would mean only past). Strategy is defined on upper level
+        # but it can change at runtime thus the build allowance maks can change during training.
         allow = self.build_allow_mask(pivot_time, support_time)
         allow[:, -1, :] = True
 
@@ -289,21 +298,3 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         out.embeddings = MaskedValue(data=q, mask=q_mask)
         out.cls = self.pooling(q, q_mask)
         return out
-
-
-class WeaklySupervisedEegInterAviModel(nn.Module):
-    def __init__(self, base_model: EegInterAviModel, base_model_out_size: int, hidden_size: int, output_size: int):
-        super().__init__()
-        self.base_model = base_model
-        self.prediction_head = nn.Sequential(
-            nn.Linear(base_model_out_size, hidden_size),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, output_size)
-        )
-
-    def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
-        outs: EegBaseModelOutputs = self.base_model(x, use_kd=use_kd, return_dict=False)
-        pred = self.prediction_head(outs.embeddings)
-        o = WeaklySupervisedEegBaseModelOutputs(pred=pred, **vars(outs))
-        return o if not return_dict else asdict(o)
