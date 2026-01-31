@@ -28,25 +28,20 @@ class EEGFeatureExtractor:
 
         self.k_frac = .4
 
-    def process(self):
-        # AMIGOS already does this.
-        # self.raw.filter(l_freq, h_freq, phase='zero-double', verbose=False)
-        # self.raw.notch_filter([notch, 2 * notch], phase='zero-double', verbose=False)
-        # self.raw.set_eeg_reference('average')
-        # Per-channel standardization (z-score)
-        self.raw.apply_function(lambda x: (x - x.mean(-1, keepdims=True)) / (x.std(-1, keepdims=True) + self.epsilon))
+        self.flat = 1e-6
+        self.peak = 150e-6
 
     def pick_segments(self, duration: float, hop: float,
                       bands: tuple[tuple, ...] = ((0.5, 4), (4, 8), (8, 13), (13, 30)),
                       band_weights: tuple[float, ...] = (0.5, 0.4, 0.5, 0.4), need_number: int = 30):
         if len(bands) != len(band_weights):
             raise ValueError(f"Shape mismatch between bands and weights: {len(bands)}!= {len(band_weights)}")
-
+        # TODO Check if in volts else it wont work
         feats, names, starts = self._stft_features(duration, hop, bands)
 
         Z = self.rolling_robust_z(feats, window=int(round(30 / hop)))  # 30 s window
         # Heuristic: z-scores behave like this statistically in normal distribution: 99.7 % of data lie within [−3, 3].
-        # This avoids  RMS, TEKO and LL to dominate saliecny score.
+        # This avoids  RMS, TEKO and LL to dominate saliency score.
         Z = np.clip(Z, -6, 6)
         w = np.concatenate((band_weights, self.weights))[:Z.shape[2]]
 
@@ -114,7 +109,8 @@ class EEGFeatureExtractor:
         annotations = []
 
         try:
-            annotations.append(mne.preprocessing.annotate_amplitude(self.raw, flat=1e-6, peak=150e-6, verbose=False)[0])
+            amp = mne.preprocessing.annotate_amplitude(self.raw, flat=self.flat, peak=self.peak, verbose=False)
+            annotations.append(amp[0])
         except Exception:
             pass
 
