@@ -339,9 +339,9 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         ok_iou = self.ok_iou(start, stop, base_feature, segments)
         if not ok_iou or not self.check_coverage(eeg, start, stop, coverage):
             self.logger.info(
-                f"Check failed for ({start}-{stop}) ({base_feature.key}).\n"
-                f"Problem was: {'IoU' if not ok_iou else 'coverage'}.\n"
-                f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.\n\n")
+                f"Check failed for ({start}-{stop}) ({base_feature.key})."
+                f"Problem was: {'IoU' if not ok_iou else 'coverage'}."
+                f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.")
             return self.extract(
                 eeg, t, d, base_feature, candidate_anchors, anchors, segments, coverage, global_coverage, attempt + 1
             )

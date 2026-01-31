@@ -1,6 +1,6 @@
 import dataclasses
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import pandas as pd
 
@@ -12,7 +12,23 @@ from main.core_data.media.video import VidTargetConfig
 
 
 @dataclasses.dataclass
+class IntervalsExtractorConfig:
+    segmenter_args: dict[str, Any]
+    segmenter_type: str
+
+
+@dataclasses.dataclass
 class PreprocessingConfig:
+    extraction_data_folder: str  # Subpath to where extracted intervals are placed
+    output_path: str  # Subpath to where output has to go to.
+    out_folder_name: str
+
+    output_max_length: int
+    preprocessing_pipeline: str  # Pipeline to call inside the preprocessing function
+
+
+@dataclasses.dataclass
+class DatasetConfig:
     name: str
 
     config_classpath: str
@@ -20,13 +36,8 @@ class PreprocessingConfig:
 
     base_path: str  # Where things are fetched from
     data_path: str  # Subpath to where the dataset is placed
-    extraction_data_folder: str  # Subpath to where extracted intervals are placed
-    output_path: str  # Subpath to where output has to go to.
     uid_store_path: str
 
-    output_max_length: int
-    preprocessing_function: str  # What functions to call to make processing start.
-    preprocessing_pipeline: str  # Pipeline to call inside the preprocessing function
     eeg_config: Optional[EegTargetConfig] = dataclasses.field(default_factory=EegTargetConfig)
     ecg_config: Optional[EcgTargetConfig] = dataclasses.field(default_factory=EcgTargetConfig)
     aud_config: Optional[AudTargetConfig] = dataclasses.field(default_factory=AudTargetConfig)
