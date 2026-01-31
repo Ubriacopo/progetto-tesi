@@ -19,6 +19,7 @@ class Config:
     dataset: DatasetConfig
     preprocessing: PreprocessingConfig
     segmenter: IntervalsExtractorConfig
+
     # If the pipeline has to use the audio-2-text tool.
     transcript_audio: bool
 

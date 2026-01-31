@@ -6,19 +6,18 @@ from hydra.utils import get_object
 from omegaconf import OmegaConf
 
 from main.core_data.processing.preprocessing import Preprocessor
-from main.dataset.base_config import DatasetConfig
-from main.dataset.script.configs import PreprocessingTargetConfig
-from main.dataset.utils import PreprocessingConfig, DatasetUidStore
+from main.dataset.utils import PreprocessingConfig, DatasetUidStore, DatasetConfig
 from main.utils.logging import make_logger
 
 cs = ConfigStore.instance()
 OmegaConf.register_new_resolver("capitalize", lambda s: s.capitalize())
 OmegaConf.register_new_resolver("uppercase", lambda s: s.upper())
 
+
 @dataclasses.dataclass
 class Config:
-    dataset: PreprocessingConfig
-    preprocessing: PreprocessingTargetConfig
+    dataset: DatasetConfig
+    preprocessing: PreprocessingConfig
 
 
 @hydra.main(version_base=None, config_name="preprocessing", config_path="../../../conf")
@@ -37,13 +36,13 @@ def main(cfg: Config):
         txt_target_config=cfg.dataset.txt_config,
         ecg_target_config=cfg.dataset.ecg_config,
         eeg_target_config=cfg.dataset.eeg_config,
-        max_length=cfg.dataset.output_max_length
+        max_length=cfg.preprocessing.output_max_length
     )
 
     uid_store = DatasetUidStore(cfg.dataset.uid_store_path)
     preprocessing_init = get_object(cfg.preprocessing.preprocessing_pipeline)
     preprocessing_fn: Preprocessor = preprocessing_init(
-        cfg.dataset.output_path, cfg.dataset.extraction_data_folder, ds_config
+        cfg.preprocessing.output_path, cfg.preprocessing.extraction_data_folder, ds_config
     )
 
     loader_init = get_object(cfg.dataset.loader_classpath)
