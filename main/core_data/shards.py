@@ -452,7 +452,7 @@ class FusedDataSharder:
     def do_append(self, h5: h5py.File, wrapper: TensorCollection, prefix: str, count: int):
         for key, value in wrapper.items():
             arr = to_numpy(value)
-            if arr.dtype.kind in ("U", "S") or arr.dtype == object:
+            if (isinstance(arr, dict) and arr == {}) or arr.dtype.kind in ("U", "S") or arr.dtype == object:
                 continue
 
             ds_path = f"{prefix}/{key}"
@@ -499,7 +499,8 @@ class FusedDataSharder:
 
     def elaborate_modality(self, modality: str, rows_by_eid: defaultdict[Any, list]):
         self.logger.info(f"Working for modality: {modality}")
-
+        # Reset
+        self.capacity_by_path = {}
         active_eid_collection = deque(rows_by_eid)
 
         pos = {eid: 0 for eid in rows_by_eid.keys()}
@@ -545,5 +546,7 @@ class FusedDataSharder:
                     h5, current_path, shard_id, count = self.open_new_shard(
                         h5=h5, shard_id=shard_id, shard_size=count, shard_name=modality
                     )
+                    # Reset capacities as we start a new file
+                    self.capacity_by_path = {}
 
         self.close_dandling_shard(h5, count)
