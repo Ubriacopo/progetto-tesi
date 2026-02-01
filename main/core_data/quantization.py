@@ -17,7 +17,7 @@ class Float16ToInt8Quantizer:
 
     def quantize(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.dtype == torch.float32:
-            Float16ToInt8Quantizer.to_warn_on_fp32 and self.logger.warn(
+            Float16ToInt8Quantizer.to_warn_on_fp32 and self.logger.warning(
                 "The passed tensor is a float32. We will still proceed conversion by halving."
                 "So will be for all further input tensors. This message won't be displayed again."
             )
