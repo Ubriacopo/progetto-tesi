@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Literal, Tuple
 
@@ -148,7 +149,8 @@ class SequentialWithFallback(nn.Module):
         try:
             return self.sequential(x)
         except Exception as exception:
-            self.logger.error(exception, exc_info=True)
+            exc_info = self.logger.isEnabledFor(logging.DEBUG)
+            self.logger.error(exception, exc_info=exc_info)
             return self.default_remap()
 
 

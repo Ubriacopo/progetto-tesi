@@ -44,7 +44,6 @@ class SubclipAudio(nn.Module):
             x.data = AudioFileClip(x.filepath)
         except Exception as e:
             msg = f"Provided x: {x.eid} has no valid audio for path: {x.filepath}"
-            self.logger.warn(msg)
             raise FileNotFoundError(msg)
 
         aud: AudioFileClip = x.data
