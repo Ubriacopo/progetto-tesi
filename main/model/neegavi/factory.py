@@ -100,52 +100,92 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
 
     @pivot
     def eeg(self) -> ModalityStream:
-        config = self.eeg_modality_config  # Specific configuration
-        adapter = EegAdapter(config.channels, latent_input_size=config.in_size, output_size=config.out_size)
+        """
 
-        return ModalityStream(EEG.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=adapter)
+        :return:
+        """
+        # Specific configuration
+        config = self.eeg_modality_config
+        return ModalityStream(
+            EEG.modality_code(),
+            output_size=config.out_size,
+            timestep_seconds=config.timestep_seconds,
+            adapter=EegAdapter(config.channels, latent_input_size=config.in_size, output_size=config.out_size)
+        )
 
     @supporting
     def vid(self) -> ModalityStream:
-        config = self.vid_modality_config  # Specific configuration
-        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        adapter = PerceiverResamplerAdapter(
-            config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
-        )
+        """
 
-        return ModalityStream(Video.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+        :return:
+        """
+        # Specific configuration
+        config = self.vid_modality_config
+        return ModalityStream(
+            Video.modality_code(),
+            output_size=config.out_size,
+            timestep_seconds=config.timestep_seconds,
+            adapter=PerceiverResamplerAdapter(
+                config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
+            ),
+            kd_head=KDHead(
+                input_size=config.out_size, target_size=config.teacher_out_size
+            )
+        )
 
     @supporting
     def aud(self) -> ModalityStream:
-        config = self.aud_modality_config  # Specific configuration
-        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        adapter = PerceiverResamplerAdapter(
-            config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
-        )
+        """
 
-        return ModalityStream(Audio.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+        :return:
+        """
+        # Specific configuration
+        config = self.aud_modality_config
+        return ModalityStream(
+            Audio.modality_code(),
+            output_size=config.out_size,
+            timestep_seconds=config.timestep_seconds,
+            adapter=PerceiverResamplerAdapter(
+                config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
+            ),
+            kd_head=KDHead(
+                input_size=config.out_size, target_size=config.teacher_out_size
+            )
+        )
 
     @supporting
     def txt(self) -> ModalityStream:
-        config = self.txt_modality_config
-        kd_head = KDHead(input_size=config.out_size, target_size=config.teacher_out_size)
-        # todo parametrizza correttamente
-        adapter = TemporalEncoderAdapter(
-            dim=config.in_size, max_length=32, timestep_duration=config.timestep_seconds,
-            modality=self.config.modality
-        )
+        """
 
-        return ModalityStream(Text.modality_code(), output_size=config.out_size,
-                              timestep_seconds=config.timestep_seconds, adapter=adapter, kd_head=kd_head)
+        :return:
+        """
+        config = self.txt_modality_config
+        return ModalityStream(
+            Text.modality_code(),
+            output_size=config.out_size,
+            timestep_seconds=config.timestep_seconds,
+            adapter=TemporalEncoderAdapter(
+                config.in_size, max_length=32, timestep_duration=config.timestep_seconds, modality=self.config.modality
+            ),
+            kd_head=KDHead(
+                input_size=config.out_size, target_size=config.teacher_out_size
+            )
+        )
 
     @supporting
     def ecg(self) -> ModalityStream:
+        # Because you already rely on gated-xattn for time fusion, a tokenwise MLP adapter is most useful for
+        # distribution/space alignment, not for temporal modeling. That tends to be low-risk if you make it near-identity at init.
+        # An idea could be: LoRA-style / gated residual (y = x + α * MLP(LN(x)))
         config = self.ecg_modality_config
-        adapter = SimpleFeedForwardAdapter(config.in_size, config.out_size, mult=config.mult, dropout=config.dropout)
-        return ModalityStream(ECG.modality_code(), config.out_size, adapter, config.timestep_seconds, )
+        return ModalityStream(
+            ECG.modality_code(),
+            output_size=config.out_size,
+            timestep_seconds=config.timestep_seconds,
+            adapter=SimpleFeedForwardAdapter(
+                config.in_size, config.out_size, mult=config.mult, dropout=config.dropout
+            ),
+        )
 
     def pooling(self):
         return None
