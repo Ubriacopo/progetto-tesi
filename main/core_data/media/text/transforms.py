@@ -226,6 +226,9 @@ class SubclipTextExtract(nn.Module):
 
     def forward(self, x: Text) -> list[str]:
         start, stop = x.interval
+        if not x.filepath and not x.base_audio:
+            raise ValueError("Cannot have text extract of a missing source. "
+                             "Please set the filepath if the transcript is given or attach the origin source audio data")
 
         if self.interleaved:
             i_segments = []
