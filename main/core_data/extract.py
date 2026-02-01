@@ -33,11 +33,18 @@ class SegmentBasedExtractionProcessor:
 
     def extract_segments(self) -> list[list[str]]:
         outs = []
+
+        total = len(self.points_loader)
+        idx = 0
         for x in self.points_loader.scan():
             key = x.get_identifier()
+
+            idx += 1
             if str(x[key]) in self.seen:
                 self.logger.info(f"Skipping {x[key]} as it was already extracted")
                 continue
+
+            self.logger.info(f"Extracting {x[key]} ({idx}/{total})")
             # We want the number of segments to depend on the length. Bounding at least 20 segments:
             # min: 20 max: 100 ?
 
