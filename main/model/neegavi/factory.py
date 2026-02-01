@@ -177,6 +177,7 @@ class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
         # Because you already rely on gated-xattn for time fusion, a tokenwise MLP adapter is most useful for
         # distribution/space alignment, not for temporal modeling. That tends to be low-risk if you make it near-identity at init.
         # An idea could be: LoRA-style / gated residual (y = x + α * MLP(LN(x)))
+        # [Ablation-Candidate] for removal and see if the adapter in the middle brings harm
         config = self.ecg_modality_config
         return ModalityStream(
             ECG.modality_code(),
