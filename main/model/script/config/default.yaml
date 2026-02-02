@@ -13,6 +13,9 @@ dataset_descriptors:
   - dataset_path: "/localssd/EEGAVI/AMIGOS/combined/"
     cache_path: null
     dataset_weight: 1.0
+  - dataset_path: "/localssd/EEGAVI/DEAP/combined/"
+    cache_path: null
+    dataset_weight: 1.0
 
 
 hydra:

@@ -8,7 +8,7 @@ import random
 import shutil
 import uuid
 from pathlib import Path
-from typing import Tuple, Iterator, Optional, Any
+from typing import Tuple, Iterator, Optional, Any, Mapping
 
 import h5py
 import numpy as np
@@ -43,8 +43,25 @@ class CachableDatasetDescriptor:
     dataset_weight: float
 
 
+def detach_item(x):
+    # torch
+    if torch.is_tensor(x):
+        return x.clone()
+    # numpy
+    if isinstance(x, np.ndarray):
+        return x.copy()
+    # dict-like
+    if isinstance(x, Mapping):
+        return {k: detach_item(v) for k, v in x.items()}
+    # list/tuple (but not strings/bytes)
+    if isinstance(x, (list, tuple)):
+        return type(x)(detach_item(v) for v in x)
+    # everything else (ints, floats, strings, objects)
+    return x
+
+
 class H5KdDataset(IterableDataset):
-    def __init__(self, dataset_path: str, prefix: str, device="cpu", buffer_size: int = 256,
+    def __init__(self, dataset_path: str, prefix: str, batch_size: int, device="cpu", buffer_size: int = 256,
                  block_size: int = 256, seed: int = 42, ignore_paths: list[str] = None):
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
@@ -68,7 +85,8 @@ class H5KdDataset(IterableDataset):
         self.shard_lengths: list[int] = list(self.load_lengths())
         self.ignore_paths: list[str] = ignore_paths
 
-        self.paths: list[str] = None
+        self.paths: Optional[list[str]] = None
+        self.batch_size: int = batch_size
 
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:
@@ -178,7 +196,29 @@ class H5KdDataset(IterableDataset):
         else:
             block_buffer[idx][2] = current + 1
 
-        return {k: v[i] for k, v in block.items()}, buffered_samples - 1
+        sample = {k: v[i] for k, v in block.items()}
+        return sample, buffered_samples - 1
+
+    def pop_random_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random):
+        output = []
+        for batch_element in range(self.batch_size):
+            idx = rng.randrange(len(block_buffer))
+            block, perm, current = block_buffer[idx]
+
+            i = perm[current]
+            if current + 1 >= len(perm):
+                block_buffer.pop(idx)
+            else:
+                block_buffer[idx][2] = current + 1
+
+            sample = {k: v[i] for k, v in block.items()}
+            output.append(sample)  # breaks storage sharing
+
+            buffered_samples -= 1
+            if not block_buffer:
+                break
+
+        return output, buffered_samples
 
     def __iter__(self):
         # After various rewrites this gives best performance yet.
@@ -190,15 +230,12 @@ class H5KdDataset(IterableDataset):
         rng = random.Random(self.seed + self.epoch + 10000 * worker_id)
 
         warmup: int = min(128, self.buffer_size)
-
-        buffer_growth_rate: int = 64
-        ingested_since_yield: int = 0
-
         # We buffer blocks not samples. Each entry is of the structure: [block_dict, perm_list, cursor]
         block_buffer = []
 
         # Total remaining samples across all buffered blocks
         buffered_samples = 0
+        target = self.block_size * 2
         for shard_path, start, stop in self.data_for_worker(global_g):
             with h5py.File(str(shard_path), "r") as h5:
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
@@ -208,18 +245,13 @@ class H5KdDataset(IterableDataset):
                     if buffered_samples < warmup:
                         continue
 
-                    ingested_since_yield += 1
-                    if buffered_samples < self.buffer_size and ingested_since_yield < buffer_growth_rate:
-                        continue
-
-                    ingested_since_yield = 0
-                    sample, buffered_samples = self.pop_random_sample(buffered_samples, block_buffer, rng)
-
-                    yield sample
+                    while buffered_samples >= target and block_buffer:
+                        sample, buffered_samples = self.pop_random_batch(buffered_samples, block_buffer, rng)
+                        yield sample
 
         # Flush remaining buffered samples
         while block_buffer:
-            sample, buffered_samples = self.pop_random_sample(buffered_samples, block_buffer, rng)
+            sample, buffered_samples = self.pop_random_batch(buffered_samples, block_buffer, rng)
 
             yield sample
 
@@ -298,11 +330,9 @@ class RoundRobinBatchMultiDataset(IterableDataset):
         dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
             k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-
-            batch = []
-            while len(batch) < self.batch_size:
+            for _ in range(8):
                 try:
-                    batch.append(next(iters[k]))
+                    yield next(iters[k])
                     dead[k] = 0
 
                 except StopIteration:
@@ -311,8 +341,9 @@ class RoundRobinBatchMultiDataset(IterableDataset):
                         raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
                     # Restart that dataset (cycle)
                     iters[k] = iter(self.datasets[k])
-            yield batch
-            # yield TensorDict.stack(batch, dim=0)
+                    break
+
+                # yield TensorDict.stack(batch, dim=0)
 
 
 # todo make version for multiIterableDataset

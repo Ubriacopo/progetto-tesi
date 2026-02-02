@@ -42,7 +42,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
         datasets, weights = [], []
         for shards_path in self.shards_path:
             datasets.append(
-                H5KdDataset(dataset_path=shards_path.dataset_path, prefix="train", block_size=256)
+                H5KdDataset(dataset_path=shards_path.dataset_path, prefix="train", block_size=256,
+                            batch_size=self.batch_size)
             )
             weights.append(shards_path.dataset_weight)
 
@@ -72,8 +73,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=None,
             collate_fn=fn,
-            num_workers=4,
-            prefetch_factor=2,
+            num_workers=1,
+            prefetch_factor=1,
             persistent_workers=True,
-            pin_memory=True
+            pin_memory=False
         )
