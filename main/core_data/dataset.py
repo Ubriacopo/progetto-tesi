@@ -43,22 +43,6 @@ class CachableDatasetDescriptor:
     dataset_weight: float
 
 
-def detach_item(x):
-    # torch
-    if torch.is_tensor(x):
-        return x.clone()
-    # numpy
-    if isinstance(x, np.ndarray):
-        return x.copy()
-    # dict-like
-    if isinstance(x, Mapping):
-        return {k: detach_item(v) for k, v in x.items()}
-    # list/tuple (but not strings/bytes)
-    if isinstance(x, (list, tuple)):
-        return type(x)(detach_item(v) for v in x)
-    # everything else (ints, floats, strings, objects)
-    return x
-
 
 class H5KdDataset(IterableDataset):
     def __init__(self, dataset_path: str, prefix: str, batch_size: int, device="cpu", buffer_size: int = 256,
@@ -330,7 +314,7 @@ class RoundRobinBatchMultiDataset(IterableDataset):
         dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
             k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-            for _ in range(8):
+            for _ in range(24):
                 try:
                     yield next(iters[k])
                     dead[k] = 0
