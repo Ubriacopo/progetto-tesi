@@ -21,7 +21,7 @@ class Config:
     sharding: ShardingConfig
 
 # todo fare sharding complesso nel senso che vada a fare solo compressione se necessaria
-@hydra.main(version_base=None, config_name="sharding-local", config_path="../../../conf")
+@hydra.main(version_base=None, config_name="sharding", config_path="../../../conf")
 def main(cfg: Config):
     logger = make_logger("sharder")
     # todo provare
