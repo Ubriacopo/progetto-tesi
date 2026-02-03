@@ -263,7 +263,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         out = {}
         mode: Literal['causal', 'bidirectional']
         # Convert the batch to fp16 from quantized
-        batch = self.dequantize(batch, torch.float16)
+        batch = self.dequantize(self.nest(batch), torch.float16)
 
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
