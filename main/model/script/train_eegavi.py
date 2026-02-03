@@ -24,9 +24,18 @@ def main(cfg: KdConfig):
     student = init_object.student
     teacher = init_object.teacher
 
+    kd_train_datamodule = KdTrainDataModule(
+        dataset_paths=cfg.dataset_descriptors,
+        batch_size=cfg.trainer.batch_size,
+        batches_per_epoch=cfg.trainer.batches_per_epoch,
+        seed=AppConfig.SEED
+    )
+
     module = EegAviKdVateMaskedSemiSupervisedModule(
         student=student,
         teacher=teacher,
+
+        datamodule=kd_train_datamodule,
 
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,
@@ -37,13 +46,6 @@ def main(cfg: KdConfig):
         fusion_metrics=init_object.fusion_metric_codes,
         kd_keys=list(map(lambda o: o.key, init_object.teacher_keys)),
         dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"]
-    )
-
-    kd_train_datamodule = KdTrainDataModule(
-        dataset_paths=cfg.dataset_descriptors,
-        batch_size=cfg.trainer.batch_size,
-        batches_per_epoch=cfg.trainer.batches_per_epoch,
-        seed=AppConfig.SEED
     )
 
     for n, p in student.named_parameters():
@@ -70,6 +72,7 @@ def main(cfg: KdConfig):
     logger.info(trainer.profiler.summary())
 
     trainer.test(module, datamodule=kd_train_datamodule)
+
 
 if __name__ == "__main__":
     main()

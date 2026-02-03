@@ -49,8 +49,6 @@ class H5KdDataset(IterableDataset):
         self.block_size: int = block_size
 
         self.seed: int = seed
-        self.epoch: int = 0
-
         self.paths: Optional[list[str]] = None
         self.buffer_size: int = buffer_size
         self.shuffle: bool = shuffle
@@ -187,17 +185,19 @@ class H5KdDataset(IterableDataset):
         worker_info = get_worker_info()
         worker_id = 0 if worker_info is None else worker_info.id
 
+        base = torch.initial_seed() % 2 ** 32
         rng: Optional[random.Random] = None
         if self.shuffle:
-            rng = random.Random(self.seed + self.epoch + 10000 * worker_id)
+            rng = random.Random((base + self.seed) % 2 ** 32)
 
         warmup: int = min(128, self.buffer_size)
 
         # We buffer blocks not samples. Each entry is of the structure: [block_dict, perm_list, cursor]
         block_buffer = []
 
+        epoch_seed = (base - worker_id) % 2 ** 32
         global_g = torch.Generator()
-        global_g.manual_seed(self.seed + self.epoch)
+        global_g.manual_seed((epoch_seed + self.seed) % 2 ** 32)
 
         buffered_samples = 0
         for shard_path, start, stop in self.data(generator=global_g):
@@ -243,6 +243,9 @@ class ShuffledH5KdDataset(IterableDataset):
 
         self.paths: Optional[list[str]] = None
         self.batch_size: int = batch_size
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
 
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:
@@ -449,27 +452,18 @@ class RoundRobinBatchMultiDataset(IterableDataset):
 
         w = torch.tensor(weights, dtype=torch.float)
         self.weights = w
-
-        self.epoch = 0
         self.seed = seed
 
-    def set_epoch(self, epoch: int):
-        self.epoch = int(epoch)
-        for dataset in self.datasets:
-            if hasattr(dataset, "set_epoch"):
-                dataset.set_epoch(epoch)
-
     def __iter__(self):
-        worker_info = get_worker_info()
-
         g = torch.Generator()
-        g.manual_seed(self.seed + self.epoch + (0 if worker_info is None else 10000 * worker_info.id))
+        seed = (torch.initial_seed() + self.seed) % 2 ** 32
+        g.manual_seed(seed)
 
         iters = [iter(ds) for ds in self.datasets]
         dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
             k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-            for _ in range(24):
+            for _ in range(24): # todo parametrizza
                 try:
                     yield next(iters[k])
                     dead[k] = 0
@@ -481,8 +475,6 @@ class RoundRobinBatchMultiDataset(IterableDataset):
                     # Restart that dataset (cycle)
                     iters[k] = iter(self.datasets[k])
                     break
-
-                # yield TensorDict.stack(batch, dim=0)
 
 
 # todo make version for multiIterableDataset

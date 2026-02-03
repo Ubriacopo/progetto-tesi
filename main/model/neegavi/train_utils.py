@@ -2,12 +2,10 @@ from typing import Optional
 
 import lightning
 import torch
-from lightning.pytorch.utilities.types import EVAL_DATALOADERS
 from tensordict import TensorDict
-from torch.utils.data import DataLoader, IterableDataset, ConcatDataset, ChainDataset
+from torch.utils.data import DataLoader, IterableDataset, ChainDataset
 
-from main.core_data.dataset import MultiDataset, \
-    CachableDatasetDescriptor, RoundRobinBatchMultiDataset, ShuffledH5KdDataset, H5KdDataset
+from main.core_data.dataset import CachableDatasetDescriptor, RoundRobinBatchMultiDataset, H5KdDataset
 
 
 def collate(x):
@@ -61,10 +59,6 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed)
         self.valid_dataset = ChainDataset(val_datasets)
         self.test_dataset = ChainDataset(test_datasets)
-
-    def on_train_epoch_start(self) -> None:
-        if self.train_dataset is not None and hasattr(self.train_dataset, "set_epoch"):
-            self.train_dataset.set_epoch(self.trainer.current_epoch)
 
     def _move(self, x, device):
         if isinstance(x, torch.Tensor) or isinstance(x, TensorDict):

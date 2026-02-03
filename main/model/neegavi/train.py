@@ -13,6 +13,7 @@ from main.model.loss import SiglipLoss
 from main.model.neegavi.blocks import TimeMaskSwitchableProperties
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.pooling import ClsPooling, MaskedAvgPooling
+from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
 from main.model.neegavi.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
@@ -26,6 +27,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def __init__(
             self,
             student: EegInterAviModel, teacher: MaskedContrastiveModel,
+            datamodule: KdTrainDataModule,
             dequantize_keys: list[str],
             kd_loss_weight: float, fusion_loss_weight: float, weakly_supervised_weight: float,
             fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float,
@@ -34,6 +36,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     ):
         super().__init__()
         self.batch_size = batch_size
+        self.datamodule: KdTrainDataModule = datamodule
 
         self.inner_logger = make_logger(self.__class__.__name__)
         self.verbose: bool = False
@@ -122,56 +125,68 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
         return return_object
 
+    @staticmethod
+    def _topk_hits_from_sim(sim: torch.Tensor, ks: tuple[int, ...]) -> dict[int, torch.Tensor]:
+        # sim: (n, n)
+        n = sim.size(0)
+        device = sim.device
+        gt = torch.arange(n, device=device)
+
+        out = {}
+        kmax = min(max(ks), sim.size(1))
+        top = sim.topk(kmax, dim=1).indices  # (n, kmax)
+
+        # compare once
+        eq = top.eq(gt[:, None])  # (n, kmax)
+        for k in ks:
+            k = min(k, sim.size(1))
+            out[k] = eq[:, :k].any(dim=1).float().mean()
+        return out
+
     # todo expensive only on some batches
     def _compute_batch_metrics(self, fused_z, pivot_z, outputs: dict, step_type: Literal['train', 'val', 'test'],
                                mode: Optional[Literal['bidirectional', 'causal']] = None):
         # Euclidean distance between the two embedding spaces
         dist = (pivot_z - fused_z).norm(dim=1).mean()
         self.log(f"{step_type}/norm(eeg-fused)", dist, on_step=False, on_epoch=True, prog_bar=True)
-        mode_prefix = "" if mode is None else f"{mode}/"
+        prefix = "" if mode is None else f"{mode}/"
 
+        fused = F.normalize(fused_z, dim=-1)
+        pivot = F.normalize(pivot_z, dim=-1)
+
+        top_k_values = (1, 3, self.k)
         for key, embedding in outputs.items():
             valid = self._get_y_valid(embedding)
             if not valid.any():
                 continue  # This modality cannot be evaluated
 
-            embedding = self._y_mean(embedding, valid)
-            # TOP-1 FUSED
-            t1_fused = self._top_1(fused_z[valid], embedding)
-            t3_fused = self._top_k(fused_z[valid], embedding, 3)
-            tk_fused = self._top_k(fused_z[valid], embedding, self.k)
-            t1_fused_rev = self._top_1(embedding, fused_z[valid])
-            t3_fused_rev = self._top_k(embedding, fused_z[valid], 3)
-            tk_fused_rev = self._top_k(embedding, fused_z[valid], self.k)
+            e = self._y_mean(embedding, valid)
+            e = F.normalize(e, dim=-1)  # Normalize once
+            f, p = fused[valid], pivot[valid]
 
-            self.log(f"{step_type}/{mode_prefix}fused/top1_{key}", t1_fused,
-                     prog_bar=False, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{mode_prefix}fused/top1_{key}_R", t1_fused_rev,
-                     on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{mode_prefix}fused/top3_{key}", t3_fused,
-                     prog_bar=False, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{mode_prefix}fused/top3_{key}_R", t3_fused_rev,
-                     on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{mode_prefix}fused/top{self.k}_{key}", tk_fused,
-                     prog_bar=False, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{mode_prefix}fused/top{self.k}_{key}_R", tk_fused_rev,
-                     on_step=False, on_epoch=True)
+            sim_fe = f @ e.T
+            hits_fe = self._topk_hits_from_sim(sim_fe, top_k_values)
+            hits_ef = self._topk_hits_from_sim(sim_fe.T, top_k_values)  # reuse transpose
+
+            # TOP-1 FUSED
+            self.log(f"{step_type}/{prefix}fused/top1_{key}", hits_fe[1], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top1_{key}_R", hits_ef[1], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top3_{key}", hits_fe[3], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top3_{key}_R", hits_ef[3], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe[self.k], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef[self.k], on_step=False, on_epoch=True)
 
             if key == self.PIVOT_KEY:
                 continue
+            # pivot <-> emb: one matmul
+            sim_pe = p @ e.T
+            hits_pe = self._topk_hits_from_sim(sim_pe, (1,))
+            hits_ep = self._topk_hits_from_sim(sim_pe.T, (1,))
 
-            # PIVOT
-            t1_pivot = self._top_1(pivot_z[valid], embedding)
-            t1_pivot_rev = self._top_1(embedding, pivot_z[valid])
-
-            self.log(f"{step_type}/{mode_prefix}pivot/top1_{key}", t1_pivot,
-                     prog_bar=False, on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{mode_prefix}pivot/top1_{key}_R", t1_pivot_rev,
-                     on_step=False, on_epoch=True)
-
-            delta = t1_fused - t1_pivot
-            self.log(f"{step_type}/{mode_prefix}delta_{key}", delta,
-                     prog_bar=False, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}pivot/top1_{key}", hits_pe[1], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}pivot/top1_{key}_R", hits_ep[1], on_step=False, on_epoch=True)
+            delta = hits_fe[1] - hits_pe[1]
+            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)
 
     warmup_threshold: float = .5
     causal_threshold: float = .8
