@@ -119,11 +119,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 masked_value["mask"] = masked_value["mask"].detach()
                 return_object[key] = masked_value
 
-        if False and self.use_supervised_loss:
-            targets = batch["student"][Assessment.modality_code()].float()
-            supervised_loss = self.compute_supervised_loss(pred=stud.pred, target=targets, step_type=step_type)
-            return_object["loss"] = return_object["loss"] + supervised_loss * self.gamma
-
         self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
         return return_object
 
@@ -290,7 +285,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
         # Every 10 batches we run the batch end operations
         if not batch_idx % 10 == 0:
-            return # todo vedi se si puo fare
+            return  # todo vedi se si puo fare
 
         for mode, val in outputs.items():
             _ = val.pop("loss")  # We have to ignore it
