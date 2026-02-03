@@ -53,7 +53,7 @@ def main(cfg: KdConfig):
     trainer = L.Trainer(
         profiler=SimpleProfiler(),
         accelerator="gpu",
-        logger=mlf_logger,
+        # logger=mlf_logger,
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[
@@ -62,7 +62,7 @@ def main(cfg: KdConfig):
         num_sanity_val_steps=0,
         precision="16-mixed",  # P6000 has no tensor cores
         log_every_n_steps=50,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=99,
         limit_train_batches=cfg.trainer.batches_per_epoch,
     )
 
