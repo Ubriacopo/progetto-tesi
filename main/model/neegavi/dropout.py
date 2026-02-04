@@ -5,6 +5,11 @@ from torch import nn
 
 
 class ModalityDropout(nn.Module, ABC):
+    """
+    To make the model more robust we enforce a modality random dropout.
+    This freezes and drops a branch on some samples of the batch randomly during training time.
+    """
+
     @abstractmethod
     def forward(self, b: int, device):
         pass

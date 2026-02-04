@@ -21,6 +21,16 @@ class TimeMaskSwitchableProperties:
 
 class TimeMaskSwitchable(ABC):
     def __init__(self):
+        """
+        A time mask switchable model changes how it operates the attention mask over time steps.
+
+        Modalities are:
+        - bidirectional: Both past and future can be seen
+        - causal: Only past and the current step can be seen. So for step i only k with k < i
+
+        Both can apply a windowing by checking lookahead and lookback.
+        For the time being windowing is not used.
+        """
         super().__init__()
         self.modality: Optional[TimeMaskSwitchableProperties] = None
         self.modality_cache: dict = {}

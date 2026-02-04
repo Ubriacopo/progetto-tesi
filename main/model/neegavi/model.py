@@ -68,6 +68,7 @@ def check_supports(supports: nn.ModuleList) -> int:
     return reference.output_size
 
 
+# todo refactorino per capire meglio
 class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     KD_KEY = "kd"
 
@@ -79,8 +80,32 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
                  attn_blocks: list[AbstractAttentionBlock],
                  # Pooling strategy after attention
                  pooling: Optional[nn.Module] = None):
+        """
+        EegInterVaiModel is partially inspired by the novel approach of the Flamingo model by Google.
+        It keeps the same idea of interleaving different modality data but extends it on the time axis.
+        This is because the data we analise has a strong temporal relationship (it evolves as the measurement goes on).
+
+        The broad idea is to do xattn to enrich and hopefully to fuse information of multiple modalities into a pivot (EEG).
+        This idea is achieved by the same way it was done in Flamingo via gatedxattn.
+
+
+        Broad schema of the workflow:
+        - modality -> reshape -> adapter (Perceiver Resampler, Feed Forward) -> OUT
+                                                                             -> KD head -x (branch dies here)
+        then modalities are collected: p=pivot_OUT, s=cat([supports_OUT])
+        out = xattn(q=p, kv=s)
+
+        :param config:
+        :param pivot:
+        :param supports:
+        :param modality_dropout:
+        :param attn_blocks:
+        :param pooling:
+        """
         nn.Module.__init__(self)
+        # The model operates with time steps so it has its own logic what masking concerns
         TimeMaskSwitchable.__init__(self)
+
         self.logger = make_logger(self.__class__.__name__)
 
         # Pivot defines Q in xattn while supports compose KV
@@ -93,8 +118,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         # By default, if not served it is disabled
         if modality_dropout is None:
             modality_dropout = DisabledModalityDropout(len(self.supports))
-        self.modality_dropout: ModalityDropout = modality_dropout
 
+        self.modality_dropout: ModalityDropout = modality_dropout
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if config.use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
@@ -193,21 +218,20 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
                         use_kd: bool, out: EegBaseModelOutputs):
         data, mask = x["data"], x.get("mask", None)
         b, t = data.shape[0:2]
-        code = modality.get_code()
 
         if mask is not None:
             mask = mask.bool()
-        y: MaskedValue | KdMaskedValue = modality(data, mask, use_kd=use_kd)
+        y: MaskedValue | KdMaskedValue = modality(data[keep_idx], mask[keep_idx], use_kd=use_kd)
 
         if self.KD_KEY in y:
             kd_out: MaskedValue = y.pop(self.KD_KEY)
-            out.kd_outs[code] = self.pad_to_batch(kd_out["data"], kd_out["mask"], keep_idx, b)
+            out.kd_outs[modality.get_code()] = self.pad_to_batch(kd_out["data"], kd_out["mask"], keep_idx, b)
 
         y: MaskedValue
         z, _ = y["data"], y["mask"]
 
         if self.modality_encoder is not None:
-            z = self.modality_encoder(z, modality=code)
+            z = self.modality_encoder(z, modality=modality.get_code())
 
         _, _, m, d = z.shape
         z = rearrange(z, "b t m d -> b (t m) d")
@@ -217,9 +241,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         if mask is not None:
             mask = repeat(mask, "b t -> b (t m)", m=m)
 
-        z = self.pad_to_batch(z, mask, keep_idx, b)
-
-        out.multimodal_outs[code] = z
+        z = self.pad_to_batch(z, mask[keep_idx], keep_idx, b)
+        out.multimodal_outs[modality.get_code()] = z
         return z["data"], z["mask"], time
 
     def process_supports(self, x: dict, keep: torch.Tensor, use_kd: bool, out: EegBaseModelOutputs, device, dtype):

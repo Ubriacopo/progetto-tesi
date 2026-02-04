@@ -13,6 +13,7 @@ from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, T
 from main.model.neegavi.blocks import ModalityStream, AbstractAttentionBlock
 from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
     ModalityConfig
+from main.model.neegavi.dropout import ModalityDropout, BernoulliSupportsModalityDropout
 from main.model.neegavi.kd import KDHead
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
 from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
@@ -29,6 +30,7 @@ class Factory:
         self._supports: dict[str, ModalityStream] = dict()
         self._disabled_supports: set[str] = set()
         self._pooling: nn.Module | None = None
+        self._dropout: ModalityDropout | None = None
 
         self.built: bool = False
 
@@ -67,6 +69,10 @@ class Factory:
 
         return self
 
+    def modality_dropout(self, dropout: ModalityDropout) -> Factory:
+        self._dropout = dropout
+        return self
+
     def disabled(self, code: str) -> Factory:
         self._disabled_supports.add(code)
         return self
@@ -98,7 +104,8 @@ class Factory:
             self._pivot,
             *[value for key, value in self._supports.items() if key not in self._disabled_supports],
             attn_blocks=self._attention if len(self._attention) > 0 else self._default_attention(),
-            pooling=self._pooling  # This can be None
+            pooling=self._pooling,  # This can be None
+            modality_dropout=self._dropout  # This can be None
         )
 
     @staticmethod
@@ -110,12 +117,13 @@ class Factory:
             ecg_config: MaskedFeedForwardConfig,
             attention_config: int | list[GatedXAttentionCustomArgs],
             custom_config: EegInterAviModelConfiguration = None,
-            disabled_supports: set[str] = None
+            disabled_supports: set[str] = None,
     ) -> Factory:
         factory = (
             Factory()
             .config(custom_config)
             # .pooling(None) Pooling is by default None which is a valid value
+            .modality_dropout(BernoulliSupportsModalityDropout(4, 0.1))  # TODO find good configuration
             .attention(
                 GatedXAttentionFactory(custom_config.pivot_dim, custom_config.support_dim).build(attention_config))
             .pivot(
