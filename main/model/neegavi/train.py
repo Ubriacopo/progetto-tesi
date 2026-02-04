@@ -80,7 +80,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self._n_causal: int = 0
         self._n_bidirectional: int = 0
 
-    # todo ramp up per other losses than supervised? Or just use supervised as aux
     def configure_optimizers(self) -> OptimizerLRScheduler:
         params = []
 
@@ -99,10 +98,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
         return torch.optim.Adam(weight_decay=.01, params=params, fused=True)
 
-    def _compute_step_metrics(self, stud: EegBaseModelOutputs,
-                              teacher: MaskedContrastiveModelOutputs,
-                              batch, step_type: Literal['train', 'val', 'test'],
-                              mode: Literal['bidirectional', 'causal']):
+    def _compute_step_metrics(
+            self,
+            stud: EegBaseModelOutputs,
+            teacher: MaskedContrastiveModelOutputs,
+            batch, step_type: Literal['train', 'val', 'test'],
+            mode: Literal['bidirectional', 'causal']
+    ):
         return_object: dict[str, torch.Tensor | MaskedValue] = dict(
             loss=torch.tensor(0, device=stud.embeddings['data'].device))
         if self.use_kd_loss:

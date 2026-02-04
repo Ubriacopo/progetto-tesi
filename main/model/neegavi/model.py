@@ -76,9 +76,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
                  config: EegInterAviModelConfiguration,
                  pivot: ModalityStream, *supports: ModalityStream,
                  modality_dropout: Optional[ModalityDropout] = None,
-                 # Attention once modalities are Streamed through their pipeline and cat
                  attn_blocks: list[AbstractAttentionBlock],
-                 # Pooling strategy after attention
                  pooling: Optional[nn.Module] = None):
         """
         EegInterVaiModel is partially inspired by the novel approach of the Flamingo model by Google.
@@ -96,19 +94,17 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         out = xattn(q=p, kv=s)
 
         :param config:
-        :param pivot:
-        :param supports:
+        :param pivot: Main modality to fuse data into. It is Q in the late xattn part of the model.
+        :param supports: They build KV in xattn and are modalities that should enrich the pivot
         :param modality_dropout:
-        :param attn_blocks:
-        :param pooling:
+        :param attn_blocks: Attention once modalities are Streamed through their pipeline and cat
+        :param pooling: Pooling strategy after attention. Model has a [CLS] token thus it is not needed. @deprecated
         """
         nn.Module.__init__(self)
         # The model operates with time steps so it has its own logic what masking concerns
         TimeMaskSwitchable.__init__(self)
 
         self.logger = make_logger(self.__class__.__name__)
-
-        # Pivot defines Q in xattn while supports compose KV
         self.pivot: ModalityStream = pivot
         self.supports: nn.ModuleList[ModalityStream] = nn.ModuleList(supports)
 
@@ -164,12 +160,15 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     @staticmethod
     def pad_to_batch(data: torch.Tensor, mask: Optional[torch.Tensor], idx: torch.Tensor, b: int):
         """
-
-        :param data:
-        :param mask:
-        :param idx:
-        :param b:
-        :return:
+        This utility function play an important role the moment we drop some modalities.
+        That procedure breaks batch as some elements go missing for some modalities, this enures to restore with empty objects
+        the original batch structure.
+        :param data: Data to pad to batch_size
+        :param mask: Mask to pad back to batch_size
+        :param idx: Indexes that were lost previously. Without this padding would be impossible as we need to restore in
+        the correct places to evaluate loss and other metrics. (Siglip would of course break as I'd be comparing wrong samples)
+        :param b: the batch_size
+        :return: Restored MaskedValue of the original batch shape
         """
         # Pad to same batch size (This happens when we drop some elements from modality)
         # Pad the data
@@ -221,8 +220,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
         if mask is not None:
             mask = mask.bool()
-        y: MaskedValue | KdMaskedValue = modality(data[keep_idx], mask[keep_idx], use_kd=use_kd)
 
+        y: MaskedValue | KdMaskedValue = modality(data[keep_idx], mask[keep_idx], use_kd=use_kd)
         if self.KD_KEY in y:
             kd_out: MaskedValue = y.pop(self.KD_KEY)
             out.kd_outs[modality.get_code()] = self.pad_to_batch(kd_out["data"], kd_out["mask"], keep_idx, b)
@@ -253,9 +252,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         for idx, modality in enumerate(self.supports):
             if modality.get_code() not in x:
                 continue
-
+            # keep index map of the current modality
             keep_idx = keep[:, idx].nonzero(as_tuple=True)[0]
-
             # Skip if empty
             if keep_idx.numel() == 0:
                 continue
@@ -310,7 +308,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         pivot_time = torch.cat([pivot_time, cls_time], dim=1)  # length T+1
 
         # Build the mask that maps visibility of timesteps to each other.
-        # A timestep i can maybe see j < i but not any j > i (This would mean only past). Strategy is defined on upper level
+        # A timestep i can maybe see j < i but not any j > i (This would mean only past). Strategy is defined on upper level,
         # but it can change at runtime thus the build allowance maks can change during training.
         allow = self.build_allow_mask(pivot_time, support_time)
         allow[:, -1, :] = True
