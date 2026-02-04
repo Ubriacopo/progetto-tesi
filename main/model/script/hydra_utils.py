@@ -1,12 +1,13 @@
 import dataclasses
 
 import torch
-from hydra.utils import get_class
+from hydra.utils import get_object
 from torch import nn
 
 from main.core_data.dataset import RequiredKey
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
-from main.model.neegavi.factory import AbstractEegInterAviFactory
+from main.model.neegavi.factory import Factory
+from main.model.neegavi.model import EegInterAviModel
 from main.model.script.hydra_beans import KdConfig
 
 
@@ -23,13 +24,9 @@ class InitReturn:
 
 def init_trainlike_script(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
-    factory_constructor = get_class(cfg.model.factory.classpath)
-    factory = factory_constructor(**cfg.model.factory.constructor_args)
-    if not isinstance(factory, AbstractEegInterAviFactory):
-        raise ValueError("We need an AbstractEegInterAviFactory. Given factory is not of such type.")
-
-    factory: AbstractEegInterAviFactory
-    student = factory.build()
+    factory_constructor = get_object(cfg.model.factory.factory_path)
+    factory: Factory = factory_constructor(**cfg.model.factory.args)
+    student: EegInterAviModel = factory.build()
 
     # Teacher construction
     teacher = MaskedContrastiveModel(hidden_channels=cfg.teacher.hidden_channels, out_channels=cfg.teacher.out_channels)

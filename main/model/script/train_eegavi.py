@@ -55,7 +55,7 @@ def main(cfg: KdConfig):
     trainer = L.Trainer(
         profiler=SimpleProfiler(),
         accelerator="gpu",
-        # logger=mlf_logger,
+        logger=mlf_logger,
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[

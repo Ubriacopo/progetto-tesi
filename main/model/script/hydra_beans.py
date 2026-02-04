@@ -37,8 +37,8 @@ class ModalityPresenceInformation:
 
 @dataclasses.dataclass
 class ModelFactoryConfig:
-    classpath: str
-    constructor_args: dict
+    factory_path: str
+    args: dict
 
 
 @dataclasses.dataclass
