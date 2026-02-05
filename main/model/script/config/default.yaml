@@ -13,13 +13,15 @@ dataset_descriptors:
   - dataset_path: "/localssd/EEGAVI/AMIGOS/"
     cache_path: null
     dataset_weight: 149 # Power Law
-  - dataset_path: "/localssd/EEGAVI/DEAP/"
+  # - dataset_path: "/localssd/EEGAVI/DEAP/"
+  #  cache_path: null
+  #  dataset_weight: 108 # Power Law
+  # - dataset_path: "/localssd/EEGAVI/MAHNOB/"
+  #   cache_path: null
+  #   dataset_weight: 30 # Power Law
+  - dataset_path: "/mnt/turing-datasets/EEGAVI/EAV/combined/"
     cache_path: null
-    dataset_weight: 108 # Power Law
-  - dataset_path: "/localssd/EEGAVI/MAHNOB/"
-    cache_path: null
-    dataset_weight: 30 # Power Law
-
+    dataset_weight: 100
 
 hydra:
   job_logging:

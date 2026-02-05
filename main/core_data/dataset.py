@@ -116,20 +116,19 @@ class H5KdDataset(IterableDataset):
                     yield file, start, stop
 
     def add_block(self, buffered_samples: int, block: dict[Any, Any], block_buffer: list, rng: random.Random = None):
-        with torch.profiler.record_function("H5KdDataset.add_block"):
-            block_len = len(next(iter(block.values())))
-            # Make a shuffled index order for this block if shuffling is enabled
-            perm = None
-            if rng is not None:
-                perm = list(range(block_len))
-                rng.shuffle(perm)
+        block_len = len(next(iter(block.values())))
+        # Make a shuffled index order for this block if shuffling is enabled
+        perm = None
+        if rng is not None:
+            perm = list(range(block_len))
+            rng.shuffle(perm)
 
-            block_buffer.append([block, perm, 0])
-            return buffered_samples + block_len
+        block_buffer.append([block, perm, 0])
+        return buffered_samples + block_len
 
     def pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
         output = []
-        with torch.profiler.record_function("H5KdDataset.pop_batch"):
+        with torch.profiler.record_function("H5KdDataset-pop_batch"):
             for batch_element in range(self.batch_size):
                 if not block_buffer:
                     break
@@ -157,14 +156,14 @@ class H5KdDataset(IterableDataset):
     @staticmethod
     def read_block(dsets: dict[str, h5py.Dataset], start: int, stop: int):
         output = {}
-        with torch.profiler.record_function("H5KdDataset.read_block"):
-            for path, dataset in dsets.items():
-                arr = dataset[start:stop]
-                if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
-                    if not arr.flags['C_CONTIGUOUS']:
-                        arr = np.ascontiguousarray(arr)  # Make contiguous if needed
-                    arr = torch.from_numpy(arr)
-                output[path] = arr
+
+        for path, dataset in dsets.items():
+            arr = dataset[start:stop]
+            if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
+                if not arr.flags['C_CONTIGUOUS']:
+                    arr = np.ascontiguousarray(arr)  # Make contiguous if needed
+                arr = torch.from_numpy(arr)
+            output[path] = arr
 
         return output
 
@@ -182,7 +181,8 @@ class H5KdDataset(IterableDataset):
             for block_start in range(start, stop, self.block_size):
                 block_stop = min(block_start + self.block_size, stop)
                 # dict[str, np/torch array], len = block_stop-block_start
-                yield self.read_block(dsets, block_start, block_stop)
+                with torch.profiler.record_function("H5KdDataset.read_block"):
+                    yield self.read_block(dsets, block_start, block_stop)
 
     def __iter__(self):
         # We still presume one worker only but this will come in handy later.
@@ -207,7 +207,8 @@ class H5KdDataset(IterableDataset):
         for shard_path, start, stop in self.data(generator=global_g):
             with h5py.File(str(shard_path), "r") as h5:
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
-                    buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
+                    with torch.profiler.record_function("H5KdDataset.add_block"):
+                        buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
                     # Warmup: ensure at least warmup samples are buffered before yielding
                     if buffered_samples < warmup:
                         continue
@@ -219,188 +220,6 @@ class H5KdDataset(IterableDataset):
         # Flush remaining buffered samples
         while block_buffer:
             sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
-            yield sample
-
-
-class ShuffledH5KdDataset(IterableDataset):
-    def __init__(self, dataset_path: str, prefix: str, batch_size: int, buffer_size: int = 256,
-                 block_size: int = 256, seed: int = 42):
-        super().__init__()
-        self.logger = make_logger(self.__class__.__name__)
-
-        self.dataset_path: Path = Path(dataset_path)
-        self.prefix: str = prefix
-
-        self.shard_files = sorted(glob.glob(os.path.join(dataset_path, f"{prefix}*.h5")))
-        if not self.shard_files:
-            raise FileNotFoundError(f"No .h5 shards found in: {dataset_path} with prefix: {prefix}")
-
-        self.buffer_size: int = buffer_size
-        if self.buffer_size <= 0:
-            raise ValueError("buffer_size must be > 0")
-
-        self.seed: int = seed
-        self.epoch: int = 0
-
-        self.block_size: int = block_size
-        self.shard_lengths: list[int] = list(self.load_lengths())
-
-        self.paths: Optional[list[str]] = None
-        self.batch_size: int = batch_size
-
-    def set_epoch(self, epoch: int):
-        self.epoch = epoch
-
-    def load_lengths(self) -> Iterator[int]:
-        for file in self.shard_files:
-            with h5py.File(file, "r") as h5:
-                yield int(h5.attrs.get("num_samples", 0))
-
-    def data_for_worker(self, g: torch.Generator):
-        num_workers = 1 if get_worker_info() is None else get_worker_info().num_workers
-        worker_id = 0 if get_worker_info() is None else get_worker_info().id
-
-        perm = torch.randperm(len(self.shard_files), generator=g).tolist()
-        files = [self.shard_files[i] for i in perm]
-        lengths = [self.shard_lengths[i] for i in perm]
-
-        # If the number of workers is enough to cover all files without overlap.
-        if num_workers <= len(files):
-            files = files[worker_id:: num_workers]
-            lengths = lengths[worker_id:: num_workers]
-
-            for file, length in zip(files, lengths):
-                yield file, 0, length
-            return
-
-        # We cannot cover all files, so sharing is caring.
-        # We make now choices based on file (we look them all up)
-        for file, length in zip(files, lengths):
-            if length <= 0:
-                continue
-
-            num_blocks = (length + self.block_size - 1) // self.block_size
-            # If the number of blocks is enough for all workers we divide the blocks.
-            if num_blocks >= num_workers:
-                for block_start in range(0, length, self.block_size):
-                    block_id = block_start // self.block_size
-                    if block_id % num_workers == worker_id:
-                        yield file, block_start, min(block_start + self.block_size, length)
-
-            # Worst case: blocks have to be split to give info to all workers.
-            else:
-                step = max(1, length // num_workers)
-                start = worker_id * step
-                stop = length if worker_id == num_workers - 1 else min(length, (worker_id + 1) * step)
-
-                if start < stop:
-                    yield file, start, stop
-
-    def collect_h5_paths(self, h5: h5py.File, ignore_prefixes: list[str] = ("meta/",)):
-        if self.paths is not None:
-            return self.paths
-
-        self.paths = []
-
-        def visit(name, obj):
-            if isinstance(obj, h5py.Dataset) and not any(name.startswith(p) for p in ignore_prefixes):
-                self.paths.append(name)
-
-        h5.visititems(visit)
-        return self.paths
-
-    @staticmethod
-    def read_block(dsets: dict[str, h5py.Dataset], start: int, stop: int):
-        output = {}
-        for path, dataset in dsets.items():
-            arr = dataset[start:stop]
-            if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
-                if not arr.flags['C_CONTIGUOUS']:
-                    arr = np.ascontiguousarray(arr)  # Make contiguous if needed
-                arr = torch.from_numpy(arr)
-            output[path] = arr
-
-        return output
-
-    def iter_shard_blocks(self, h5: h5py.File, start: int, stop: int):
-        n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
-        start, stop = max(0, int(start)), min(int(stop), n)
-        if stop <= start:
-            self.logger.warning("Start precedes stop? Are you sure?")
-            return
-
-        paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/"])
-        dsets = {p: h5[p] for p in paths}
-
-        for block_start in range(start, stop, self.block_size):
-            block_stop = min(block_start + self.block_size, stop)
-            # dict[str, np/torch array], len = block_stop-block_start
-            yield self.read_block(dsets, block_start, block_stop)
-
-    @staticmethod
-    def add_block(buffered_samples: int, block: dict[Any, Any], block_buffer: list, rng: random.Random) -> int:
-        block_len = len(next(iter(block.values())))
-        # Make a shuffled index order for this block
-        perm = list(range(block_len))
-        rng.shuffle(perm)
-
-        block_buffer.append([block, perm, 0])
-        return buffered_samples + block_len
-
-    def pop_random_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random):
-        output = []
-        for batch_element in range(self.batch_size):
-            idx = rng.randrange(len(block_buffer))
-            block, perm, current = block_buffer[idx]
-
-            i = perm[current]
-            if current + 1 >= len(perm):
-                block_buffer.pop(idx)
-            else:
-                block_buffer[idx][2] = current + 1
-
-            sample = {k: v[i] for k, v in block.items()}
-            output.append(sample)  # breaks storage sharing
-
-            buffered_samples -= 1
-            if not block_buffer:
-                break
-
-        return output, buffered_samples
-
-    def __iter__(self):
-        # After various rewrites this gives best performance yet.
-        worker_info = get_worker_info()
-        worker_id = 0 if worker_info is None else worker_info.id
-
-        global_g = torch.Generator()
-        global_g.manual_seed(self.seed + self.epoch)
-        rng = random.Random(self.seed + self.epoch + 10000 * worker_id)
-
-        warmup: int = min(128, self.buffer_size)
-        # We buffer blocks not samples. Each entry is of the structure: [block_dict, perm_list, cursor]
-        block_buffer = []
-
-        # Total remaining samples across all buffered blocks
-        buffered_samples = 0
-        target = self.block_size * 2
-        for shard_path, start, stop in self.data_for_worker(global_g):
-            with h5py.File(str(shard_path), "r") as h5:
-                for block in self.iter_shard_blocks(h5, start=start, stop=stop):
-                    buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
-
-                    # Warmup: ensure at least warmup samples are buffered before yielding
-                    if buffered_samples < warmup:
-                        continue
-
-                    while buffered_samples >= target and block_buffer:
-                        sample, buffered_samples = self.pop_random_batch(buffered_samples, block_buffer, rng)
-                        yield sample
-
-        # Flush remaining buffered samples
-        while block_buffer:
-            sample, buffered_samples = self.pop_random_batch(buffered_samples, block_buffer, rng)
-
             yield sample
 
 

@@ -2,14 +2,15 @@ import hydra
 import lightning as L
 import torch
 import torchinfo
-from lightning.pytorch.loggers import MLFlowLogger
-from lightning.pytorch.profilers import SimpleProfiler, PyTorchProfiler
+from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.profilers import PyTorchProfiler, SimpleProfiler
+from pytorch_lightning.profilers import AdvancedProfiler
 
 import hydra_utils
 from main.app_config import AppConfig
 from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
-from main.model.script.hydra_beans import KdConfig
 from main.model.neegavi.train_utils import KdTrainDataModule
+from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
 
 
@@ -17,7 +18,7 @@ from main.utils.logging import make_logger
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     logger = make_logger("hydra-main>train_eegavi")
-    mlf_logger = MLFlowLogger(experiment_name="lightning_logs", tracking_uri="file:./ml-runs")
+    tb_logger = TensorBoardLogger("tb_logs", name="my_model")
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     init_object = hydra_utils.init_trainlike_script(cfg)
 
@@ -55,13 +56,23 @@ def main(cfg: KdConfig):
         record_functions=True,  # important
         profile_memory=True,  # optional
         on_trace_ready=torch.profiler.tensorboard_trace_handler("tb_prof"),
+        with_stack=True,
+
+        export_to_chrome=True,
+
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA
+        ],
     )
+
+    profiler = SimpleProfiler()
 
     torchinfo.summary(module)
     trainer = L.Trainer(
         profiler=profiler,
         accelerator="gpu",
-        logger=mlf_logger,
+        logger=tb_logger,
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[
