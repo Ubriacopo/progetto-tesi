@@ -3,7 +3,7 @@ import lightning as L
 import torch
 import torchinfo
 from lightning.pytorch.loggers import MLFlowLogger
-from lightning.pytorch.profilers import SimpleProfiler
+from lightning.pytorch.profilers import SimpleProfiler, PyTorchProfiler
 
 import hydra_utils
 from main.app_config import AppConfig
@@ -51,11 +51,17 @@ def main(cfg: KdConfig):
     for n, p in student.named_parameters():
         logger.info(n, p.requires_grad, p.grad is None)
 
+    profiler = PyTorchProfiler(
+        record_functions=True,  # important
+        profile_memory=True,  # optional
+        on_trace_ready=torch.profiler.tensorboard_trace_handler("tb_prof"),
+    )
+
     torchinfo.summary(module)
     trainer = L.Trainer(
-        profiler=SimpleProfiler(),
+        profiler=profiler,
         accelerator="gpu",
-        # logger=mlf_logger,
+        logger=mlf_logger,
         devices=1,
         max_epochs=cfg.trainer.epochs,
         callbacks=[
@@ -69,9 +75,9 @@ def main(cfg: KdConfig):
     )
 
     trainer.fit(module, datamodule=kd_train_datamodule)
-    logger.info(trainer.profiler.summary())
+    logger.info(profiler.summary())
 
-    trainer.test(module, datamodule=kd_train_datamodule)
+    # trainer.test(module, datamodule=kd_train_datamodule)
 
 
 if __name__ == "__main__":

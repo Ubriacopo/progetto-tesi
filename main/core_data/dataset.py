@@ -116,69 +116,73 @@ class H5KdDataset(IterableDataset):
                     yield file, start, stop
 
     def add_block(self, buffered_samples: int, block: dict[Any, Any], block_buffer: list, rng: random.Random = None):
-        block_len = len(next(iter(block.values())))
-        # Make a shuffled index order for this block if shuffling is enabled
-        perm = None
-        if rng is not None:
-            perm = list(range(block_len))
-            rng.shuffle(perm)
+        with torch.profiler.record_function("H5KdDataset.add_block"):
+            block_len = len(next(iter(block.values())))
+            # Make a shuffled index order for this block if shuffling is enabled
+            perm = None
+            if rng is not None:
+                perm = list(range(block_len))
+                rng.shuffle(perm)
 
-        block_buffer.append([block, perm, 0])
-        return buffered_samples + block_len
+            block_buffer.append([block, perm, 0])
+            return buffered_samples + block_len
 
     def pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
         output = []
-        for batch_element in range(self.batch_size):
-            if not block_buffer:
-                break
+        with torch.profiler.record_function("H5KdDataset.pop_batch"):
+            for batch_element in range(self.batch_size):
+                if not block_buffer:
+                    break
 
-            idx = rng.randrange(len(block_buffer)) if rng is not None else 0
-            block, perm, cursor = block_buffer[idx]
+                idx = rng.randrange(len(block_buffer)) if rng is not None else 0
+                block, perm, cursor = block_buffer[idx]
 
-            i = perm[cursor] if perm is not None else cursor
-            cursor += 1
+                i = perm[cursor] if perm is not None else cursor
+                cursor += 1
 
-            target_measure = len(perm) if perm is not None else len(next(iter(block.values())))
-            done = cursor >= target_measure
+                target_measure = len(perm) if perm is not None else len(next(iter(block.values())))
+                done = cursor >= target_measure
 
-            if done:
-                block_buffer.pop(idx)
-            else:
-                block_buffer[idx][2] = cursor
+                if done:
+                    block_buffer.pop(idx)
+                else:
+                    block_buffer[idx][2] = cursor
 
-            sample = {k: v[i] for k, v in block.items()}
-            output.append(sample)  # breaks storage sharing
-            buffered_samples -= 1
+                sample = {k: v[i] for k, v in block.items()}
+                output.append(sample)  # breaks storage sharing
+                buffered_samples -= 1
 
         return output, buffered_samples
 
     @staticmethod
     def read_block(dsets: dict[str, h5py.Dataset], start: int, stop: int):
         output = {}
-        for path, dataset in dsets.items():
-            arr = dataset[start:stop]
-            if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
-                if not arr.flags['C_CONTIGUOUS']:
-                    arr = np.ascontiguousarray(arr)  # Make contiguous if needed
-                arr = torch.from_numpy(arr)
-            output[path] = arr
+        with torch.profiler.record_function("H5KdDataset.read_block"):
+            for path, dataset in dsets.items():
+                arr = dataset[start:stop]
+                if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
+                    if not arr.flags['C_CONTIGUOUS']:
+                        arr = np.ascontiguousarray(arr)  # Make contiguous if needed
+                    arr = torch.from_numpy(arr)
+                output[path] = arr
 
         return output
 
     def iter_shard_blocks(self, h5: h5py.File, start: int, stop: int):
-        n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
-        start, stop = max(0, int(start)), min(int(stop), n)
-        if stop <= start:
-            self.logger.warning("Start precedes stop? Are you sure?")
-            return
+        with torch.profiler.record_function("H5KdDataset.iter_shard_blocks"):
+            n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+            start, stop = max(0, int(start)), min(int(stop), n)
+            if stop <= start:
+                self.logger.warning("Start precedes stop? Are you sure?")
+                return
 
-        paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/"])
-        dsets = {p: h5[p] for p in paths}
+            paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/"])
+            dsets = {p: h5[p] for p in paths}
 
-        for block_start in range(start, stop, self.block_size):
-            block_stop = min(block_start + self.block_size, stop)
-            # dict[str, np/torch array], len = block_stop-block_start
-            yield self.read_block(dsets, block_start, block_stop)
+            for block_start in range(start, stop, self.block_size):
+                block_stop = min(block_start + self.block_size, stop)
+                # dict[str, np/torch array], len = block_stop-block_start
+                yield self.read_block(dsets, block_start, block_stop)
 
     def __iter__(self):
         # We still presume one worker only but this will come in handy later.
@@ -462,19 +466,20 @@ class RoundRobinBatchMultiDataset(IterableDataset):
         iters = [iter(ds) for ds in self.datasets]
         dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
-            k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-            for _ in range(24): # todo parametrizza
-                try:
-                    yield next(iters[k])
-                    dead[k] = 0
+            with torch.profiler.record_function("round_robin_iter"):
+                k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
+                for _ in range(32):  # todo parametrizza
+                    try:
+                        yield next(iters[k])
+                        dead[k] = 0
 
-                except StopIteration:
-                    dead[k] += 1
-                    if dead[k] > 5:
-                        raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
-                    # Restart that dataset (cycle)
-                    iters[k] = iter(self.datasets[k])
-                    break
+                    except StopIteration:
+                        dead[k] += 1
+                        if dead[k] > 5:
+                            raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
+                        # Restart that dataset (cycle)
+                        iters[k] = iter(self.datasets[k])
+                        break
 
 
 # todo make version for multiIterableDataset

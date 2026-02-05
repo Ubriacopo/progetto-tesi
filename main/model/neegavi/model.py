@@ -1,17 +1,17 @@
 import dataclasses
-from dataclasses import asdict
-from typing import Optional, Literal
+from typing import Optional
 
 import torch
 from einops import repeat, rearrange
 from torch import nn
-from torch.distributed import supports_complex
 
-from main.model.neegavi.blocks import ModalityStream, ModalContextEncoder, AbstractAttentionBlock, TimeMaskSwitchable, \
-    TimeMaskSwitchableProperties
-from main.model.neegavi.dropout import ModalityDropout, DisabledModalityDropout
-from main.model.neegavi.pooling import ClsPooling
-from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
+from main.model.blocks.attention import AbstractAttentionBlock
+from main.model.blocks.encoder import ModalContextEncoder
+from main.model.blocks.modality_stream import ModalityStream
+from main.model.blocks.time_masked import TimeMaskSwitchableProperties, TimeMaskSwitchable
+from main.model.blocks.dropout import ModalityDropout, DisabledModalityDropout
+from main.model.blocks.pooling import ClsPooling
+from main.model.neegavi.utils import EegBaseModelOutputs
 from main.utils.data import MaskedValue, KdMaskedValue
 from main.utils.logging import make_logger
 

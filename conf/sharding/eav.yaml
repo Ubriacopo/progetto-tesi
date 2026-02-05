@@ -6,5 +6,7 @@ name: eav
 test_participants: 6 # 15%
 val_participants: 4 # 10%
 
+compression: 'lzf'
+
 spec_path: ${base_path}EAV/combined/spec.csv
-output_dir: ${base_path}EAV/combined/
+output_dir: ${base_path}EAV/combined-compressed/

@@ -7,15 +7,14 @@ from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
 from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 
-from main.core_data.media.assessment.assessment import Assessment
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.loss import SiglipLoss
-from main.model.neegavi.blocks import TimeMaskSwitchableProperties
+from main.model.blocks.time_masked import TimeMaskSwitchableProperties
 from main.model.neegavi.model import EegInterAviModel
-from main.model.neegavi.pooling import ClsPooling, MaskedAvgPooling
+from main.model.blocks.pooling import MaskedAvgPooling, ClsPooling
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
-from main.model.neegavi.xattention import GatedXAttentionBlock
+from main.model.blocks.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -222,16 +221,17 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def dequantize(self, batch: dict, dtype=torch.float16):
         # Student part:
-        output = {}
-        for container_key, container in batch.items():  # Student - Teacher
-            output[container_key] = {}
+        with torch.profiler.record_function("dequantize"):
+            output = {}
+            for container_key, container in batch.items():  # Student - Teacher
+                output[container_key] = {}
 
-            for key, td in container.items():
-                if key in self.dequantize_keys:
-                    data = td["data"].to(dtype=dtype, non_blocking=True)
-                    data.mul_(td["scales"])  # For optimization reasons (I dislike it)
-                    td = {"data": data, "mask": td["mask"]}
-                output[container_key][key] = td
+                for key, td in container.items():
+                    if key in self.dequantize_keys:
+                        data = td["data"].to(dtype=dtype, non_blocking=True)
+                        data.mul_(td["scales"])  # For optimization reasons (I dislike it)
+                        td = {"data": data, "mask": td["mask"]}
+                    output[container_key][key] = td
 
         return output
 

@@ -1,12 +1,14 @@
 from dataclasses import dataclass, asdict
-from typing import Optional, Literal
+from typing import Optional
 
 import torch
 from einops import rearrange
 from torch import nn
 
-from main.model.neegavi.blocks import TemporalEncoder, MaskedFeedForward, TimeMaskSwitchableProperties
-from main.model.neegavi.perceiver import PerceiverResampler
+from main.model.blocks.encoder import TemporalEncoder
+from main.model.blocks.time_masked import TimeMaskSwitchableProperties
+from main.model.blocks.feed_forward import MaskedFeedForward
+from main.model.blocks.perceiver import PerceiverResampler
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 

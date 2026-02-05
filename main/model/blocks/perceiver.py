@@ -5,7 +5,7 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from main.model.neegavi.blocks import SimpleFeedForward
+from main.model.blocks.feed_forward import SimpleFeedForward
 
 
 class PerceiverAttention(nn.Module):

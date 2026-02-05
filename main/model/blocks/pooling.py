@@ -1,17 +1,48 @@
 from __future__ import annotations
 
 import torch
-from torch import nn
+from torch import nn as nn, nn
 from torch.nn.functional import softmax
 
 
-# todo volevo usarlo?
+class MaskedAttnPool(nn.Module):
+    def __init__(self, d, hidden=None):
+        super().__init__()
+        self.scorer = nn.Sequential(nn.Linear(d, hidden or d), nn.GELU(), nn.Linear(hidden or d, 1))
+
+    def forward(self, z, mask, dim):
+        # z: [..., N, D], mask: [..., N] or None
+        w = self.scorer(z).squeeze(-1)  # [..., N]
+        if mask is None:
+            a = w.softmax(dim=dim).unsqueeze(-1)  # [..., N, 1]
+            return (z * a).sum(dim=dim)
+
+        m = mask.to(torch.bool)
+        while m.dim() < w.dim():
+            m = m.unsqueeze(-1)  # broadcast to w
+        m = m.expand_as(w)  # [..., N]
+
+        # mask invalid positions
+        w = w.masked_fill(~m, float('-inf'))
+
+        # handle rows with all-masked (would give NaNs)
+        all_masked = (~m).all(dim=dim, keepdim=True)  # [..., 1]
+        w = torch.where(all_masked.expand_as(w), torch.zeros_like(w), w)
+
+        a = w.softmax(dim=dim)  # [..., N]
+        a = a * m  # zero-out invalids
+        denom = a.sum(dim=dim, keepdim=True).clamp_min(1e-12)
+        a = (a / denom).unsqueeze(-1)  # [..., N, 1]
+        return (z * a).sum(dim=dim)
+
+
 class SelfAttentionPooling(nn.Module):
     def __init__(self, input_dimension: int) -> None:
         """
         Original Paper: Self-Attention Encoding and Pooling for Speaker Recognition
         https://gist.github.com/pohanchi/c77f6dbfbcbc21c5215acde4f62e4362
         It gives each token of the input an attention weight for relevance.
+        TODO: Not used
 
         :param input_dimension: Hidden size
         """

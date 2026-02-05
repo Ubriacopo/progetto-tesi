@@ -10,12 +10,15 @@ teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.
 
 
 dataset_descriptors:
-  - dataset_path: "/localssd/EEGAVI/AMIGOS/combined/"
+  - dataset_path: "/localssd/EEGAVI/AMIGOS/"
     cache_path: null
-    dataset_weight: 1.0
-  - dataset_path: "/localssd/EEGAVI/DEAP/combined/"
+    dataset_weight: 149 # Power Law
+  - dataset_path: "/localssd/EEGAVI/DEAP/"
     cache_path: null
-    dataset_weight: 1.0
+    dataset_weight: 108 # Power Law
+  - dataset_path: "/localssd/EEGAVI/MAHNOB/"
+    cache_path: null
+    dataset_weight: 30 # Power Law
 
 
 hydra:

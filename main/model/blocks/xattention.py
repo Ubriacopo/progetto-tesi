@@ -9,7 +9,8 @@ from einops import rearrange
 from einops_exts import rearrange_many
 from torch import nn, einsum
 
-from main.model.neegavi.blocks import SimpleFeedForward, AbstractAttentionBlock
+from main.model.blocks.attention import AbstractAttentionBlock
+from main.model.blocks.feed_forward import SimpleFeedForward
 
 
 @dataclasses.dataclass

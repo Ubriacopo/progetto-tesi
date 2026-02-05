@@ -48,13 +48,13 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 H5KdDataset(ds_path, prefix="train", block_size=256, buffer_size=512, batch_size=self.batch_size)
             )
 
-            val_datasets.append(
-                H5KdDataset(ds_path, prefix="val", block_size=256, buffer_size=256, batch_size=self.batch_size)
-            )
+            # val_datasets.append(
+            #     H5KdDataset(ds_path, prefix="val", block_size=256, buffer_size=256, batch_size=self.batch_size)
+            # )
 
-            test_datasets.append(
-                H5KdDataset(ds_path, prefix="test", block_size=256, buffer_size=256, batch_size=self.batch_size)
-            )
+            # test_datasets.append(
+            #    H5KdDataset(ds_path, prefix="test", block_size=256, buffer_size=256, batch_size=self.batch_size)
+            # )
 
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed)
         self.valid_dataset = ChainDataset(val_datasets)
@@ -78,10 +78,10 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=1,
-            prefetch_factor=1,
-            persistent_workers=True,
-            pin_memory=False
+            num_workers=0,
+            # prefetch_factor=1,
+            # persistent_workers=True,
+            # pin_memory=False
         )
 
     def val_dataloader(self):

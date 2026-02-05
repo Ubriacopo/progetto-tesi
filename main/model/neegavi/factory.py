@@ -7,11 +7,11 @@ from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
     SimpleFeedForwardAdapter
-from main.model.neegavi.blocks import ModalityStream
+from main.model.blocks.modality_stream import ModalityStream
 from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig
-from main.model.neegavi.kd import KDHead
+from main.model.blocks.kd import KDHead
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
-from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
+from main.model.blocks.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 
 
 def supporting(function):
