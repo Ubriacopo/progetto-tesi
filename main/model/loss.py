@@ -23,41 +23,6 @@ def lightweight_whitening(z: torch.Tensor):
     return z
 
 
-def siglip(za: Tensor, zb: Tensor, logt: Tensor = torch.log(Tensor([10])), bias: Tensor = Tensor([-10])):
-    """
-    We will use this one.
-    Implemented from Algorithm 1 Sigmoid loss pseudo-implementation by
-    https://arxiv.org/pdf/2303.15343
-
-    And seen in the official google repository:
-    https://github.com/google-research/big_vision/blob/main/big_vision/trainers/proj/image_text/siglip.py
-
-    :param za: One modality's embeddings.
-    :param zb: Other modality's embeddings.
-    :param logt: Temperature initialization. (Is the exponent of e^temperature).
-            It should be a learnable parameter as per SigLIP paper. Defaults to log(10)
-    :param bias: Bias initialization. It should be a learnable parameter as per SigLIP paper.
-            Defaults to -10.
-    :return: The calculated Sigmoid loss. (Its name comes from the original model it was used for).
-            We adapted (or are working on it to work) for EEG data mixed with video, text and audio.
-    """
-    T = torch.exp(logt).to(za.device)
-    B = za.shape[0]
-
-    # L2-Normalization
-    za = lightweight_whitening(za)
-    zb = lightweight_whitening(zb)
-
-    logits = (za @ zb.T) * T + bias.to(za.device)
-    labels = 2 * torch.eye(B, device=za.device) - 1
-
-    # This is original loss computation from siglip proposal
-    loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
-    # But since we work with multi-losses we have to scale down to factor B^2 not B
-    # loss = -torch.mean(logsigmoid(logits * labels))
-    return loss
-
-
 class SiglipLoss(nn.Module):
     def __init__(self, init_tau=0.07, init_bias=-10, stop_grad_target: bool = False, verbose: bool = False):
         super(SiglipLoss, self).__init__()
@@ -70,6 +35,7 @@ class SiglipLoss(nn.Module):
         self.verbose = verbose
         self.logger = make_logger(self.__class__.__name__)
         self.stop_grad_target: bool = stop_grad_target
+
         if self.stop_grad_target:
             self.logger.info("Heads will be detached for forward pass in this class instance")
 

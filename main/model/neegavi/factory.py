@@ -1,4 +1,7 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
+
+from torch import nn
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
@@ -7,186 +10,161 @@ from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
     SimpleFeedForwardAdapter
-from main.model.blocks.modality_stream import ModalityStream
-from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig
-from main.model.blocks.kd import KDHead
+from main.model.neegavi.blocks import ModalityStream, AbstractAttentionBlock
+from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
+    ModalityConfig
+from main.model.neegavi.dropout import ModalityDropout, BernoulliSupportsModalityDropout
+from main.model.neegavi.kd import KDHead
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
-from main.model.blocks.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
+from main.model.neegavi.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
+from main.utils.logging import make_logger
 
 
-def supporting(function):
-    function._is_supporting = True
-    function._is_pivot = False
-    return function
+class Factory:
+    # The real Factory pattern (Clearer than the one I did before)
+    def __init__(self):
+        self.logger = make_logger(self.__class__.__name__)
+        self._config: EegInterAviModelConfiguration | None = None
+        self._pivot: ModalityStream | None = None
+        self._attention: list[AbstractAttentionBlock] = []
+        self._supports: dict[str, ModalityStream] = dict()
+        self._disabled_supports: set[str] = set()
+        self._pooling: nn.Module | None = None
+        self._dropout: ModalityDropout | None = None
 
+        self.built: bool = False
 
-def pivot(function):
-    function._is_pivot = True
-    function._is_supporting = False
-    return function
+    def config(self, custom_config: EegInterAviModelConfiguration) -> Factory:
+        self._config = custom_config
+        return self
 
+    def pivot(self, code: str, config: ModalityConfig, adapter: nn.Module, kd: KDHead | None = None) -> Factory:
+        if code in self._supports:
+            raise ValueError("Supporting modality cannot have same key as pivot")
 
-class AbstractEegInterAviFactory(ABC):
-    def __init__(self, disabled_supports: list[str], custom_config: EegInterAviModelConfiguration):
-        self.config: EegInterAviModelConfiguration = custom_config
-        self.disabled_supports: list[str] = disabled_supports
+        self._pivot = ModalityStream(
+            code=code,  # Identifying code for pivot
+            output_size=config.out_size,  # What sizes to map to
+            timestep_seconds=config.timestep_seconds,  # How many seconds a timestep is
+            adapter=adapter,
+            kd_head=kd  # KD projection head if KD is enabled for the modality
+        )
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.supporting_methods = cls._collect_marked("_is_supporting")
-        pivot_methods = cls._collect_marked("_is_pivot")
-        if len(pivot_methods) != 1:
-            raise ValueError(f"Expected exactly 1 pivot, found {len(pivot_methods)}.")
+        return self
 
-        cls.pivot_name = pivot_methods[0].__name__  # store name, not function
+    def support(self, code: str, config: ModalityConfig, adapter: nn.Module, kd: KDHead | None = None) -> Factory:
+        if code in self._supports:
+            self.logger.warning(f"You are overriding the config with key: {code}. It has an existing configuration")
 
-    @classmethod
-    def _collect_marked(cls, attr_name: str):
-        out = {}
-        # Base -> Subclass, so subclass overrides win
-        for c in reversed(cls.mro()):
-            if c is object:
-                continue
-            for name, obj in c.__dict__.items():
-                if callable(obj) and getattr(obj, attr_name, False):
-                    out[name] = obj
-        return list(out.values())
+        if self._pivot is not None and self._pivot.code == code:
+            raise ValueError("Supporting modality cannot have same key as pivot")
+
+        self._supports[code] = ModalityStream(
+            code=code,  # Identifying code for pivot
+            output_size=config.out_size,  # What sizes to map to
+            timestep_seconds=config.timestep_seconds,  # How many seconds a timestep is
+            adapter=adapter,
+            kd_head=kd  # KD projection head if KD is enabled for the modality
+        )
+
+        return self
+
+    def modality_dropout(self, dropout: ModalityDropout) -> Factory:
+        self._dropout = dropout
+        return self
+
+    def disabled(self, code: str) -> Factory:
+        self._disabled_supports.add(code)
+        return self
+
+    def attention(self, attention_module: list[AbstractAttentionBlock]) -> Factory:
+        self._attention = attention_module
+        return self
+
+    def pooling(self, pooling_module: nn.Module) -> Factory:
+        self._pooling = pooling_module
+        return self
+
+    def _default_attention(self):
+        return GatedXAttentionFactory(self._config.pivot_dim, self._config.support_dim).build(2)
 
     def build(self):
+        if self.built:
+            raise PermissionError("Factory already built an object")
+        if self._config is None:
+            raise ValueError("No config initialized. Set it before building.")
+        if self._pivot is None:
+            raise ValueError("No pivot modality initialized. Set it before building.")
+        if len(self._supports.values()) == 0:
+            raise ValueError("No support modality initialized. Set it before building.")
+
+        self.built = True
         return EegInterAviModel(
-            self.config,
-            getattr(self, self.pivot_name)(),
-            # Suppress not wanted supports via disabled_supports. They have to match the methodname
-            *[i(self) for i in self.supporting_methods if i.__name__ not in self.disabled_supports],
-            attn_blocks=self.attention(),
-            pooling=self.pooling(),
+            self._config,
+            self._pivot,
+            *[value for key, value in self._supports.items() if key not in self._disabled_supports],
+            attn_blocks=self._attention if len(self._attention) > 0 else self._default_attention(),
+            pooling=self._pooling,  # This can be None
+            modality_dropout=self._dropout  # This can be None
         )
 
-    def pooling(self):
-        return None  # Default to
-
-    @abstractmethod
-    def attention(self):
-        pass
-
-
-class DefaultEegInterAviFactory(AbstractEegInterAviFactory):
-    def __init__(self,
-                 # Configs for each different modality
-                 eeg_config: EegModalityConfig,
-                 vid_config: KdPerceiverModalityConfig,
-                 aud_config: KdPerceiverModalityConfig,
-                 txt_config: KdPerceiverModalityConfig,
-                 ecg_config: MaskedFeedForwardConfig,
-                 disabled_supports: list[str],
-                 # Attention config
-                 attention_config: int | list[GatedXAttentionCustomArgs],
-                 # Model wide configuration
-                 custom_config: EegInterAviModelConfiguration = None):
-        # If custom config does not exist make it based on known information.
-        if custom_config is None:
-            custom_config = EegInterAviModelConfiguration(eeg_config.out_size, vid_config.out_size)
-        super().__init__(disabled_supports, custom_config)
-        self.eeg_modality_config: EegModalityConfig = eeg_config
-        self.vid_modality_config: KdPerceiverModalityConfig = vid_config
-        self.aud_modality_config: KdPerceiverModalityConfig = aud_config
-        self.txt_modality_config: KdPerceiverModalityConfig = txt_config
-        self.ecg_modality_config: MaskedFeedForwardConfig = ecg_config
-        self.attention_config = attention_config
-
-    def attention(self):
-        attention = GatedXAttentionFactory(self.config.pivot_dim, self.config.support_dim)
-        return attention.build(self.attention_config)
-
-    @pivot
-    def eeg(self) -> ModalityStream:
-        """
-
-        :return:
-        """
-        # Specific configuration
-        config = self.eeg_modality_config
-        return ModalityStream(
-            EEG.modality_code(),
-            output_size=config.out_size,
-            timestep_seconds=config.timestep_seconds,
-            adapter=EegAdapter(config.channels, latent_input_size=config.in_size, output_size=config.out_size)
-        )
-
-    @supporting
-    def vid(self) -> ModalityStream:
-        """
-
-        :return:
-        """
-        # Specific configuration
-        config = self.vid_modality_config
-        return ModalityStream(
-            Video.modality_code(),
-            output_size=config.out_size,
-            timestep_seconds=config.timestep_seconds,
-            adapter=PerceiverResamplerAdapter(
-                config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
-            ),
-            kd_head=KDHead(
-                input_size=config.out_size, target_size=config.teacher_out_size
+    @staticmethod
+    def default(
+            eeg_config: EegModalityConfig,
+            vid_config: KdPerceiverModalityConfig,
+            aud_config: KdPerceiverModalityConfig,
+            txt_config: KdPerceiverModalityConfig,
+            ecg_config: MaskedFeedForwardConfig,
+            attention_config: int | list[GatedXAttentionCustomArgs],
+            custom_config: EegInterAviModelConfiguration = None,
+            disabled_supports: set[str] = None,
+    ) -> Factory:
+        factory = (
+            Factory()
+            .config(custom_config)
+            # .pooling(None) Pooling is by default None which is a valid value
+            .modality_dropout(BernoulliSupportsModalityDropout(4, 0.1))  # TODO find good configuration
+            .attention(
+                GatedXAttentionFactory(custom_config.pivot_dim, custom_config.support_dim).build(attention_config))
+            .pivot(
+                code=EEG.modality_code(),
+                adapter=EegAdapter(eeg_config.channels, eeg_config.in_size, eeg_config.out_size),
+                config=eeg_config
+            )
+            .support(
+                code=Video.modality_code(),
+                adapter=PerceiverResamplerAdapter(
+                    vid_config.perceiver_resampler_config, vid_config.in_size, vid_config.out_size
+                ),
+                config=vid_config,
+                kd=KDHead(input_size=vid_config.out_size, target_size=vid_config.teacher_out_size)
+            )
+            .support(
+                code=Audio.modality_code(),
+                adapter=PerceiverResamplerAdapter(
+                    aud_config.perceiver_resampler_config, aud_config.in_size, aud_config.out_size
+                ),
+                config=aud_config,
+                kd=KDHead(input_size=aud_config.out_size, target_size=aud_config.teacher_out_size)
+            )
+            .support(
+                code=Text.modality_code(),
+                adapter=TemporalEncoderAdapter(
+                    txt_config.in_size, 32, txt_config.timestep_seconds, modality=custom_config.modality
+                ),
+                config=txt_config,
+                kd=KDHead(input_size=txt_config.out_size, target_size=txt_config.teacher_out_size)
+            )
+            .support(
+                code=ECG.modality_code(),
+                adapter=SimpleFeedForwardAdapter(
+                    ecg_config.in_size, ecg_config.out_size, mult=ecg_config.mult, dropout=ecg_config.dropout
+                ),
+                config=ecg_config
             )
         )
 
-    @supporting
-    def aud(self) -> ModalityStream:
-        """
+        for disabled_support_code in disabled_supports:
+            factory.disabled(disabled_support_code)
 
-        :return:
-        """
-        # Specific configuration
-        config = self.aud_modality_config
-        return ModalityStream(
-            Audio.modality_code(),
-            output_size=config.out_size,
-            timestep_seconds=config.timestep_seconds,
-            adapter=PerceiverResamplerAdapter(
-                config.perceiver_resampler_config, project_out_size=config.out_size, in_size=config.in_size
-            ),
-            kd_head=KDHead(
-                input_size=config.out_size, target_size=config.teacher_out_size
-            )
-        )
-
-    @supporting
-    def txt(self) -> ModalityStream:
-        """
-
-        :return:
-        """
-        config = self.txt_modality_config
-        return ModalityStream(
-            Text.modality_code(),
-            output_size=config.out_size,
-            timestep_seconds=config.timestep_seconds,
-            adapter=TemporalEncoderAdapter(
-                config.in_size, max_length=32, timestep_duration=config.timestep_seconds, modality=self.config.modality
-            ),
-            kd_head=KDHead(
-                input_size=config.out_size, target_size=config.teacher_out_size
-            )
-        )
-
-    @supporting
-    def ecg(self) -> ModalityStream:
-        # Because you already rely on gated-xattn for time fusion, a tokenwise MLP adapter is most useful for
-        # distribution/space alignment, not for temporal modeling. That tends to be low-risk if you make it near-identity at init.
-        # An idea could be: LoRA-style / gated residual (y = x + α * MLP(LN(x)))
-        # [Ablation-Candidate] for removal and see if the adapter in the middle brings harm
-        config = self.ecg_modality_config
-        return ModalityStream(
-            ECG.modality_code(),
-            output_size=config.out_size,
-            timestep_seconds=config.timestep_seconds,
-            adapter=SimpleFeedForwardAdapter(
-                config.in_size, config.out_size, mult=config.mult, dropout=config.dropout
-            ),
-        )
-
-    def pooling(self):
-        return None
+        return factory

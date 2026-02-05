@@ -68,6 +68,7 @@ def check_supports(supports: nn.ModuleList) -> int:
     return reference.output_size
 
 
+# todo refactorino per capire meglio
 class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     KD_KEY = "kd"
 
@@ -75,15 +76,35 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
                  config: EegInterAviModelConfiguration,
                  pivot: ModalityStream, *supports: ModalityStream,
                  modality_dropout: Optional[ModalityDropout] = None,
-                 # Attention once modalities are Streamed through their pipeline and cat
                  attn_blocks: list[AbstractAttentionBlock],
-                 # Pooling strategy after attention
                  pooling: Optional[nn.Module] = None):
-        nn.Module.__init__(self)
-        TimeMaskSwitchable.__init__(self)
-        self.logger = make_logger(self.__class__.__name__)
+        """
+        EegInterVaiModel is partially inspired by the novel approach of the Flamingo model by Google.
+        It keeps the same idea of interleaving different modality data but extends it on the time axis.
+        This is because the data we analise has a strong temporal relationship (it evolves as the measurement goes on).
 
-        # Pivot defines Q in xattn while supports compose KV
+        The broad idea is to do xattn to enrich and hopefully to fuse information of multiple modalities into a pivot (EEG).
+        This idea is achieved by the same way it was done in Flamingo via gatedxattn.
+
+
+        Broad schema of the workflow:
+        - modality -> reshape -> adapter (Perceiver Resampler, Feed Forward) -> OUT
+                                                                             -> KD head -x (branch dies here)
+        then modalities are collected: p=pivot_OUT, s=cat([supports_OUT])
+        out = xattn(q=p, kv=s)
+
+        :param config:
+        :param pivot: Main modality to fuse data into. It is Q in the late xattn part of the model.
+        :param supports: They build KV in xattn and are modalities that should enrich the pivot
+        :param modality_dropout:
+        :param attn_blocks: Attention once modalities are Streamed through their pipeline and cat
+        :param pooling: Pooling strategy after attention. Model has a [CLS] token thus it is not needed. @deprecated
+        """
+        nn.Module.__init__(self)
+        # The model operates with time steps so it has its own logic what masking concerns
+        TimeMaskSwitchable.__init__(self)
+
+        self.logger = make_logger(self.__class__.__name__)
         self.pivot: ModalityStream = pivot
         self.supports: nn.ModuleList[ModalityStream] = nn.ModuleList(supports)
 
@@ -93,8 +114,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         # By default, if not served it is disabled
         if modality_dropout is None:
             modality_dropout = DisabledModalityDropout(len(self.supports))
-        self.modality_dropout: ModalityDropout = modality_dropout
 
+        self.modality_dropout: ModalityDropout = modality_dropout
         self.modality_encoder: Optional[ModalContextEncoder] = None
         if config.use_modality_encoder:
             modality_mappings = {e.get_code(): i for i, e in enumerate(self.supports)}
@@ -139,12 +160,15 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     @staticmethod
     def pad_to_batch(data: torch.Tensor, mask: Optional[torch.Tensor], idx: torch.Tensor, b: int):
         """
-
-        :param data:
-        :param mask:
-        :param idx:
-        :param b:
-        :return:
+        This utility function play an important role the moment we drop some modalities.
+        That procedure breaks batch as some elements go missing for some modalities, this enures to restore with empty objects
+        the original batch structure.
+        :param data: Data to pad to batch_size
+        :param mask: Mask to pad back to batch_size
+        :param idx: Indexes that were lost previously. Without this padding would be impossible as we need to restore in
+        the correct places to evaluate loss and other metrics. (Siglip would of course break as I'd be comparing wrong samples)
+        :param b: the batch_size
+        :return: Restored MaskedValue of the original batch shape
         """
         # Pad to same batch size (This happens when we drop some elements from modality)
         # Pad the data
@@ -193,21 +217,20 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
                         use_kd: bool, out: EegBaseModelOutputs):
         data, mask = x["data"], x.get("mask", None)
         b, t = data.shape[0:2]
-        code = modality.get_code()
 
         if mask is not None:
             mask = mask.bool()
-        y: MaskedValue | KdMaskedValue = modality(data, mask, use_kd=use_kd)
 
+        y: MaskedValue | KdMaskedValue = modality(data[keep_idx], mask[keep_idx], use_kd=use_kd)
         if self.KD_KEY in y:
             kd_out: MaskedValue = y.pop(self.KD_KEY)
-            out.kd_outs[code] = self.pad_to_batch(kd_out["data"], kd_out["mask"], keep_idx, b)
+            out.kd_outs[modality.get_code()] = self.pad_to_batch(kd_out["data"], kd_out["mask"], keep_idx, b)
 
         y: MaskedValue
         z, _ = y["data"], y["mask"]
 
         if self.modality_encoder is not None:
-            z = self.modality_encoder(z, modality=code)
+            z = self.modality_encoder(z, modality=modality.get_code())
 
         _, _, m, d = z.shape
         z = rearrange(z, "b t m d -> b (t m) d")
@@ -217,9 +240,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         if mask is not None:
             mask = repeat(mask, "b t -> b (t m)", m=m)
 
-        z = self.pad_to_batch(z, mask, keep_idx, b)
-
-        out.multimodal_outs[code] = z
+        z = self.pad_to_batch(z, mask[keep_idx], keep_idx, b)
+        out.multimodal_outs[modality.get_code()] = z
         return z["data"], z["mask"], time
 
     def process_supports(self, x: dict, keep: torch.Tensor, use_kd: bool, out: EegBaseModelOutputs, device, dtype):
@@ -230,9 +252,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         for idx, modality in enumerate(self.supports):
             if modality.get_code() not in x:
                 continue
-
+            # keep index map of the current modality
             keep_idx = keep[:, idx].nonzero(as_tuple=True)[0]
-
             # Skip if empty
             if keep_idx.numel() == 0:
                 continue
@@ -287,7 +308,7 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         pivot_time = torch.cat([pivot_time, cls_time], dim=1)  # length T+1
 
         # Build the mask that maps visibility of timesteps to each other.
-        # A timestep i can maybe see j < i but not any j > i (This would mean only past). Strategy is defined on upper level
+        # A timestep i can maybe see j < i but not any j > i (This would mean only past). Strategy is defined on upper level,
         # but it can change at runtime thus the build allowance maks can change during training.
         allow = self.build_allow_mask(pivot_time, support_time)
         allow[:, -1, :] = True

@@ -138,7 +138,7 @@ class MaskedCrossAttention(nn.Module):
 
         return self.out(out)
 
-
+# todo classic style builder
 class GatedXAttentionFactory:
     def __init__(self, dim: int, latent_dim: int):
         """
