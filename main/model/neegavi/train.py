@@ -174,8 +174,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/{prefix}fused/top1_{key}_R", hits_ef[1], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top3_{key}", hits_fe[3], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top3_{key}_R", hits_ef[3], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe[self.k], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef[self.k], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=False, on_epoch=True)
 
             if key == self.PIVOT_KEY:
                 continue
