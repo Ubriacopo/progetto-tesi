@@ -206,7 +206,7 @@ class H5KdDataset(IterableDataset):
         buffered_samples = 0
         for shard_path, start, stop in self.data(generator=global_g):
             with h5py.File(str(shard_path), "r", locking=False,
-                           rdcc_nbytes=1024 * 1024 * 1024, rdcc_nslots=1_000_003, rdcc_w0=0.75, ) as h5:
+                           rdcc_nbytes=512 * 1024 * 1024, rdcc_nslots=1_000_003, rdcc_w0=0.75, ) as h5:
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
                     with torch.profiler.record_function("H5KdDataset.add_block"):
                         buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
@@ -288,7 +288,7 @@ class RoundRobinBatchMultiDataset(IterableDataset):
         while True:
             with torch.profiler.record_function("round_robin_iter"):
                 k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-                for _ in range(32):  # todo parametrizza
+                for _ in range(16):  # todo parametrizza
                     try:
                         yield next(iters[k])
                         dead[k] = 0

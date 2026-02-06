@@ -78,10 +78,10 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=0,
-            # prefetch_factor=1,
-            # persistent_workers=True,
-            # pin_memory=False
+            num_workers=1,
+            prefetch_factor=1,
+            persistent_workers=True,
+            pin_memory=False
         )
 
     def val_dataloader(self):
