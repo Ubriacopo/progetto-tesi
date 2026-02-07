@@ -2,6 +2,7 @@ import hydra
 import lightning as L
 import torch
 import torchinfo
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import PyTorchProfiler, SimpleProfiler
 from pytorch_lightning.profilers import AdvancedProfiler
@@ -40,7 +41,6 @@ def main(cfg: KdConfig):
 
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,
-        weakly_supervised_weight=cfg.trainer.weakly_supervised_weight,
         lr=cfg.trainer.lr,
         kd_temperature=cfg.trainer.kd_temperature,
         # All modalities contribute to fusion
@@ -52,39 +52,37 @@ def main(cfg: KdConfig):
     for n, p in student.named_parameters():
         logger.info(n, p.requires_grad, p.grad is None)
 
-    profiler = PyTorchProfiler(
-        record_functions=True,  # important
-        profile_memory=True,  # optional
-        on_trace_ready=torch.profiler.tensorboard_trace_handler("tb_prof"),
-        with_stack=True,
-
-        export_to_chrome=True,
-
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA
-        ],
-    )
-
     profiler = SimpleProfiler()
 
     torchinfo.summary(module)
+    m_key = "val/top1_mean"
+    val_check_interval = 1000
     trainer = L.Trainer(
         profiler=profiler,
         accelerator="gpu",
         logger=tb_logger,
         devices=1,
-        max_epochs=cfg.trainer.epochs,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
+            EarlyStopping(monitor=m_key, min_delta=0.002, patience=5, mode="max", verbose=True),
+            ModelCheckpoint(
+                dirpath="checkpoints",
+                filename="step{step}",
+                every_n_train_steps=val_check_interval,
+                save_top_k=3,
+                save_last=True,
+                monitor=m_key,
+            )
         ],
-        num_sanity_val_steps=0,
+        num_sanity_val_steps=1,
         precision="16-mixed",  # P6000 has no tensor cores
         log_every_n_steps=50,
-        check_val_every_n_epoch=99,
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
-        limit_train_batches=cfg.trainer.batches_per_epoch,
+        # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
+        max_steps=10,
+        val_check_interval=val_check_interval,
+        max_epochs=-1,  # or a very large number
     )
 
     trainer.fit(module, datamodule=kd_train_datamodule)

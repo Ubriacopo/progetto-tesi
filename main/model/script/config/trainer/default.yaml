@@ -6,4 +6,4 @@ ecg_correction_weight: 0.2
 kd_temperature: 0.2
 epochs: 2
 batch_size: 40
-batches_per_epoch: 40 # 0.6 of all.
+batches_per_epoch: 1000 # 0.6 of all.

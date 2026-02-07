@@ -28,7 +28,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             student: EegInterAviModel, teacher: MaskedContrastiveModel,
             datamodule: KdTrainDataModule,
             dequantize_keys: list[str],
-            kd_loss_weight: float, fusion_loss_weight: float, weakly_supervised_weight: float,
+            kd_loss_weight: float, fusion_loss_weight: float,
             fusion_metrics: list[str], kd_keys: list[str], lr: float, kd_temperature: float,
             bidirectional_p: float = .9,  # For ATTN
             seed: int = 1, batch_size=None
@@ -70,13 +70,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Weights of different losses combined
         self.alpha: float = kd_loss_weight
         self.beta: float = fusion_loss_weight
-        self.gamma: float = weakly_supervised_weight
 
         self.k: int = 5
 
         # Utils
         self._n_causal: int = 0
         self._n_bidirectional: int = 0
+
+    # TODO:
+    # Okay so hear me out: First model I do without MoCo I then do reverse ablation and add MoCo and see if it helps? yes
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         params = []
@@ -125,7 +127,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 masked_value["mask"] = masked_value["mask"].detach()
                 return_object[key] = masked_value
 
-        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
+        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=False, on_epoch=True)
         return return_object
 
     @staticmethod
@@ -159,6 +161,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         pivot = F.normalize(pivot_z, dim=-1)
 
         top_k_values = (1, 3, self.k)
+        top1_mean = []
         for key, embedding in outputs.items():
             valid = self._get_y_valid(embedding)
             if not valid.any():
@@ -181,7 +184,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                      on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=False,
                      on_epoch=True)
-
+            top1_mean.append(hits_fe[1])
             if key == self.PIVOT_KEY:
                 continue
             # pivot <-> emb: one matmul
@@ -192,28 +195,29 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/{prefix}pivot/top1_{key}", hits_pe[1], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}pivot/top1_{key}_R", hits_ep[1], on_step=False, on_epoch=True)
             delta = hits_fe[1] - hits_pe[1]
-            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)\
+
+        top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
+        self.log(f"{step_type}/top1_mean", top1_mean, on_step=False, on_epoch=True)
 
     warmup_threshold: float = .5
     causal_threshold: float = .8
 
-    def p_causal_schedule(self, step: int, max_steps: int, start: float, end: float, floor_bidi: float):
+    def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1):
         """
-        Common practice
+        Common practice: Current setups favors bidirectional at lower epochs and causal later ones.
+        AntLM (2024): explicitly describes a unified framework that alternates/switches between causal LM (causal mask) and masked LM (bidirectional attention).
         :param step:
         :param max_steps:
         :param start:
         :param end:
-        :param floor_bidi:
+        :param floor_bidirectional:
         :return:
         """
-        # AntLM (2024): explicitly describes a unified framework that alternates/switches between causal
-        # LM (causal mask) and masked LM (bidirectional attention).
-        # Current setups favors bidirectional at lower epochs and causal later ones.
-        t = min(step / max_steps, 1.0)
+        t = min(self.trainer.global_step / self.trainer.max_steps, 1.0)
         # Cosine ramp
         p = start + 0.5 * (end - start) * (1 - math.cos(math.pi * t))
-        return min(p, 1.0 - floor_bidi)
+        return min(p, 1.0 - floor_bidirectional)
 
     def on_train_epoch_start(self) -> None:
         self._n_causal = 0
@@ -371,7 +375,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             count_present += 1
             mod_loss = self.siglip_losses[key](fused_output[valid_rows], self._y_mean(value, valid_rows))
-            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=False, prog_bar=True)
             base_loss = base_loss + mod_loss
 
         return base_loss / count_present
