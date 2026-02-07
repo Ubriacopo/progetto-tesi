@@ -14,7 +14,7 @@ from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
 
-
+# td variant and see fastest. On regime the h5 goes for 3.66it/s
 @hydra.main(config_path="config", config_name="default")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
@@ -58,7 +58,7 @@ def main(cfg: KdConfig):
     m_key = "val/top1_mean"
     val_check_interval = 1000
     trainer = L.Trainer(
-        # profiler=profiler,
+        profiler=profiler,
         accelerator="gpu",
         logger=tb_logger,
         devices=1,

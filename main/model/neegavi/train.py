@@ -200,9 +200,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
         self.log(f"{step_type}/top1_mean", top1_mean, on_step=False, on_epoch=True)
 
-    warmup_threshold: float = .5
-    causal_threshold: float = .8
-
     def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1):
         """
         Common practice: Current setups favors bidirectional at lower epochs and causal later ones.
