@@ -196,7 +196,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/{prefix}pivot/top1_{key}_R", hits_ep[1], on_step=False, on_epoch=True)
             delta = hits_fe[1] - hits_pe[1]
             self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)
- \
+
         top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
         self.log(f"{step_type}/top1_mean", top1_mean, on_step=False, on_epoch=True)
 
