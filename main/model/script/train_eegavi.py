@@ -82,6 +82,8 @@ def main(cfg: KdConfig):
         precision="16-mixed",  # P6000 has no tensor cores
         log_every_n_steps=50,
         check_val_every_n_epoch=99,
+        # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
+        # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         limit_train_batches=cfg.trainer.batches_per_epoch,
     )
 

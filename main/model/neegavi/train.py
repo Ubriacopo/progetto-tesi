@@ -1,20 +1,20 @@
 from typing import Literal, Any, Optional
 
 import lightning as L
+import math
 import torch
 import torch.nn.functional as F
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
-from torchmetrics.functional import pearson_corrcoef, concordance_corrcoef
 
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.loss import SiglipLoss
-from main.model.blocks.time_masked import TimeMaskSwitchableProperties
-from main.model.neegavi.model import EegInterAviModel
 from main.model.blocks.pooling import MaskedAvgPooling, ClsPooling
+from main.model.blocks.time_masked import TimeMaskSwitchableProperties
+from main.model.blocks.xattention import GatedXAttentionBlock
+from main.model.loss import SiglipLoss
+from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
-from main.model.blocks.xattention import GatedXAttentionBlock
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -56,7 +56,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Just to debug atm
         self.use_kd_loss = True
         self.use_fusion_loss = True
-        self.use_supervised_loss = True
 
         self.base_seed = seed
         self.time_mask_switch_generator = torch.Generator(device=self.device)
@@ -105,7 +104,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             mode: Literal['bidirectional', 'causal']
     ):
         return_object: dict[str, torch.Tensor | MaskedValue] = dict(
-            loss=torch.tensor(0, device=stud.embeddings['data'].device))
+            loss=torch.tensor(0, device=stud.embeddings['data'].device)
+        )
+
         if self.use_kd_loss:
             kd_loss = self.compute_kd_loss(student_out=stud.kd_outs, teacher_out=teacher, step_type=step_type)
             return_object["loss"] = return_object["loss"] + kd_loss * self.alpha
@@ -114,9 +115,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             fusion_loss = self.compute_fusion_loss(
                 fused_output=stud.cls, modality_outputs=stud.multimodal_outs, step_type=step_type, mode=mode
             )
-            return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
-            # For later evaluations
 
+            return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
+
+            # For later evaluations
             return_object[self.FUSED_KEY] = stud.cls.detach()
             for key, masked_value in stud.multimodal_outs.items():
                 masked_value["data"] = masked_value["data"].detach()
@@ -142,6 +144,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         for k in ks:
             k = min(k, sim.size(1))
             out[k] = eq[:, :k].any(dim=1).float().mean()
+
         return out
 
     # todo expensive only on some batches
@@ -174,8 +177,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/{prefix}fused/top1_{key}_R", hits_ef[1], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top3_{key}", hits_fe[3], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top3_{key}_R", hits_ef[3], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=False,
+                     on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=False,
+                     on_epoch=True)
 
             if key == self.PIVOT_KEY:
                 continue
@@ -192,21 +197,23 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     warmup_threshold: float = .5
     causal_threshold: float = .8
 
-    def p_causal_schedule(self):
+    def p_causal_schedule(self, step: int, max_steps: int, start: float, end: float, floor_bidi: float):
+        """
+        Common practice
+        :param step:
+        :param max_steps:
+        :param start:
+        :param end:
+        :param floor_bidi:
+        :return:
+        """
         # AntLM (2024): explicitly describes a unified framework that alternates/switches between causal
         # LM (causal mask) and masked LM (bidirectional attention).
-        # Current setups favors bidirectional at lower epochs and causal later ones
-        # TOO WEAK
-        # initial_causal = 1 - self.bidirectional_p
-        # return min(initial_causal + self.bidirectional_p * self.current_epoch / self.trainer.max_epochs, 1.0)
-        # TODO parametrizza
-        frac = self.current_epoch / self.trainer.max_epochs
-        if frac < self.causal_threshold:
-            return .1
-        elif frac < self.causal_threshold:
-            return .4
-
-        return .5
+        # Current setups favors bidirectional at lower epochs and causal later ones.
+        t = min(step / max_steps, 1.0)
+        # Cosine ramp
+        p = start + 0.5 * (end - start) * (1 - math.cos(math.pi * t))
+        return min(p, 1.0 - floor_bidi)
 
     def on_train_epoch_start(self) -> None:
         self._n_causal = 0
@@ -368,45 +375,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             base_loss = base_loss + mod_loss
 
         return base_loss / count_present
-
-    def compute_supervised_loss(self, pred: torch.Tensor, target: MaskedValue,
-                                step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
-        # Compute concordance correlation coefficient that measures the agreement between two variables.
-        # In emotion regression (valence, arousal, dominance), this is the standard metric and loss used in benchmarks.
-        #
-        # Correlation and agreement rather than absolute distance.
-
-        tol = 1e-8
-        T = 2  # warmup length (epochs) – tune this
-
-        mask = target["mask"].any(dim=-1)
-        # Drop missing rows.
-        y = target["data"][mask]
-        pred = pred[mask]
-
-        t_std = y.std(dim=0, unbiased=False)
-        p_std = pred.std(dim=0, unbiased=False)
-        std_mask = (t_std > tol) & (p_std > tol)
-
-        if std_mask.any():
-            # todo why never see this
-            pred, target = pred[:, std_mask].float(), y[:, std_mask].float()
-            pearson = pearson_corrcoef(pred, target).mean().float()
-            concordance = concordance_corrcoef(pred, target).mean().float()
-            w = min(1.0, float(self.current_epoch) / T)  # or cosine ramp
-            one = pred.new_tensor(1.0)  # ensures dtype/device match
-
-            loss = (1 - w) * (one - pearson) + w * (one - concordance)
-            self.log(f"{step_type}/supervised (CCC & Pearson)", loss, on_epoch=True, on_step=True, prog_bar=True)
-            loss = loss.to(pred.dtype)
-            return loss
-
-        elif mask.any():
-            loss = F.mse_loss(pred, y).float()
-            self.log(f"{step_type}/supervised", loss, on_epoch=True, on_step=True, prog_bar=True)
-            return loss
-
-        return torch.tensor(.0, device=pred.device, dtype=pred.dtype)
 
     @staticmethod
     def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:

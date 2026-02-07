@@ -269,14 +269,26 @@ class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
 
 
 class RoundRobinBatchMultiDataset(IterableDataset):
-    def __init__(self, datasets: list[IterableDataset], weights, seed: int):
+    def __init__(self, datasets: list[IterableDataset], weights, seed: int, consecutive_batches: int):
+        """
+        RoundRobinBatchMultiDataset is a dataset that switches between source datasets in a round-robin manner.
+        Difference to real round-robin is that it actually draws with a probability p what dataset to select next.
+        Source datasets once exhausted are re-initialized, this to allow smaller datasets to still be relevant.
+
+        :param datasets: List of source iterable datasets to switch on
+        :param weights: Weight of each dataset. This is used to calculate the probability of drawing from a dataset
+        :param seed: Random seed
+        :param consecutive_batches: How many batches of the same source appear forced in sequence
+        """
         super().__init__()
         self.logger = make_logger(self.__class__.__name__)
         self.datasets: list[IterableDataset] = datasets
 
         w = torch.tensor(weights, dtype=torch.float)
         self.weights = w
-        self.seed = seed
+
+        self.seed: int = seed
+        self.consecutive_batches: int = consecutive_batches
 
     def __iter__(self):
         g = torch.Generator()
@@ -288,7 +300,7 @@ class RoundRobinBatchMultiDataset(IterableDataset):
         while True:
             with torch.profiler.record_function("round_robin_iter"):
                 k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-                for _ in range(16):  # todo parametrizza
+                for _ in range(self.consecutive_batches):
                     try:
                         yield next(iters[k])
                         dead[k] = 0
@@ -302,8 +314,6 @@ class RoundRobinBatchMultiDataset(IterableDataset):
                         break
 
 
-# todo make version for multiIterableDataset
-# So we did it to make the fusion/KD training signal cleaner and more stable, and to reduce unintended bias from batch composition
 class MultiDataset(torch.utils.data.Dataset):
     def __init__(self, datasets: list[torch.utils.data.Dataset]):
         super().__init__()
