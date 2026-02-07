@@ -178,8 +178,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             # TOP-1 FUSED
             self.log(f"{step_type}/{prefix}fused/top1_{key}", hits_fe[1], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top1_{key}_R", hits_ef[1], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top3_{key}", hits_fe[3], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top3_{key}_R", hits_ef[3], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top3_{key}", hits_fe.get(3, torch.nan), on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}fused/top3_{key}_R", hits_ef.get(3, torch.nan), on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=False,
                      on_epoch=True)
             self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=False,
@@ -195,8 +195,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/{prefix}pivot/top1_{key}", hits_pe[1], on_step=False, on_epoch=True)
             self.log(f"{step_type}/{prefix}pivot/top1_{key}_R", hits_ep[1], on_step=False, on_epoch=True)
             delta = hits_fe[1] - hits_pe[1]
-            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)\
-
+            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)
+ \
         top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
         self.log(f"{step_type}/top1_mean", top1_mean, on_step=False, on_epoch=True)
 

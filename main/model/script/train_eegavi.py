@@ -74,13 +74,13 @@ def main(cfg: KdConfig):
                 monitor=m_key,
             )
         ],
-        num_sanity_val_steps=1,
+        # num_sanity_val_steps=1,
         precision="16-mixed",  # P6000 has no tensor cores
         log_every_n_steps=50,
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
-        max_steps=10,
+        max_steps=1500000, # 1500000
         val_check_interval=val_check_interval,
         max_epochs=-1,  # or a very large number
     )
