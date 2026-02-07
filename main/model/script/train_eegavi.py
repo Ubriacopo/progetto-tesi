@@ -19,7 +19,6 @@ from main.utils.logging import make_logger
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     logger = make_logger("hydra-main>train_eegavi")
-    tb_logger = TensorBoardLogger("tb_logs", name="my_model")
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     init_object = hydra_utils.init_trainlike_script(cfg)
 
@@ -60,7 +59,7 @@ def main(cfg: KdConfig):
     trainer = L.Trainer(
         # profiler=profiler,
         accelerator="gpu",
-        logger=tb_logger,
+        logger=TensorBoardLogger("tb_logs", name="my_model"),
         devices=1,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
@@ -72,6 +71,7 @@ def main(cfg: KdConfig):
                 save_top_k=3,
                 save_last=True,
                 monitor=m_key,
+                mode="max",
             )
         ],
         # num_sanity_val_steps=1,
@@ -80,8 +80,8 @@ def main(cfg: KdConfig):
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
-        max_steps=1500000, # 1500000
-        val_check_interval=val_check_interval,
+        max_steps=1500000,  # 1500000
+        val_check_interval=30,
         max_epochs=-1,  # or a very large number
     )
 

@@ -127,7 +127,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 masked_value["mask"] = masked_value["mask"].detach()
                 return_object[key] = masked_value
 
-        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=False, on_epoch=True)
+        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
         return return_object
 
     @staticmethod
@@ -157,6 +157,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log(f"{step_type}/norm(eeg-fused)", dist, on_step=False, on_epoch=True, prog_bar=True)
         prefix = "" if mode is None else f"{mode}/"
 
+        on_step = step_type == 'train'
+        on_epoch = not on_step
+
         fused = F.normalize(fused_z, dim=-1)
         pivot = F.normalize(pivot_z, dim=-1)
 
@@ -174,16 +177,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             sim_fe = f @ e.T
             hits_fe = self._topk_hits_from_sim(sim_fe, top_k_values)
             hits_ef = self._topk_hits_from_sim(sim_fe.T, top_k_values)  # reuse transpose
-
+            pre_f = f"{step_type}/{prefix}fused/"
             # TOP-1 FUSED
-            self.log(f"{step_type}/{prefix}fused/top1_{key}", hits_fe[1], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top1_{key}_R", hits_ef[1], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top3_{key}", hits_fe.get(3, torch.nan), on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top3_{key}_R", hits_ef.get(3, torch.nan), on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=False,
-                     on_epoch=True)
-            self.log(f"{step_type}/{prefix}fused/top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=False,
-                     on_epoch=True)
+            self.log(f"{pre_f}top1_{key}", hits_fe[1], on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{pre_f}top1_{key}_R", hits_ef[1], on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{pre_f}top3_{key}", hits_fe.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{pre_f}top3_{key}_R", hits_ef.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{pre_f}top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{pre_f}top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
             top1_mean.append(hits_fe[1])
             if key == self.PIVOT_KEY:
                 continue
@@ -192,13 +193,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             hits_pe = self._topk_hits_from_sim(sim_pe, (1,))
             hits_ep = self._topk_hits_from_sim(sim_pe.T, (1,))
 
-            self.log(f"{step_type}/{prefix}pivot/top1_{key}", hits_pe[1], on_step=False, on_epoch=True)
-            self.log(f"{step_type}/{prefix}pivot/top1_{key}_R", hits_ep[1], on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}pivot/top1_{key}", hits_pe[1], on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{step_type}/{prefix}pivot/top1_{key}_R", hits_ep[1], on_step=on_step, on_epoch=on_epoch)
             delta = hits_fe[1] - hits_pe[1]
-            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=False, on_epoch=True)
+            self.log(f"{step_type}/{prefix}delta_{key}", delta, on_step=on_step, on_epoch=on_epoch)
 
         top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
-        self.log(f"{step_type}/top1_mean", top1_mean, on_step=False, on_epoch=True)
+        self.log(f"{step_type}/top1_mean", top1_mean, on_step=on_step, on_epoch=on_epoch)
 
     def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1):
         """
@@ -336,8 +337,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             student_data, teacher_data = student_out[key]["data"], teacher_out[key]['data']
             modality_loss = self.kd_losses[key](student_data, teacher_data)
             rand_baseline = self.siglip_random_baseline(self.kd_losses[key], student_data, teacher_data, )
-            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=False, prog_bar=True)
-            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=False, prog_bar=True)
+            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=True)
             loss = loss + modality_loss
 
         self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=False, prog_bar=True)
@@ -372,7 +373,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             count_present += 1
             mod_loss = self.siglip_losses[key](fused_output[valid_rows], self._y_mean(value, valid_rows))
-            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=False, prog_bar=True)
+            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=True)
             base_loss = base_loss + mod_loss
 
         return base_loss / count_present

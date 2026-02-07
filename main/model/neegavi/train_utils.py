@@ -48,9 +48,9 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 H5KdDataset(ds_path, prefix="train", block_size=256, buffer_size=512, batch_size=self.batch_size)
             )
 
-            #val_datasets.append(
-            #    H5KdDataset(ds_path, prefix="val", block_size=256, buffer_size=256, batch_size=self.batch_size)
-            #)
+            val_datasets.append(
+                H5KdDataset(ds_path, prefix="val", block_size=256, buffer_size=256, batch_size=self.batch_size)
+            )
 
             #test_datasets.append(
             #     H5KdDataset(ds_path, prefix="test", block_size=256, buffer_size=256, batch_size=self.batch_size)
