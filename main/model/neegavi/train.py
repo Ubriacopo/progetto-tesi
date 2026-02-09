@@ -119,6 +119,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             )
 
             return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
+            self.log(f"{step_type}/fusion", fusion_loss, on_epoch=False, on_step=True, prog_bar=True)
 
             # For later evaluations
             return_object[self.FUSED_KEY] = stud.cls.detach()
@@ -127,7 +128,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 masked_value["mask"] = masked_value["mask"].detach()
                 return_object[key] = masked_value
 
-        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=True)
+        train = step_type == "train"
+        self.log(f"{step_type}/loss", return_object["loss"], prog_bar=train, on_step=True, on_epoch=True)
+        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=False)
         return return_object
 
     @staticmethod
@@ -154,11 +157,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                                mode: Optional[Literal['bidirectional', 'causal']] = None):
         # Euclidean distance between the two embedding spaces
         dist = (pivot_z - fused_z).norm(dim=1).mean()
-        self.log(f"{step_type}/norm(eeg-fused)", dist, on_step=False, on_epoch=True, prog_bar=True)
-        prefix = "" if mode is None else f"{mode}/"
-
         on_step = step_type == 'train'
         on_epoch = not on_step
+
+        self.log(f"{step_type}/norm(eeg-fused)", dist, on_step=on_step, on_epoch=on_epoch)
+        prefix = "" if mode is None else f"{mode}/"
 
         fused = F.normalize(fused_z, dim=-1)
         pivot = F.normalize(pivot_z, dim=-1)
@@ -337,11 +340,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             student_data, teacher_data = student_out[key]["data"], teacher_out[key]['data']
             modality_loss = self.kd_losses[key](student_data, teacher_data)
             rand_baseline = self.siglip_random_baseline(self.kd_losses[key], student_data, teacher_data, )
-            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=True)
-            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=False)
+            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=False)
             loss = loss + modality_loss
 
-        self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=False, prog_bar=True)
+        self.log(f"{step_type}/kd/loss", loss, on_epoch=False, on_step=True, prog_bar=True)
         return loss
 
     @staticmethod
@@ -373,7 +376,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             count_present += 1
             mod_loss = self.siglip_losses[key](fused_output[valid_rows], self._y_mean(value, valid_rows))
-            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=True)
+            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss
 
         return base_loss / count_present
@@ -393,9 +396,3 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         top_k = similarity.topk(k, dim=1).indices
         gt = torch.arange(similarity.size(0), device=similarity.device).unsqueeze(1)
         return (top_k == gt).any(dim=1).float().mean()
-
-    def observe_xattn_gates(self):
-        xattn_layer: GatedXAttentionBlock
-        for idx, xattn_layer in enumerate(self.student.base_model.gatedXAttn_layers):
-            self.log(f"model/attn_gate_{idx}", xattn_layer.attn_gate, on_step=False, on_epoch=True, prog_bar=True)
-            self.log(f"model/ff_gate_{idx}", xattn_layer.ff_gate, on_step=False, on_epoch=True, prog_bar=True)

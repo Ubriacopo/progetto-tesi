@@ -223,6 +223,9 @@ class H5KdDataset(IterableDataset):
             sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
             yield sample
 
+    def __len__(self):
+        return int(sum(self.shard_lengths) / self.batch_size)  # We return batches stuff so it is smaller.
+
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):
     def __init__(self, dataset_spec_file: str, selected_device='cpu'):

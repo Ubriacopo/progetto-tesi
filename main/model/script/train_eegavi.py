@@ -2,7 +2,7 @@ import hydra
 import lightning as L
 import torch
 import torchinfo
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import PyTorchProfiler, SimpleProfiler
 from pytorch_lightning.profilers import AdvancedProfiler
@@ -58,6 +58,7 @@ def main(cfg: KdConfig):
     val_check_interval = 1000
     trainer = L.Trainer(
         # profiler=profiler,
+        # enable_progress_bar=False,
         accelerator="gpu",
         logger=TensorBoardLogger("tb_logs", name="my_model"),
         devices=1,
@@ -72,7 +73,8 @@ def main(cfg: KdConfig):
                 save_last=True,
                 monitor=m_key,
                 mode="max",
-            )
+            ),
+            RichProgressBar()
         ],
         # num_sanity_val_steps=1,
         precision="16-mixed",  # P6000 has no tensor cores
@@ -80,8 +82,8 @@ def main(cfg: KdConfig):
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
-        max_steps=1500000,  # 1500000
-        val_check_interval=30,
+        max_steps=1000000,  # 1000000
+        val_check_interval=1000,
         max_epochs=-1,  # or a very large number
     )
 

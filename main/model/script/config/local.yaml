@@ -17,10 +17,18 @@ dataset_descriptors:
   - dataset_path: "/home/jacopo/dataset/EEGAVI/MAHNOB/combined/"
     cache_path: null
     dataset_weight: 30
+  - dataset_path: "/home/jacopo/dataset/EEGAVI/EAV/combined/"
+    cache_path: null
+    dataset_weight: 180
 
 
 
 hydra:
+  job:
+    name: first-train
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
   job_logging:
     root:
       handlers: [ console, file ]   # make sure both are used
