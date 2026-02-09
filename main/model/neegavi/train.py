@@ -334,6 +334,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def compute_kd_loss(self, student_out: dict[str, MaskedValue], teacher_out: MaskedContrastiveModelOutputs,
                         step_type: Literal['train', 'val', 'test']) -> torch.Tensor:
         loss = .0
+        n = 0
         for key in teacher_out.keys():
             if key not in student_out:
                 continue  # This element is not KD or is absent from teacher so we cannot learn from it
@@ -343,8 +344,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=False)
             self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=False)
             loss = loss + modality_loss
+            n += 1
+
+        # Normalize so that missing modalities don't spike up the loss
+        loss = loss / max(1, n)
 
         self.log(f"{step_type}/kd/loss", loss, on_epoch=False, on_step=True, prog_bar=True)
+        self.log(f"{step_type}/kd/n_modalities", float(n), on_epoch=True, on_step=True, prog_bar=False)
         return loss
 
     @staticmethod
@@ -358,6 +364,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         pooling = self.student.pooling
         if isinstance(pooling, ClsPooling):
             pooling = MaskedAvgPooling()
+
         with torch.no_grad():
             return pooling(y_before, mask)
 
