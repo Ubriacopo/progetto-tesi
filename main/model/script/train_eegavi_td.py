@@ -4,12 +4,11 @@ import torch
 import torchinfo
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.profilers import PyTorchProfiler, SimpleProfiler
-from pytorch_lightning.profilers import AdvancedProfiler
+from lightning.pytorch.profilers import SimpleProfiler
 
 import hydra_utils
 from main.app_config import AppConfig
-from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.trainer.default import EegAviKdVateMaskedSemiSupervisedModule
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger

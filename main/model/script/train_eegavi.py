@@ -4,12 +4,11 @@ import torch
 import torchinfo
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.profilers import PyTorchProfiler, SimpleProfiler
-from pytorch_lightning.profilers import AdvancedProfiler
+from lightning.pytorch.profilers import SimpleProfiler
 
 import hydra_utils
 from main.app_config import AppConfig
-from main.model.neegavi.train import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.trainer.default import EegAviKdVateMaskedSemiSupervisedModule
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
@@ -64,7 +63,7 @@ def main(cfg: KdConfig):
         devices=1,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
-            EarlyStopping(monitor=m_key, min_delta=0.002, patience=5, mode="max", verbose=True),
+            EarlyStopping(monitor=m_key, min_delta=0.002, patience=8, mode="max", verbose=True),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename="step{step}",
@@ -85,6 +84,7 @@ def main(cfg: KdConfig):
         max_steps=1000000,  # 1000000
         val_check_interval=1000,
         max_epochs=-1,  # or a very large number
+        accumulate_grad_batches=4, # This is to stabilize training
     )
 
     trainer.fit(module, datamodule=kd_train_datamodule)

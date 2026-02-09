@@ -25,7 +25,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def __init__(
             self,
-            student: EegInterAviModel, teacher: MaskedContrastiveModel,
+            student: EegInterAviModel,
+            teacher: MaskedContrastiveModel,
             datamodule: KdTrainDataModule,
             dequantize_keys: list[str],
             kd_loss_weight: float, fusion_loss_weight: float,
@@ -220,15 +221,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         p = start + 0.5 * (end - start) * (1 - math.cos(math.pi * t))
         return min(p, 1.0 - floor_bidirectional)
 
-    def on_train_epoch_start(self) -> None:
-        self._n_causal = 0
-        self._n_bidirectional = 0
-
-    def on_train_epoch_end(self) -> None:
-        total = self._n_causal + self._n_bidirectional
-        self.log("train/frac_causal", self._n_causal / max(1, total), on_epoch=True)
-        self.log("train/frac_bidi", self._n_bidirectional / max(1, total), on_epoch=True)
-
     def on_train_start(self) -> None:
         self.time_mask_switch_generator = torch.Generator(device=self.device)
         self.time_mask_switch_generator.manual_seed(self.base_seed)
@@ -263,22 +255,21 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         return root
 
-    def training_step(self, batch, batch_idx):
+    def state_update(self) -> Literal['bidirectional', 'causal']:
         # Randomly draw the modality we want to train on (For the time relations)
         causal_p = self.p_causal_schedule()
         u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
         mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
+        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+        return mode
+
+    # todo decompose per fare funzionare moco style
+    def training_step(self, batch, batch_idx):
+        mode = self.state_update()
         # Convert the batch to fp16 from quantized
         batch = self.dequantize(self.nest(batch), torch.float16)
-
-        if mode == "bidirectional":
-            self._n_bidirectional += 1
-        else:
-            self._n_causal += 1
-
-        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
-
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
         return self._compute_step_metrics(stud_out, teacher_out, batch, 'train', mode)

@@ -1,4 +1,5 @@
 import torch
+from numba.core.types import Optional
 from torch import Tensor, nn
 from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with_logits
 import torch.nn.functional as F
@@ -39,7 +40,7 @@ class SiglipLoss(nn.Module):
         if self.stop_grad_target:
             self.logger.info("Heads will be detached for forward pass in this class instance")
 
-    def forward(self, za: torch.Tensor, zb: torch.Tensor, ignore_mask=None):
+    def forward(self, za: torch.Tensor, zb: torch.Tensor, zb_negative: Optional[torch.Tensor] = None, ignore_mask=None):
         """
         How does siglip work:
 
@@ -67,27 +68,26 @@ class SiglipLoss(nn.Module):
             zb = zb.detach()
 
         zb = lightweight_whitening(zb)
+        if zb_negative is not None:
+            zb_negative = lightweight_whitening(zb_negative)
+            zb_negative = zb_negative.detach()
+            zb = torch.cat([zb, zb_negative], dim=0)
 
         b = self.bias
         T = self.logt.exp()
         logits = (za @ zb.T) * T + b  # [B, B]
-        B = logits.size(0)
+        B = za.size(0)
         # +1 on diag, -1 off-diag
-        labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  # [+1 diag, -1 off]
+
+        labels = -torch.ones((B, logits.size(1)), device=logits.device, dtype=logits.dtype)
+        labels[torch.arange(B, device=logits.device), torch.arange(B, device=logits.device)] = 1
+
         if ignore_mask is not None:
             # ignore_mask: True where we want to drop loss (e.g., duplicates off-diag)
-            logits = logits.masked_fill(ignore_mask, 0.0)
-            labels = labels.masked_fill(ignore_mask, 0.0)
+            logits[:, :B] = logits[:, :B].masked_fill(ignore_mask, 0.0)
+            labels[:, :B] = labels[:, :B].masked_fill(ignore_mask, 0.0)
 
         loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
-
-        diag_mean = torch.diag(logits).mean().item()
-        ey = torch.eye(logits.size(-1), dtype=torch.bool, device=logits.device)
-        off_mean = logits.masked_fill(ey, 0).mean().item()
-        self.verbose and self.logger.debug(
-            "\nT=", T, "\nb=", b, "\ndiag", diag_mean, "\noff", off_mean, "\nloss=", loss, "\n"
-        )
-
         return loss
 
 
