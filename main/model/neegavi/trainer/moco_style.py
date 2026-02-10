@@ -122,6 +122,7 @@ class MocoStyleNEegAviTrainer(EegAviKdVateMaskedSemiSupervisedModule):
             valid_rows = self._get_y_valid(value)
             if not valid_rows.any():
                 continue
+
             z_pos = self._y_mean(value, valid_rows)
 
             # Add the moco elements
