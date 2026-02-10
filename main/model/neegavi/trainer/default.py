@@ -86,13 +86,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         params += [
             # siglip_common_optim_configs for Fusion
-            {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+            {"params": i.parameters(), "lr": self.lr * 5, "weight_decay": 0.0}
             for i in self.siglip_losses.values()
         ]
 
         params += [
             # siglip_common_optim_configs for KD
-            {"params": i.parameters(), "lr": self.lr * 10, "weight_decay": 0.0}
+            {"params": i.parameters(), "lr": self.lr * 5, "weight_decay": 0.0}
             for i in self.kd_losses.values()
         ]
 
@@ -184,13 +184,19 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             pre_f = f"{step_type}/{prefix}fused/"
             # TOP-1 FUSED
             self.log(f"{pre_f}top1_{key}", hits_fe[1], on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{step_type}/fused/top1_{key}", hits_fe[1], on_step=on_step, on_epoch=on_epoch)
             self.log(f"{pre_f}top1_{key}_R", hits_ef[1], on_step=on_step, on_epoch=on_epoch)
             self.log(f"{pre_f}top3_{key}", hits_fe.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{step_type}/fused/top3_{key}", hits_fe.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
             self.log(f"{pre_f}top3_{key}_R", hits_ef.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
             self.log(f"{pre_f}top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
+            self.log(f"{step_type}/fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step,
+                     on_epoch=on_epoch)
             self.log(f"{pre_f}top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
             top1_mean.append(hits_fe[1])
-            if key == self.PIVOT_KEY:
+
+            # TODO: Io qui vado avanti perche semplicmente le metriche dopo sono solo noisy (in speranza di risparmaire tempo)
+            if key == self.PIVOT_KEY or True:
                 continue
             # pivot <-> emb: one matmul
             sim_pe = p @ e.T
@@ -375,6 +381,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             count_present += 1
             mod_loss = self.siglip_losses[key](fused_output[valid_rows], self._y_mean(value, valid_rows))
             self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
+            self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss
 
         return base_loss / count_present

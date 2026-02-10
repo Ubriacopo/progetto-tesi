@@ -1,8 +1,9 @@
+from typing import Optional
+
 import torch
-from numba.core.types import Optional
-from torch import Tensor, nn
-from torch.nn.functional import normalize, logsigmoid, binary_cross_entropy_with_logits
 import torch.nn.functional as F
+from torch import Tensor, nn
+from torch.nn.functional import normalize, logsigmoid
 
 from main.utils.logging import make_logger
 
@@ -57,6 +58,7 @@ class SiglipLoss(nn.Module):
 
         Compared to InfoNCE has fewer issues with smaller batches.
 
+        :param zb_negative:
         :param za:
         :param zb:
         :param ignore_mask:
