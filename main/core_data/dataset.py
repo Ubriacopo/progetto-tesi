@@ -35,7 +35,7 @@ class CachableDatasetDescriptor:
 
 class H5KdDataset(IterableDataset):
     def __init__(self, dataset_path: str, prefix: str, batch_size: int, buffer_size: int,
-                 block_size: int = 256, seed: int = 42, shuffle: bool = False):
+                 block_size: int = 256, seed: int = 42, shuffle: bool = True):
         self.logger = make_logger(self.__class__.__name__)
 
         self.dataset_path: Path = Path(dataset_path)
@@ -52,6 +52,8 @@ class H5KdDataset(IterableDataset):
         self.paths: Optional[list[str]] = None
         self.buffer_size: int = buffer_size
         self.shuffle: bool = shuffle
+        # To count the iter
+        self.iterator_id: int = 0
 
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:
@@ -80,6 +82,7 @@ class H5KdDataset(IterableDataset):
             perm = torch.randperm(len(self.shard_files), generator=generator).tolist()
         else:
             perm = list(range(n))
+
         files = [self.shard_files[i] for i in perm]
         lengths = [self.shard_lengths[i] for i in perm]
 
@@ -189,19 +192,24 @@ class H5KdDataset(IterableDataset):
         worker_info = get_worker_info()
         worker_id = 0 if worker_info is None else worker_info.id
 
-        base = torch.initial_seed() % 2 ** 32
+        iterator_id = self.iterator_id
+        self.iterator_id += 1
+
+        epoch_seed = (self.seed + iterator_id) & 0xFFFFFFFF
+
+        global_g = torch.Generator()
+        global_g.manual_seed(epoch_seed)
+
         rng: Optional[random.Random] = None
         if self.shuffle:
-            rng = random.Random((base + self.seed) % 2 ** 32)
+            # 0x9E3779B9 is derived from the fractional part of the Golden Ration and used in hash functions to decorrelate nearby ints
+            # While 100003 is a large prime that prevents the worker from getting seeds that differ only by +1
+            rng = random.Random((epoch_seed + 0x9E3779B9 + worker_id * 1000003) & 0xFFFFFFFF)
 
         warmup: int = min(128, self.buffer_size)
 
         # We buffer blocks not samples. Each entry is of the structure: [block_dict, perm_list, cursor]
         block_buffer = []
-
-        epoch_seed = (base - worker_id) % 2 ** 32
-        global_g = torch.Generator()
-        global_g.manual_seed((epoch_seed + self.seed) % 2 ** 32)
 
         buffered_samples = 0
         for shard_path, start, stop in self.data(generator=global_g):
