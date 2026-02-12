@@ -63,7 +63,7 @@ def main(cfg: KdConfig):
         devices=1,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
-            EarlyStopping(monitor=m_key, min_delta=0.002, patience=8, mode="max", verbose=True),
+            EarlyStopping(monitor=m_key, min_delta=0.002, patience=12, mode="max", verbose=True),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename="step{step}",
@@ -82,7 +82,7 @@ def main(cfg: KdConfig):
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
         max_steps=1000000,  # 1000000
-        val_check_interval=5000,
+        val_check_interval=500,
         max_epochs=-1,  # or a very large number
         accumulate_grad_batches=5, # This is to stabilize training
     )
