@@ -9,7 +9,7 @@ from main.core_data.dataset import CachableDatasetDescriptor, RoundRobinBatchMul
 
 
 def collate(x):
-    return {k: torch.stack([s[k] for s in x], dim=0) for k in x[0].keys()}
+    return x
 
 
 class KdTrainDataModule(lightning.LightningDataModule):
@@ -54,8 +54,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 H5KdDataset(
                     ds_path,
                     prefix="train",
-                    block_size=256,
-                    buffer_size=512,
+                    block_size=32,
+                    buffer_size=96,
                     batch_size=self.batch_size,
                     iterator_id=self.restore_iteration
                 )
@@ -65,8 +65,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 H5KdDataset(
                     ds_path,
                     prefix="val",
-                    block_size=256,
-                    buffer_size=256,
+                    block_size=32,
+                    buffer_size=96,
                     batch_size=self.batch_size,
                     shuffle=False
                 )
@@ -98,7 +98,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=3,
+            num_workers=1,
             prefetch_factor=1,
             persistent_workers=True,  # This is required for the way we handle shuffling
             pin_memory=False

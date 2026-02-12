@@ -33,6 +33,21 @@ class CachableDatasetDescriptor:
     dataset_weight: float
 
 
+import time
+
+
+class Timer:
+    def __init__(self):
+        self.totals = {}
+
+    def add(self, name, dt):
+        self.totals[name] = self.totals.get(name, 0.0) + dt
+
+    def report(self):
+        for k, v in self.totals.items():
+            print(f"{k:20s}: {v:.3f} sec")
+
+
 class H5KdDataset(IterableDataset):
     def __init__(self, dataset_path: str, prefix: str, batch_size: int, buffer_size: int,
                  block_size: int = 256, seed: int = 42, shuffle: bool = True, iterator_id: int = None):
@@ -55,12 +70,15 @@ class H5KdDataset(IterableDataset):
         # To count the iter
         self.iterator_id: int = iterator_id if iterator_id is not None else 0
 
+        self.timer = Timer()
+
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:
             with h5py.File(file, "r") as h5:
                 yield int(h5.attrs.get("num_samples", 0))
 
     def collect_h5_paths(self, h5: h5py.File, ignore_prefixes: list[str] = ("meta/",)):
+        # todo keep ds id
         if self.paths is None:
             # Initialize paths only once per worker
             self.paths = []
@@ -130,38 +148,90 @@ class H5KdDataset(IterableDataset):
         return buffered_samples + block_len
 
     def pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
+        """Return dict[str, Tensor[B,...]] built from multiple blocks."""
+        if not block_buffer:
+            return None, buffered_samples
+
+        parts: list[dict[str, torch.Tensor]] = []
+        need: int = self.batch_size
+        # Fill batch from multiple blocks
+        while need > 0 and block_buffer:
+            bidx = rng.randrange(len(block_buffer)) if rng is not None else 0
+            block, perm, cursor = block_buffer[bidx]
+
+            block_len = len(perm) if perm is not None else len(next(iter(block.values())))
+            avail = block_len - cursor
+            if avail <= 0:
+                block_buffer.pop(bidx)
+                continue
+
+            take = min(need, avail)
+
+            if perm is not None:
+                # perm is a Python list; slice then convert once per chunk
+                sel_list = perm[cursor:cursor + take]
+                sel = torch.as_tensor(sel_list, device=next(iter(block.values())).device, dtype=torch.long)
+            else:
+                sel = slice(cursor, cursor + take)
+
+            # advance cursor / retire block if done
+            cursor += take
+            if cursor >= block_len:
+                block_buffer.pop(bidx)
+            else:
+                block_buffer[bidx][2] = cursor
+
+            parts.append({k: v[sel] for k, v in block.items()})
+
+            buffered_samples -= take
+            need -= take
+
+        if not parts:
+            return None, buffered_samples
+
+        # concat along batch dim
+        out = {k: torch.cat([p[k] for p in parts], dim=0) for k in parts[0].keys()}
+
+        # If you require exactly batch_size always, you can drop incomplete batches:
+        # if out[next(iter(out))].size(0) != self.batch_size: return None, buffered_samples
+
+        return out, buffered_samples
+
+    def old_pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
         output = []
-        with torch.profiler.record_function("H5KdDataset-pop_batch"):
-            for batch_element in range(self.batch_size):
-                if not block_buffer:
-                    break
+        for batch_element in range(self.batch_size):
+            if not block_buffer:
+                break
 
-                idx = rng.randrange(len(block_buffer)) if rng is not None else 0
-                block, perm, cursor = block_buffer[idx]
+            idx = rng.randrange(len(block_buffer)) if rng is not None else 0
+            block, perm, cursor = block_buffer[idx]
 
-                i = perm[cursor] if perm is not None else cursor
-                cursor += 1
+            i = perm[cursor] if perm is not None else cursor
+            cursor += 1
 
-                target_measure = len(perm) if perm is not None else len(next(iter(block.values())))
-                done = cursor >= target_measure
+            target_measure = len(perm) if perm is not None else len(next(iter(block.values())))
+            done = cursor >= target_measure
 
-                if done:
-                    block_buffer.pop(idx)
-                else:
-                    block_buffer[idx][2] = cursor
+            if done:
+                block_buffer.pop(idx)
+            else:
+                block_buffer[idx][2] = cursor
 
-                sample = {k: v[i] for k, v in block.items()}
-                output.append(sample)  # breaks storage sharing
-                buffered_samples -= 1
+            sample = {k: v[i] for k, v in block.items()}
+            output.append(sample)  # breaks storage sharing
+            buffered_samples -= 1
 
         return output, buffered_samples
 
-    @staticmethod
-    def read_block(dsets: dict[str, h5py.Dataset], start: int, stop: int):
+    def read_block(self, dsets: dict[str, h5py.Dataset], start: int, stop: int):
         output = {}
 
         for path, dataset in dsets.items():
+            t0 = time.perf_counter()
             arr = dataset[start:stop]
+            dt = time.perf_counter() - t0
+            self.timer.add("allocate_tensor_" + path, dt)
+
             if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
                 if not arr.flags['C_CONTIGUOUS']:
                     arr = np.ascontiguousarray(arr)  # Make contiguous if needed
@@ -171,21 +241,24 @@ class H5KdDataset(IterableDataset):
         return output
 
     def iter_shard_blocks(self, h5: h5py.File, start: int, stop: int):
-        with torch.profiler.record_function("H5KdDataset.iter_shard_blocks"):
-            n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
-            start, stop = max(0, int(start)), min(int(stop), n)
-            if stop <= start:
-                self.logger.warning("Start precedes stop? Are you sure?")
-                return
 
-            paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/"])
-            dsets = {p: h5[p] for p in paths}
+        n = int(h5.attrs.get("num_samples", 0)) or int(h5["meta/eid"].shape[0])
+        start, stop = max(0, int(start)), min(int(stop), n)
+        if stop <= start:
+            self.logger.warning("Start precedes stop? Are you sure?")
+            return
 
-            for block_start in range(start, stop, self.block_size):
-                block_stop = min(block_start + self.block_size, stop)
-                # dict[str, np/torch array], len = block_stop-block_start
-                with torch.profiler.record_function("H5KdDataset.read_block"):
-                    yield self.read_block(dsets, block_start, block_stop)
+        paths = self.collect_h5_paths(h5, ignore_prefixes=["meta/"])
+        dsets = {p: h5[p] for p in paths}
+
+        for block_start in range(start, stop, self.block_size):
+            block_stop = min(block_start + self.block_size, stop)
+            # dict[str, np/torch array], len = block_stop-block_start
+
+            t0 = time.perf_counter()
+            block = self.read_block(dsets, block_start, block_stop)
+            self.timer.add("read_block", time.perf_counter() - t0)
+            yield block
 
     def __iter__(self):
         # We still presume one worker only but this will come in handy later.
@@ -213,22 +286,27 @@ class H5KdDataset(IterableDataset):
 
         buffered_samples = 0
         for shard_path, start, stop in self.data(generator=global_g):
+            t0 = time.perf_counter()
             with h5py.File(str(shard_path), "r", locking=False,
-                           rdcc_nbytes=512 * 1024 * 1024, rdcc_nslots=1_000_003, rdcc_w0=0.75, ) as h5:
+                           rdcc_nbytes=64 * 1024 * 1024, rdcc_nslots=100_003, rdcc_w0=0.75, ) as h5:
+                self.timer.add("open_file", time.perf_counter() - t0)
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
-                    with torch.profiler.record_function("H5KdDataset.add_block"):
-                        buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
+                    buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
                     # Warmup: ensure at least warmup samples are buffered before yielding
                     if buffered_samples < warmup:
                         continue
 
                     while buffered_samples >= self.buffer_size and block_buffer:
+                        t0 = time.perf_counter()
                         sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
+                        self.timer.add("pop_batch", time.perf_counter() - t0)
                         yield sample
 
         # Flush remaining buffered samples
         while block_buffer:
+            t0 = time.perf_counter()
             sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
+            self.timer.add("pop_batch", time.perf_counter() - t0)
             yield sample
 
     def __len__(self):
@@ -309,20 +387,19 @@ class RoundRobinBatchMultiDataset(IterableDataset):
         iters = [iter(ds) for ds in self.datasets]
         dead = [0] * len(iters)  # Count consecutive failures per dataset
         while True:
-            with torch.profiler.record_function("round_robin_iter"):
-                k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
-                for _ in range(self.consecutive_batches):
-                    try:
-                        yield next(iters[k])
-                        dead[k] = 0
+            k = int(torch.multinomial(self.weights, num_samples=1, replacement=True, generator=g).item())
+            for _ in range(self.consecutive_batches):
+                try:
+                    yield next(iters[k])
+                    dead[k] = 0
 
-                    except StopIteration:
-                        dead[k] += 1
-                        if dead[k] > 5:
-                            raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
-                        # Restart that dataset (cycle)
-                        iters[k] = iter(self.datasets[k])
-                        break
+                except StopIteration:
+                    dead[k] += 1
+                    if dead[k] > 5:
+                        raise RuntimeError(f"Dataset {k} keeps stopping; is it empty?")
+                    # Restart that dataset (cycle)
+                    iters[k] = iter(self.datasets[k])
+                    break
 
 
 class MultiDataset(torch.utils.data.Dataset):

@@ -95,6 +95,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.momentum: float = momentum
         self.queue_size: int = queue_size
         self.moco_queue = {}  # key -> tensor [K, D]
+        # todo 2d con anche ds origine. Ma come faccio a saperlo? Boh
         self.queue_ptr = {}  # key -> 0-dim long buffer
 
         if self.use_moco:
@@ -249,10 +250,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{pre_f}top3_{key}", hits_fe.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
             self.log(f"{step_type}/fused/top3_{key}", hits_fe.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
             self.log(f"{pre_f}top3_{key}_R", hits_ef.get(3, torch.nan), on_step=on_step, on_epoch=on_epoch)
-            self.log(f"{pre_f}top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
-            self.log(f"{step_type}/fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step,
-                     on_epoch=on_epoch)
-            self.log(f"{pre_f}top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
+
+            # self.log(f"{pre_f}top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
+            # self.log(f"{step_type}/fused/top{self.k}_{key}", hits_fe.get(self.k, torch.nan), on_step=on_step,       on_epoch=on_epoch)
+            # self.log(f"{pre_f}top{self.k}_{key}_R", hits_ef.get(self.k, torch.nan), on_step=on_step, on_epoch=on_epoch)
             top1_mean.append(hits_fe[1])
 
             # TODO: Io qui vado avanti perche semplicmente le metriche dopo sono solo noisy (in speranza di risparmaire tempo)
@@ -292,18 +293,16 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.time_mask_switch_generator.manual_seed(self.base_seed)
 
     def dequantize(self, batch: dict, dtype=torch.float16):
-        # Student part:
-        with torch.profiler.record_function("dequantize"):
-            output = {}
-            for container_key, container in batch.items():  # Student - Teacher
-                output[container_key] = {}
+        output = {}
+        for container_key, container in batch.items():  # Student - Teacher
+            output[container_key] = {}
 
-                for key, td in container.items():
-                    if key in self.dequantize_keys:
-                        data = td["data"].to(dtype=dtype, non_blocking=True)
-                        data.mul_(td["scales"])  # For optimization reasons (I dislike it)
-                        td = {"data": data, "mask": td["mask"]}
-                    output[container_key][key] = td
+            for key, td in container.items():
+                if key in self.dequantize_keys:
+                    data = td["data"].to(dtype=dtype, non_blocking=True)
+                    data.mul_(td["scales"])  # For optimization reasons (I dislike it)
+                    td = {"data": data, "mask": td["mask"]}
+                output[container_key][key] = td
 
         return output
 
@@ -336,7 +335,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         return mode
 
-    # todo decompose per fare funzionare moco style
     def training_step(self, batch, batch_idx):
         mode = self.state_update()
         # Convert the batch to fp16 from quantized
@@ -384,7 +382,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
         # Every 10 batches we run the batch end operations
-        if not batch_idx % 10 == 0:
+        if not batch_idx % 50 == 0:
             return
 
         _ = outputs.pop("loss")  # We have to ignore it
