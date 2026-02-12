@@ -61,6 +61,9 @@ class MocoStyleNEegAviTrainer(EegAviKdVateMaskedSemiSupervisedModule):
 
     @torch.no_grad()
     def moco_init_queue(self, key: str, dim: int, device):
+        # queue_ptr is shared across all keys, so enqueues for different modalities interleave in the same pointer.
+        # That’s not a leak, but it’s usually wrong MoCo behavior.
+        # Use a per-key pointer (dict of buffers) or keep separate queues per key with their own ptr.
         if key not in self.moco_queue:
             self.moco_queue[key] = torch.zeros(self.queue_size, dim, device=device)
             # Optional: normalize storage
