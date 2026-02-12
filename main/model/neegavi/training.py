@@ -1,21 +1,21 @@
 import copy
 import math
-from typing import Literal, Any, Optional
+from typing import Optional, Literal, Any
 
 import lightning as L
 import torch
-import torch.nn.functional as F
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
+from torch.nn import functional as F
 from torch.optim import Optimizer
 
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
-from main.model.blocks.pooling import MaskedAvgPooling, ClsPooling
+from main.model.blocks.pooling import ClsPooling, MaskedAvgPooling
 from main.model.blocks.time_masked import TimeMaskSwitchableProperties
 from main.model.loss import SiglipLoss
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.utils import WeaklySupervisedEegBaseModelOutputs, EegBaseModelOutputs
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -40,7 +40,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             seed: int = 1,
             use_moco: bool = False,
             momentum: float = .9,
-            queue_size: int = 512,
+            queue_size: int = 104,
             batch_size=None
     ):
         super().__init__()
@@ -95,14 +95,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.momentum: float = momentum
         self.queue_size: int = queue_size
         self.moco_queue = {}  # key -> tensor [K, D]
+        self.queue_ptr = {}  # key -> 0-dim long buffer
 
         if self.use_moco:
             # TODO Verifica deep copy
             self.momentum_student = copy.deepcopy(self.student)
             for parameter in self.momentum_student.parameters():
                 parameter.requires_grad_(False)
-
-            self.register_buffer("queue_ptr", torch.zeros((), dtype=torch.long))
 
     # TODO:
     # Okay so hear me out: First model I do without MoCo I then do reverse ablation and add MoCo and see if it helps? yes
@@ -170,19 +169,20 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def moco_init_queue(self, key: str, dim: int, device):
         if key not in self.moco_queue:
             self.moco_queue[key] = F.normalize(torch.randn(self.queue_size, dim, device=device), dim=-1)
+            self.register_buffer(f"queue_ptr_{key}", torch.zeros((), dtype=torch.long))
+            self.queue_ptr[key] = getattr(self, f"queue_ptr_{key}")
 
     @torch.no_grad()
     def moco_enqueue(self, key: str, x: torch.Tensor):
-        x = x.detach()
-        x = F.normalize(x, dim=-1)
+        x = F.normalize(x.detach(), dim=-1)
+        ptr_buf = self.queue_ptr[key]
 
         if x.size(0) > self.queue_size:
             self.moco_queue[key].copy_(x[-self.queue_size:])
-            self.queue_ptr.fill_(0)
-
+            ptr_buf.fill_(0)
             return
 
-        ptr = self.queue_ptr.item()
+        ptr = int(ptr_buf.item())
         end = ptr + x.size(0)  # b
 
         if end <= self.queue_size:
@@ -191,8 +191,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             first = self.queue_size - ptr
             self.moco_queue[key][ptr:] = x[:first]
             self.moco_queue[key][:end - self.queue_size] = x[first:]
-
-        self.queue_ptr.fill_((ptr + x.size(0)) % self.queue_size)
+        ptr_buf.fill_((ptr + x.size(0)) % self.queue_size)
 
     @staticmethod
     # todo move
@@ -345,7 +344,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         self.momentum_modality_pooled = None
-        # todo cls token?
+
         if self.use_moco:
             with torch.no_grad():
                 momentum_out: WeaklySupervisedEegBaseModelOutputs = self.momentum_student(batch["student"], use_kd=True)
@@ -353,14 +352,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
                 for key, mv in momentum_out.multimodal_outs.items():
                     valid = self._get_y_valid(mv)
+                    B, D = mv["data"].size(0), mv["data"].size(-1)
+                    pooled_all = torch.zeros((B, D), device=mv["data"].device, dtype=mv["data"].dtype)
+
                     if valid.any():
-                        self.momentum_modality_pooled[key] = self._y_mean(mv, valid)
-                    # todo verify
-                    pooled_valid = self._y_mean(mv, valid)  # [n_valid, D]
-                    B = mv["data"].size(0)
-                    D = pooled_valid.size(-1)
-                    pooled_all = torch.zeros((B, D), device=pooled_valid.device, dtype=pooled_valid.dtype)
-                    pooled_all[valid] = pooled_valid
+                        pooled_valid = self._y_mean(mv, valid)
+                        pooled_all[valid] = pooled_valid
+
                     self.momentum_modality_pooled[key] = pooled_all  # [B, D]
 
         with torch.inference_mode():

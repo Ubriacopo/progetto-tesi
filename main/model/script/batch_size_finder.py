@@ -6,7 +6,7 @@ from lightning.pytorch.profilers import SimpleProfiler
 from lightning.pytorch.tuner import Tuner
 
 from main.app_config import AppConfig
-from main.model.neegavi.trainer.default import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.training import EegAviKdVateMaskedSemiSupervisedModule
 from main.model.script import hydra_utils
 from main.model.script.hydra_beans import KdConfig
 from main.model.neegavi.train_utils import KdTrainDataModule

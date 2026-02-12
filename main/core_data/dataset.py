@@ -35,7 +35,7 @@ class CachableDatasetDescriptor:
 
 class H5KdDataset(IterableDataset):
     def __init__(self, dataset_path: str, prefix: str, batch_size: int, buffer_size: int,
-                 block_size: int = 256, seed: int = 42, shuffle: bool = True):
+                 block_size: int = 256, seed: int = 42, shuffle: bool = True, iterator_id: int = None):
         self.logger = make_logger(self.__class__.__name__)
 
         self.dataset_path: Path = Path(dataset_path)
@@ -53,7 +53,7 @@ class H5KdDataset(IterableDataset):
         self.buffer_size: int = buffer_size
         self.shuffle: bool = shuffle
         # To count the iter
-        self.iterator_id: int = 0
+        self.iterator_id: int = iterator_id if iterator_id is not None else 0
 
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:

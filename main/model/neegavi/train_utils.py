@@ -13,11 +13,16 @@ def collate(x):
 
 
 class KdTrainDataModule(lightning.LightningDataModule):
-    def __init__(self,
-                 dataset_paths: list[CachableDatasetDescriptor],
-                 # Parameters for stuff less related to the data itself
-                 batch_size: int, batches_per_epoch: int,
-                 seed: int, collate_fn=collate):
+    def __init__(
+            self,
+            dataset_paths: list[CachableDatasetDescriptor],
+            # Parameters for stuff less related to the data itself
+            batch_size: int,
+            batches_per_epoch: int,
+            seed: int,
+            collate_fn=collate,
+            restore_iteration: int = None
+    ):
         """
         :param student_keys: list of keys that appear in the student records as tensor_dicts
         :param teacher_keys: list of keys that appear in the teacher records as tensor_dicts
@@ -36,6 +41,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.collate_fn = collate_fn
         self.batch_size: int = batch_size
         self.batches_per_epoch: int = batches_per_epoch
+        self.restore_iteration: int = restore_iteration
 
     def setup(self, stage: str) -> None:
         datasets, weights = [], []
@@ -45,16 +51,30 @@ class KdTrainDataModule(lightning.LightningDataModule):
 
             weights.append(shards_path.dataset_weight)
             datasets.append(
-                H5KdDataset(ds_path, prefix="train", block_size=256, buffer_size=512, batch_size=self.batch_size)
+                H5KdDataset(
+                    ds_path,
+                    prefix="train",
+                    block_size=256,
+                    buffer_size=512,
+                    batch_size=self.batch_size,
+                    iterator_id=self.restore_iteration
+                )
             )
 
             val_datasets.append(
-                H5KdDataset(ds_path, prefix="val", block_size=256, buffer_size=256, batch_size=self.batch_size)
+                H5KdDataset(
+                    ds_path,
+                    prefix="val",
+                    block_size=256,
+                    buffer_size=256,
+                    batch_size=self.batch_size,
+                    shuffle=False
+                )
             )
 
-            #test_datasets.append(
+            # test_datasets.append(
             #     H5KdDataset(ds_path, prefix="test", block_size=256, buffer_size=256, batch_size=self.batch_size)
-            #)
+            # )
 
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=16)
         self.valid_dataset = ChainDataset(val_datasets)
@@ -78,9 +98,9 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=1,
+            num_workers=3,
             prefetch_factor=1,
-            persistent_workers=True, # This is required for the way we handle shuffling
+            persistent_workers=True,  # This is required for the way we handle shuffling
             pin_memory=False
         )
 
