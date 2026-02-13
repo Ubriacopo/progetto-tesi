@@ -55,7 +55,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                     ds_path,
                     prefix="train",
                     block_size=32,
-                    buffer_size=96,
+                    buffer_size=1024,
                     batch_size=self.batch_size,
                     iterator_id=self.restore_iteration
                 )
