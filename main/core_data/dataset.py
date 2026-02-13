@@ -70,7 +70,7 @@ class H5KdDataset(IterableDataset):
         # To count the iter
         self.iterator_id: int = iterator_id if iterator_id is not None else 0
 
-        # self.timer = Timer()
+        self.timer = Timer()
 
     def load_lengths(self) -> Iterator[int]:
         for file in self.shard_files:
@@ -140,7 +140,7 @@ class H5KdDataset(IterableDataset):
         block_len = len(next(iter(block.values())))
         # Make a shuffled index order for this block if shuffling is enabled
         perm = None
-        if rng is not None: # todo generator
+        if rng is not None:
             perm = torch.randperm(block_len)  # CPU tensor
 
         block_buffer.append([block, perm, 0])
@@ -194,7 +194,7 @@ class H5KdDataset(IterableDataset):
         # if out[next(iter(out))].size(0) != self.batch_size: return None, buffered_samples
 
         return out, buffered_samples
-
+    # todo misura?
     def old_pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
         output = []
         for batch_element in range(self.batch_size):
@@ -225,10 +225,10 @@ class H5KdDataset(IterableDataset):
         output = {}
 
         for path, dataset in dsets.items():
-            # t0 = time.perf_counter()
+            t0 = time.perf_counter()
             arr = dataset[start:stop]
-            # dt = time.perf_counter() - t0
-            # self.timer.add("allocate_tensor_" + path, dt)
+            dt = time.perf_counter() - t0
+            self.timer.add("allocate_tensor_" + path, dt)
 
             if isinstance(arr, np.ndarray) and arr.shape and arr.dtype.kind in "iufb":
                 if not arr.flags['C_CONTIGUOUS']:
@@ -253,9 +253,9 @@ class H5KdDataset(IterableDataset):
             block_stop = min(block_start + self.block_size, stop)
             # dict[str, np/torch array], len = block_stop-block_start
 
-            # t0 = time.perf_counter()
+            t0 = time.perf_counter()
             block = self.read_block(dsets, block_start, block_stop)
-            # self.timer.add("read_block", time.perf_counter() - t0)
+            self.timer.add("read_block", time.perf_counter() - t0)
             yield block
 
     def __iter__(self):
@@ -284,10 +284,10 @@ class H5KdDataset(IterableDataset):
 
         buffered_samples = 0
         for shard_path, start, stop in self.data(generator=global_g):
-            # t0 = time.perf_counter()
+            t0 = time.perf_counter()
             with h5py.File(str(shard_path), "r", locking=False,
                            rdcc_nbytes=64 * 1024 * 1024, rdcc_nslots=100_003, rdcc_w0=0.75, ) as h5:
-                # self.timer.add("open_file", time.perf_counter() - t0)
+                self.timer.add("open_file", time.perf_counter() - t0)
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
                     buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
                     # Warmup: ensure at least warmup samples are buffered before yielding
@@ -295,20 +295,16 @@ class H5KdDataset(IterableDataset):
                         continue
 
                     while buffered_samples >= self.buffer_size and block_buffer:
-                        # t0 = time.perf_counter()
+                        t0 = time.perf_counter()
                         sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
-                        # self.timer.add("pop_batch", time.perf_counter() - t0)
-                        yield sample
-
-                    while buffered_samples > self.buffer_size and block_buffer:
-                        sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
+                        self.timer.add("pop_batch", time.perf_counter() - t0)
                         yield sample
 
         # Flush remaining buffered samples
         while block_buffer:
-            # t0 = time.perf_counter()
+            t0 = time.perf_counter()
             sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
-            # self.timer.add("pop_batch", time.perf_counter() - t0)
+            self.timer.add("pop_batch", time.perf_counter() - t0)
             yield sample
 
     def __len__(self):

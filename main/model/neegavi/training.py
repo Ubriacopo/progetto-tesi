@@ -1,10 +1,9 @@
 import copy
 import math
-from typing import Optional, Literal, Any, Union, Callable
+from typing import Optional, Literal, Any
 
 import lightning as L
 import torch
-from lightning.pytorch.core.optimizer import LightningOptimizer
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
 from torch.nn import functional as F
@@ -62,15 +61,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.kd_losses: nn.ModuleDict = nn.ModuleDict()
         for kd_key in kd_keys:
             loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
-            self.kd_losses.add_module(kd_key, loss_fn)
+            self.kd_losses.add_module(kd_key, loss_fn.to(self.device))
 
         # Just to debug atm
         self.use_kd_loss = True
         self.use_fusion_loss = True
 
         self.base_seed = seed
-
-        self.time_mask_switch_generator: torch.Generator
+        self.time_mask_switch_generator = torch.Generator(device=self.device)
+        self.time_mask_switch_generator.manual_seed(seed)
         self.bidirectional_p: float = bidirectional_p
 
         self.dequantize_keys: list[str] = dequantize_keys
@@ -90,7 +89,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         # If MoCo style training is enabled
         self.use_moco: bool = use_moco
-        self.momentum_modality_pooled: Optional[dict[str, tuple[torch.Tensor, torch.Tensor]]] = None
+        self.momentum_modality_pooled: Optional[dict[str, torch.Tensor]] = None
         self.momentum_student: Optional[EegInterAviModel] = None
         # Even if we don't use moco we initialize these for practicality
         self.momentum: float = momentum
@@ -102,7 +101,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         if self.use_moco:
             # TODO Verifica deep copy
             self.momentum_student = copy.deepcopy(self.student)
-            self.momentum_student.eval()
+            self.momentum_student.eval()  # todo qui la causa di tutti i  miei mali?
             for parameter in self.momentum_student.parameters():
                 parameter.requires_grad_(False)
 
@@ -125,6 +124,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
         return torch.optim.Adam(weight_decay=.01, params=params, fused=True)
+
+    def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, ) -> None:
+        # Let Lightning handle closure semantics properly
+        optimizer.step(closure=optimizer_closure)
+
+        # Update EMA after the actual optimizer step
+        if self.use_moco:
+            self.moco_momentum_update()
 
     def _compute_step_metrics(
             self,
@@ -276,18 +283,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
         self.log(f"{step_type}/top1_mean", top1_mean, on_step=on_step, on_epoch=on_epoch)
 
-    def optimizer_step(self, epoch: int, batch_idx: int, optimizer: Union[Optimizer, LightningOptimizer],
-                       optimizer_closure: Optional[Callable[[], Any]] = None, ) -> None:
-        if optimizer_closure is not None:
-            optimizer_closure()  # runs loss+backward
-
-        optimizer.step()
-
-        if self.use_moco:
-            self.moco_momentum_update()
-
-        optimizer.zero_grad(set_to_none=True)
-
     def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1):
         """
         Common practice: Current setups favors bidirectional at lower epochs and causal later ones.
@@ -355,7 +350,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.momentum_out = None
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
-
             if self.use_moco:
                 self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
 
@@ -456,36 +450,29 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             if not valid_rows.any():
                 continue
 
-            # Negatives
-            zb_neg = None  # Negatives to add to batch
+            q = fused_output[valid_rows]
+
+            # Negatives to add to batch
+            zb_neg = None
             if self.use_moco and step_type == "train":
                 self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
                 zb_neg = self.moco_queue[key]
-
-            # Positives
-            q = fused_output[valid_rows]
 
             if self.use_moco and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
                 mv_k = self.momentum_out.multimodal_outs[key]
                 zb_pos = self._y_mean(mv_k, valid_rows).detach()  # [Nv, D]
                 # Enqueue momentum positives
                 self.moco_enqueue(key, zb_pos)
-
             else:
-                # If we don't use moco or are not training no need for extra computations
-                q = fused_output[valid_rows]
                 zb_pos = self._y_mean(value, valid_rows)
 
             count_present += 1
             mod_loss = self.siglip_losses[key](q, zb_pos, zb_neg)
-
             self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss
 
-        if step_type == "train":
-            self.momentum_out = None
-        return base_loss / max(count_present, 1)
+        return base_loss / count_present
 
     @staticmethod
     def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:
