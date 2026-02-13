@@ -393,10 +393,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
 
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
-        # Every 10 batches we run the batch end operations
-        if not batch_idx % 10 == 0:
-            return  # todo vedi se si puo fare
-
         for mode, val in outputs.items():
             _ = val.pop("loss")  # We have to ignore it
             if self.FUSED_KEY in val:
