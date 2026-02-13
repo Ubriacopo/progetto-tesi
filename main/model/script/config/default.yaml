@@ -19,9 +19,9 @@ dataset_descriptors:
    - dataset_path: "/localssd/EEGAVI/MAHNOB/"
      cache_path: null
      dataset_weight: 30 # Power Law
-   #- dataset_path: "/mnt/turing-datasets/EEGAVI/EAV/combined/"
-   #  cache_path: null
-   #  dataset_weight: 100
+   - dataset_path: "/mnt/turing-datasets/EEGAVI/EAV/combined/"
+     cache_path: null
+     dataset_weight: 100
 
 hydra:
   job_logging:
