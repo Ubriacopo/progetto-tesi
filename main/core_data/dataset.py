@@ -279,7 +279,7 @@ class H5KdDataset(IterableDataset):
             # While 100003 is a large prime that prevents the worker from getting seeds that differ only by +1
             rng = random.Random((epoch_seed + 0x9E3779B9 + worker_id * 1000003) & 0xFFFFFFFF)
 
-        warmup: int = min(128, self.buffer_size)
+        warmup: int = min(self.buffer_size, max(4 * self.batch_size, 128))
 
         # We buffer blocks not samples. Each entry is of the structure: [block_dict, perm_list, cursor]
         block_buffer = []
