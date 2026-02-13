@@ -140,9 +140,8 @@ class H5KdDataset(IterableDataset):
         block_len = len(next(iter(block.values())))
         # Make a shuffled index order for this block if shuffling is enabled
         perm = None
-        if rng is not None:
-            perm = list(range(block_len))
-            rng.shuffle(perm)
+        if rng is not None: # todo generator
+            perm = torch.randperm(block_len)  # CPU tensor
 
         block_buffer.append([block, perm, 0])
         return buffered_samples + block_len
@@ -169,8 +168,7 @@ class H5KdDataset(IterableDataset):
 
             if perm is not None:
                 # perm is a Python list; slice then convert once per chunk
-                sel_list = perm[cursor:cursor + take]
-                sel = torch.as_tensor(sel_list, device=next(iter(block.values())).device, dtype=torch.long)
+                sel = perm[cursor:cursor + take]
             else:
                 sel = slice(cursor, cursor + take)
 
@@ -279,7 +277,7 @@ class H5KdDataset(IterableDataset):
             # While 100003 is a large prime that prevents the worker from getting seeds that differ only by +1
             rng = random.Random((epoch_seed + 0x9E3779B9 + worker_id * 1000003) & 0xFFFFFFFF)
 
-        warmup: int = min(self.buffer_size, max(4 * self.batch_size, 128))
+        warmup: int = self.buffer_size
 
         # We buffer blocks not samples. Each entry is of the structure: [block_dict, perm_list, cursor]
         block_buffer = []
@@ -300,6 +298,10 @@ class H5KdDataset(IterableDataset):
                         # t0 = time.perf_counter()
                         sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
                         # self.timer.add("pop_batch", time.perf_counter() - t0)
+                        yield sample
+
+                    while buffered_samples > self.buffer_size and block_buffer:
+                        sample, buffered_samples = self.pop_batch(buffered_samples, block_buffer, rng)
                         yield sample
 
         # Flush remaining buffered samples
