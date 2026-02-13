@@ -382,7 +382,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def on_train_batch_end(self, outputs: dict, batch: Any, batch_idx: int) -> None:
         # Every 10 batches we run the batch end operations
-        if not batch_idx % 50 == 0:
+        if not batch_idx % 10 == 0:
             return
 
         _ = outputs.pop("loss")  # We have to ignore it
