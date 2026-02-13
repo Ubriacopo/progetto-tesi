@@ -14,7 +14,7 @@ from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
 
 
-@hydra.main(config_path="config", config_name="default")
+@hydra.main(config_path="config", config_name="metric")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     logger = make_logger("hydra-main>train_eegavi")
@@ -81,7 +81,7 @@ def main(cfg: KdConfig):
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
-        max_steps=15,  # 1000000
+        max_steps=5,  # 1000000
         val_check_interval=100,
         max_epochs=-1,  # or a very large number
         accumulate_grad_batches=5, # This is to stabilize training

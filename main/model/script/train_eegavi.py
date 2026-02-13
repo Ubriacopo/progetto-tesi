@@ -36,7 +36,7 @@ def main(cfg: KdConfig):
         teacher=teacher,
 
         datamodule=kd_train_datamodule,
-        use_moco=True,
+        use_moco=True, # For b=144 might not be needed
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,
         lr=cfg.trainer.lr,

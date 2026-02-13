@@ -1,9 +1,10 @@
 import copy
 import math
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, Any, Union, Callable
 
 import lightning as L
 import torch
+from lightning.pytorch.core.optimizer import LightningOptimizer
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
 from torch.nn import functional as F
@@ -169,8 +170,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     @torch.no_grad()
     def moco_init_queue(self, key: str, dim: int, device):
         if key not in self.moco_queue:
-            self.moco_queue[key] = F.normalize(torch.randn(self.queue_size, dim, device=device), dim=-1)
+            q = F.normalize(torch.randn(self.queue_size, dim, device=device), dim=-1)
+            self.register_buffer(f"moco_queue_{key}", q)
             self.register_buffer(f"queue_ptr_{key}", torch.zeros((), dtype=torch.long))
+            self.moco_queue[key] = getattr(self, f"moco_queue_{key}")
             self.queue_ptr[key] = getattr(self, f"queue_ptr_{key}")
 
     @torch.no_grad()
@@ -271,6 +274,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         top1_mean = torch.mean(torch.stack(top1_mean, dim=0))
         self.log(f"{step_type}/top1_mean", top1_mean, on_step=on_step, on_epoch=on_epoch)
+
+    def optimizer_step(self, epoch: int, batch_idx: int, optimizer: Union[Optimizer, LightningOptimizer],
+                       optimizer_closure: Optional[Callable[[], Any]] = None, ) -> None:
+        optimizer.step(closure=optimizer_closure)
+        if self.use_moco:
+            self.moco_momentum_update()
+        optimizer.zero_grad()
 
     def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1):
         """
@@ -458,14 +468,22 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             if not valid_rows.any():
                 continue
 
-            z_pos = self._y_mean(value, valid_rows)
+            # Negatives
             zb_neg = None  # Negatives to add to batch
             if self.use_moco and step_type == "train":
-                self.moco_init_queue(key, dim=z_pos.size(-1), device=z_pos.device)
+                self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
                 zb_neg = self.moco_queue[key]
 
+            # Positives
+            if self.use_moco and step_type == "train":
+                k_all = None if self.momentum_modality_pooled is None else self.momentum_modality_pooled.get(key)
+                zb_pos = self._y_mean(value, valid_rows) if k_all is None else k_all[valid_rows]
+            else:
+                # If we don't use moco or are not training no need for extra computations
+                zb_pos = self._y_mean(value, valid_rows)
+
             count_present += 1
-            mod_loss = self.siglip_losses[key](fused_output[valid_rows], z_pos, zb_neg)
+            mod_loss = self.siglip_losses[key](fused_output[valid_rows], zb_pos, zb_neg)
 
             if self.use_moco and step_type == "train":
                 k = None if self.momentum_modality_pooled is None else self.momentum_modality_pooled.get(key)
@@ -476,7 +494,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss
 
-        return base_loss / count_present
+        return base_loss / max(count_present, 1)
 
     @staticmethod
     def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:

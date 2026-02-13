@@ -1,0 +1,41 @@
+defaults:
+  - model: default
+  - trainer: default
+  - teacher: default
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
+
+base_path: /root/PycharmProjects/progetto-tesi/
+teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
+
+# sta merda non funziona cristo
+dataset_descriptors:
+   - dataset_path: "/localssd/EEGAVI/AMIGOS/"
+     cache_path: null
+     dataset_weight: 149 # Power Law
+   - dataset_path: "/localssd/EEGAVI/DEAP/"
+     cache_path: null
+     dataset_weight: 108 # Power Law
+   - dataset_path: "/localssd/EEGAVI/MAHNOB/"
+     cache_path: null
+     dataset_weight: 30 # Power Law
+   - dataset_path: "/mnt/turing-datasets/EEGAVI/EAV/combined/"
+     cache_path: null
+     dataset_weight: 100
+
+
+hydra:
+  job:
+    name: moco-metric
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+  job_logging:
+    root:
+      handlers: [ console, file ]   # make sure both are used
+
+    handlers:
+      file:
+        class: logging.FileHandler
+        formatter: simple         # or "colorlog" if you really want ANSI codes in file
+        filename: ${hydra.runtime.output_dir}/job.log
