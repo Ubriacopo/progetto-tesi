@@ -82,7 +82,7 @@ def main(cfg: KdConfig):
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
         max_steps=1000000,  # 1000000
-        val_check_interval=5000,
+        val_check_interval=1500,
         max_epochs=-1,  # or a very large number
         accumulate_grad_batches=5, # This is to stabilize training
     )

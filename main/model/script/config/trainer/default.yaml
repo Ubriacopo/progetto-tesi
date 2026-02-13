@@ -5,5 +5,5 @@ fusion_loss_weight: 1.0
 ecg_correction_weight: 0.2
 kd_temperature: 0.2
 epochs: 2
-batch_size: 144
+batch_size: 96
 batches_per_epoch: 1000 # 0.6 of all.

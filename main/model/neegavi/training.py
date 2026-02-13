@@ -62,15 +62,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.kd_losses: nn.ModuleDict = nn.ModuleDict()
         for kd_key in kd_keys:
             loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
-            self.kd_losses.add_module(kd_key, loss_fn.to(self.device))
+            self.kd_losses.add_module(kd_key, loss_fn)
 
         # Just to debug atm
         self.use_kd_loss = True
         self.use_fusion_loss = True
 
         self.base_seed = seed
-        self.time_mask_switch_generator = torch.Generator(device=self.device)
-        self.time_mask_switch_generator.manual_seed(seed)
+
+        self.time_mask_switch_generator: torch.Generator
         self.bidirectional_p: float = bidirectional_p
 
         self.dequantize_keys: list[str] = dequantize_keys
@@ -90,18 +90,19 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         # If MoCo style training is enabled
         self.use_moco: bool = use_moco
-        self.momentum_modality_pooled: Optional[dict[str, torch.Tensor]] = None
+        self.momentum_modality_pooled: Optional[dict[str, tuple[torch.Tensor, torch.Tensor]]] = None
         self.momentum_student: Optional[EegInterAviModel] = None
         # Even if we don't use moco we initialize these for practicality
         self.momentum: float = momentum
         self.queue_size: int = queue_size
+        self.momentum_out: Optional[WeaklySupervisedEegBaseModelOutputs] = None
         self.moco_queue = {}  # key -> tensor [K, D]
-        # todo 2d con anche ds origine. Ma come faccio a saperlo? Boh
         self.queue_ptr = {}  # key -> 0-dim long buffer
 
         if self.use_moco:
             # TODO Verifica deep copy
             self.momentum_student = copy.deepcopy(self.student)
+            self.momentum_student.eval()
             for parameter in self.momentum_student.parameters():
                 parameter.requires_grad_(False)
 
@@ -172,7 +173,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         if key not in self.moco_queue:
             q = F.normalize(torch.randn(self.queue_size, dim, device=device), dim=-1)
             self.register_buffer(f"moco_queue_{key}", q)
-            self.register_buffer(f"queue_ptr_{key}", torch.zeros((), dtype=torch.long))
+            self.register_buffer(f"queue_ptr_{key}", torch.zeros((), dtype=torch.long, device=device))
             self.moco_queue[key] = getattr(self, f"moco_queue_{key}")
             self.queue_ptr[key] = getattr(self, f"queue_ptr_{key}")
 
@@ -277,10 +278,15 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def optimizer_step(self, epoch: int, batch_idx: int, optimizer: Union[Optimizer, LightningOptimizer],
                        optimizer_closure: Optional[Callable[[], Any]] = None, ) -> None:
-        optimizer.step(closure=optimizer_closure)
+        if optimizer_closure is not None:
+            optimizer_closure()  # runs loss+backward
+
+        optimizer.step()
+
         if self.use_moco:
             self.moco_momentum_update()
-        optimizer.zero_grad()
+
+        optimizer.zero_grad(set_to_none=True)
 
     def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1):
         """
@@ -330,10 +336,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         return root
 
-    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
-        if self.use_moco:
-            self.moco_momentum_update()
-
     def state_update(self) -> Literal['bidirectional', 'causal']:
         # Randomly draw the modality we want to train on (For the time relations)
         causal_p = self.p_causal_schedule()
@@ -350,28 +352,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Convert the batch to fp16 from quantized
         batch = self.dequantize(self.nest(batch), torch.float16)
 
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
-        self.momentum_modality_pooled = None
-
-        if self.use_moco:
-            with torch.no_grad():
-                momentum_out: WeaklySupervisedEegBaseModelOutputs = self.momentum_student(batch["student"], use_kd=True)
-                self.momentum_modality_pooled = {}
-
-                for key, mv in momentum_out.multimodal_outs.items():
-                    valid = self._get_y_valid(mv)
-                    B, D = mv["data"].size(0), mv["data"].size(-1)
-                    pooled_all = torch.zeros((B, D), device=mv["data"].device, dtype=mv["data"].dtype)
-
-                    if valid.any():
-                        pooled_valid = self._y_mean(mv, valid)
-                        pooled_all[valid] = pooled_valid
-
-                    self.momentum_modality_pooled[key] = pooled_all  # [B, D]
-
+        self.momentum_out = None
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
 
+            if self.use_moco:
+                self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
+
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         return self._compute_step_metrics(stud_out, teacher_out, batch, 'train', mode)
 
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
@@ -475,25 +463,28 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 zb_neg = self.moco_queue[key]
 
             # Positives
-            if self.use_moco and step_type == "train":
-                k_all = None if self.momentum_modality_pooled is None else self.momentum_modality_pooled.get(key)
-                zb_pos = self._y_mean(value, valid_rows) if k_all is None else k_all[valid_rows]
+            q = fused_output[valid_rows]
+
+            if self.use_moco and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+                mv_k = self.momentum_out.multimodal_outs[key]
+                zb_pos = self._y_mean(mv_k, valid_rows).detach()  # [Nv, D]
+                # Enqueue momentum positives
+                self.moco_enqueue(key, zb_pos)
+
             else:
                 # If we don't use moco or are not training no need for extra computations
+                q = fused_output[valid_rows]
                 zb_pos = self._y_mean(value, valid_rows)
 
             count_present += 1
-            mod_loss = self.siglip_losses[key](fused_output[valid_rows], zb_pos, zb_neg)
-
-            if self.use_moco and step_type == "train":
-                k = None if self.momentum_modality_pooled is None else self.momentum_modality_pooled.get(key)
-                if k is not None:
-                    self.moco_enqueue(key, k[valid_rows])  # optionally enqueue only rows matching valid_rows
+            mod_loss = self.siglip_losses[key](q, zb_pos, zb_neg)
 
             self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss
 
+        if step_type == "train":
+            self.momentum_out = None
         return base_loss / max(count_present, 1)
 
     @staticmethod
