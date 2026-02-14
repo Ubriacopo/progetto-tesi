@@ -94,13 +94,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Even if we don't use moco we initialize these for practicality
         self.momentum: float = momentum
         self.queue_size: int = queue_size
+        self.momentum_out: Optional[WeaklySupervisedEegBaseModelOutputs] = None
         self.moco_queue = {}  # key -> tensor [K, D]
-        # todo 2d con anche ds origine. Ma come faccio a saperlo? Boh
         self.queue_ptr = {}  # key -> 0-dim long buffer
 
         if self.use_moco:
             # TODO Verifica deep copy
             self.momentum_student = copy.deepcopy(self.student)
+            self.momentum_student.eval()  # todo qui la causa di tutti i  miei mali?
             for parameter in self.momentum_student.parameters():
                 parameter.requires_grad_(False)
 
@@ -123,6 +124,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
         return torch.optim.Adam(weight_decay=.01, params=params, fused=True)
+
+    def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, ) -> None:
+        # Let Lightning handle closure semantics properly
+        optimizer.step(closure=optimizer_closure)
+
+        # Update EMA after the actual optimizer step
+        if self.use_moco:
+            self.moco_momentum_update()
 
     def _compute_step_metrics(
             self,
@@ -169,8 +178,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     @torch.no_grad()
     def moco_init_queue(self, key: str, dim: int, device):
         if key not in self.moco_queue:
-            self.moco_queue[key] = F.normalize(torch.randn(self.queue_size, dim, device=device), dim=-1)
-            self.register_buffer(f"queue_ptr_{key}", torch.zeros((), dtype=torch.long))
+            q = F.normalize(torch.randn(self.queue_size, dim, device=device), dim=-1)
+            self.register_buffer(f"moco_queue_{key}", q)
+            self.register_buffer(f"queue_ptr_{key}", torch.zeros((), dtype=torch.long, device=device))
+            self.moco_queue[key] = getattr(self, f"moco_queue_{key}")
             self.queue_ptr[key] = getattr(self, f"queue_ptr_{key}")
 
     @torch.no_grad()
@@ -320,10 +331,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         return root
 
-    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
-        if self.use_moco:
-            self.moco_momentum_update()
-
     def state_update(self) -> Literal['bidirectional', 'causal']:
         # Randomly draw the modality we want to train on (For the time relations)
         causal_p = self.p_causal_schedule()
@@ -340,28 +347,13 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         # Convert the batch to fp16 from quantized
         batch = self.dequantize(self.nest(batch), torch.float16)
 
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
-        self.momentum_modality_pooled = None
-
-        if self.use_moco:
-            with torch.no_grad():
-                momentum_out: WeaklySupervisedEegBaseModelOutputs = self.momentum_student(batch["student"], use_kd=True)
-                self.momentum_modality_pooled = {}
-
-                for key, mv in momentum_out.multimodal_outs.items():
-                    valid = self._get_y_valid(mv)
-                    B, D = mv["data"].size(0), mv["data"].size(-1)
-                    pooled_all = torch.zeros((B, D), device=mv["data"].device, dtype=mv["data"].dtype)
-
-                    if valid.any():
-                        pooled_valid = self._y_mean(mv, valid)
-                        pooled_all[valid] = pooled_valid
-
-                    self.momentum_modality_pooled[key] = pooled_all  # [B, D]
-
+        self.momentum_out = None
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+            if self.use_moco:
+                self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
 
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         return self._compute_step_metrics(stud_out, teacher_out, batch, 'train', mode)
 
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
@@ -393,10 +385,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self._compute_batch_metrics(fused_z, pivot_z, outputs, 'train')
 
     def on_validation_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0):
-        # Every 10 batches we run the batch end operations
-        if not batch_idx % 10 == 0:
-            return  # todo vedi se si puo fare
-
         for mode, val in outputs.items():
             _ = val.pop("loss")  # We have to ignore it
             if self.FUSED_KEY in val:
@@ -404,6 +392,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 pivot_z = self._y_mean(val[self.PIVOT_KEY], self._get_y_valid(val[self.PIVOT_KEY]))
                 # Compute and log the metrics.
                 self._compute_batch_metrics(fused_z, pivot_z, val, 'val', mode=mode)
+
+    def on_test_batch_end(self, outputs: dict, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
+        self.on_validation_batch_end(outputs, batch, batch_idx, dataloader_idx)
 
     @staticmethod
     @torch.no_grad()
@@ -434,6 +425,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.log(f"{step_type}/kd/n_modalities", float(n), on_epoch=True, on_step=True, prog_bar=False)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        return self.validation_step(batch, batch_idx)
+
     @staticmethod
     def _get_y_valid(y: MaskedValue) -> torch.Tensor:
         return y["mask"].sum(dim=1) > 0
@@ -462,20 +456,24 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             if not valid_rows.any():
                 continue
 
-            z_pos = self._y_mean(value, valid_rows)
-            zb_neg = None  # Negatives to add to batch
+            q = fused_output[valid_rows]
+
+            # Negatives to add to batch
+            zb_neg = None
             if self.use_moco and step_type == "train":
-                self.moco_init_queue(key, dim=z_pos.size(-1), device=z_pos.device)
+                self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
                 zb_neg = self.moco_queue[key]
 
+            if self.use_moco and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+                mv_k = self.momentum_out.multimodal_outs[key]
+                zb_pos = self._y_mean(mv_k, valid_rows).detach()  # [Nv, D]
+                # Enqueue momentum positives
+                self.moco_enqueue(key, zb_pos)
+            else:
+                zb_pos = self._y_mean(value, valid_rows)
+
             count_present += 1
-            mod_loss = self.siglip_losses[key](fused_output[valid_rows], z_pos, zb_neg)
-
-            if self.use_moco and step_type == "train":
-                k = None if self.momentum_modality_pooled is None else self.momentum_modality_pooled.get(key)
-                if k is not None:
-                    self.moco_enqueue(key, k[valid_rows])  # optionally enqueue only rows matching valid_rows
-
+            mod_loss = self.siglip_losses[key](q, zb_pos, zb_neg)
             self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss

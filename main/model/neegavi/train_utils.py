@@ -55,7 +55,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                     ds_path,
                     prefix="train",
                     block_size=32,
-                    buffer_size=96,
+                    buffer_size=384,
                     batch_size=self.batch_size,
                     iterator_id=self.restore_iteration
                 )
@@ -72,9 +72,15 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 )
             )
 
-            # test_datasets.append(
-            #     H5KdDataset(ds_path, prefix="test", block_size=256, buffer_size=256, batch_size=self.batch_size)
-            # )
+            test_datasets.append(
+                H5KdDataset(
+                    ds_path,
+                    prefix="test",
+                    block_size=32,
+                    buffer_size=96,
+                    batch_size=self.batch_size
+                )
+            )
 
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=16)
         self.valid_dataset = ChainDataset(val_datasets)
