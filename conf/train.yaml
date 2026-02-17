@@ -1,11 +1,11 @@
 defaults:
-  - hydra-setup
   - model: default
   - trainer: default
   - teacher: default
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
+experiment: ???
 base_path: /root/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
@@ -20,11 +20,16 @@ dataset_descriptors:
   - dataset_path: "/localssd/EEGAVI/MAHNOB/"
     cache_path: null
     dataset_weight: 30 # Power Law
-  #- dataset_path: "/mnt/turing-datasets/EEGAVI/EAV/combined/"
-  #  cache_path: null
-  #  dataset_weight: 100
+  - dataset_path: "/mnt/turing-datasets/EEGAVI/EAV/combined/"
+    cache_path: null
+    dataset_weight: 100
 
 hydra:
+  job:
+    name: ${experiment}
+  run:
+    dir: outputs/${hydra.job.name}
+
   job_logging:
     root:
       handlers: [ console, file ]   # make sure both are used

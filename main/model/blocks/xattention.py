@@ -54,7 +54,7 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         # Pre-LN + Cross modality attention
         norm_q = self.norm_q(q)
         norm_kv = self.norm_kv(kv)
-        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.tanh()
+        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.sigmoid() # TODO: Check if this helps. I changed from tanh to sigmoid
 
         if self.self_attn is not None:
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.

@@ -8,10 +8,12 @@ from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
 from torch.nn import functional as F
 from torch.optim import Optimizer
+from transformers import get_cosine_schedule_with_warmup
 
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.blocks.pooling import ClsPooling, MaskedAvgPooling
 from main.model.blocks.time_masked import TimeMaskSwitchableProperties
+from main.model.blocks.xattention import GatedXAttentionBlock
 from main.model.loss import SiglipLoss
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
@@ -40,7 +42,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             seed: int = 1,
             use_moco: bool = False,
             momentum: float = .9,
-            queue_size: int = 96,
+            queue_size: int = 1024,
             batch_size=None
     ):
         super().__init__()
@@ -99,9 +101,8 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.queue_ptr = {}  # key -> 0-dim long buffer
 
         if self.use_moco:
-            # TODO Verifica deep copy
             self.momentum_student = copy.deepcopy(self.student)
-            self.momentum_student.eval()  # todo qui la causa di tutti i  miei mali?
+            self.momentum_student.eval()
             for parameter in self.momentum_student.parameters():
                 parameter.requires_grad_(False)
 
@@ -123,7 +124,19 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         ]
 
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
-        return torch.optim.Adam(weight_decay=.01, params=params, fused=True)
+        optimizer = torch.optim.Adam(weight_decay=.01, params=params, fused=True)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": dict(
+                interval="step", frequency=1,
+                # Cosine scheduler works just fine with siglip like losses
+                scheduler=get_cosine_schedule_with_warmup(
+                    optimizer,
+                    num_warmup_steps=int(self.trainer.max_steps * 0.05),  # 5 %
+                    num_training_steps=self.trainer.max_steps,
+                ),
+            )
+        }
 
     def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, ) -> None:
         # Let Lightning handle closure semantics properly
@@ -155,7 +168,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             )
 
             return_object["loss"] = return_object["loss"] + fusion_loss * self.beta
-            self.log(f"{step_type}/fusion", fusion_loss, on_epoch=False, on_step=True, prog_bar=True)
+            self.log(
+                f"{step_type}/fusion", fusion_loss,
+                on_epoch=step_type != "train", on_step=step_type == "train", prog_bar=True
+            )
 
             # For later evaluations
             return_object[self.FUSED_KEY] = stud.cls.detach()
@@ -165,7 +181,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 return_object[key] = masked_value
 
         train = step_type == "train"
-        self.log(f"{step_type}/loss", return_object["loss"], prog_bar=train, on_step=True, on_epoch=True)
+        self.log(f"{step_type}/loss", return_object["loss"], prog_bar=train, on_step=True, on_epoch=False)
         self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=False)
         return return_object
 
@@ -353,6 +369,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             if self.use_moco:
                 self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
 
+        lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+        self.log("lr", lr, on_step=True, on_epoch=False, prog_bar=False)
+        self.observe_xattn_gates()  # More metrics to see if there are problems here.
+
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
         return self._compute_step_metrics(stud_out, teacher_out, batch, 'train', mode)
 
@@ -495,3 +515,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         top_k = similarity.topk(k, dim=1).indices
         gt = torch.arange(similarity.size(0), device=similarity.device).unsqueeze(1)
         return (top_k == gt).any(dim=1).float().mean()
+
+    def observe_xattn_gates(self):
+        xattn_layer: GatedXAttentionBlock
+        for idx, xattn_layer in enumerate(self.student.gatedXAttn_layers):
+            self.log(f"model/attn_gate_{idx}", xattn_layer.attn_gate, on_step=True, on_epoch=False, prog_bar=False)
+            self.log(f"model/ff_gate_{idx}", xattn_layer.ff_gate, on_step=True, on_epoch=True, prog_bar=False)

@@ -8,4 +8,3 @@ defaults:
   - supports@supports.aud: aud_default
   - supports@supports.txt: txt_default
   - supports@supports.ecg: ecg_default
-  - supports@supports.assessment: assessment_default

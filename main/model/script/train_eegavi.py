@@ -16,7 +16,7 @@ from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
 
 
-@hydra.main(config_path="config", config_name="default")
+@hydra.main(config_path="../../../conf", config_name="train")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     logger = make_logger("hydra-main.train_eegavi")
@@ -60,7 +60,7 @@ def main(cfg: KdConfig):
 
     model_name: str = (
         # todo pass seed in cfg
-        f"eegavi_{AppConfig.SEED}"  
+        f"eegavi_{AppConfig.SEED}"
         f"_{"moco" if cfg.trainer.use_moco else ""}"
         f"_b{cfg.trainer.batch_size}"
         f"_lr{cfg.trainer.lr}"
@@ -88,14 +88,14 @@ def main(cfg: KdConfig):
         ],
         # num_sanity_val_steps=1,
         precision="16-mixed",  # P6000 has no tensor cores
-        log_every_n_steps=50,
+        log_every_n_steps=int(10 / 2),  # Plot every 1%
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
-        max_steps=1000000,  # 1000000
-        val_check_interval=5000,
+        max_steps=100_000,  # 1000000
+        val_check_interval=int(1000 / 2),
         max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=5,  # This is to stabilize training
+        accumulate_grad_batches=2,  # This is to stabilize training
     )
     # In case we want to restore a previous training we have to set ckpt_path
     trainer.fit(module, datamodule=kd_train_datamodule, ckpt_path=cfg.trainer.ckpt_path)
