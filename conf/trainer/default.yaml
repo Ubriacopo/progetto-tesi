@@ -1,11 +1,11 @@
 # Training infos
-lr: 3e-4
+lr: 1e-4
 kd_loss_weight: 1.0
 fusion_loss_weight: 1.0
 kd_temperature: 0.2
 epochs: 1
-batch_size: 64
+batch_size: 24
 batches_per_epoch: 1000 # 0.6 of all.
 dl_start_index: 0
 ckpt_path: null
-use_moco: False
+use_moco: True

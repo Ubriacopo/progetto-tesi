@@ -194,9 +194,9 @@ class H5KdDataset(IterableDataset):
         # if out[next(iter(out))].size(0) != self.batch_size: return None, buffered_samples
 
         return out, buffered_samples
-    # todo misura?
-    def old_pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
-        output = []
+
+    def strong_pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
+        output: list[dict[str, torch.Tensor]] = []
         for batch_element in range(self.batch_size):
             if not block_buffer:
                 break
@@ -219,7 +219,8 @@ class H5KdDataset(IterableDataset):
             output.append(sample)  # breaks storage sharing
             buffered_samples -= 1
 
-        return output, buffered_samples
+        out = {k: torch.cat([p[k] for p in output], dim=0) for k in output[0].keys()}
+        return out, buffered_samples
 
     def read_block(self, dsets: dict[str, h5py.Dataset], start: int, stop: int):
         output = {}

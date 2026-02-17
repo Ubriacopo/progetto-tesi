@@ -41,11 +41,14 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             bidirectional_p: float = .9,  # For ATTN
             seed: int = 1,
             use_moco: bool = False,
+            moco_start_step: int = 3000,
             momentum: float = .9,
             queue_size: int = 1024,
             batch_size=None
     ):
         super().__init__()
+        # todo usa hparams
+        # self.save_hyperparameters(ignore=["student", "teacher", "datamodule"])
         self.batch_size = batch_size
         self.datamodule: KdTrainDataModule = datamodule
 
@@ -91,6 +94,9 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         # If MoCo style training is enabled
         self.use_moco: bool = use_moco
+        self.moco_start_step: int = moco_start_step
+        self.moco_enabled: bool = False  # This is an inner flag
+
         self.momentum_modality_pooled: Optional[dict[str, torch.Tensor]] = None
         self.momentum_student: Optional[EegInterAviModel] = None
         # Even if we don't use moco we initialize these for practicality
@@ -143,7 +149,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         optimizer.step(closure=optimizer_closure)
 
         # Update EMA after the actual optimizer step
-        if self.use_moco:
+        if self.use_moco and self.moco_enabled:
             self.moco_momentum_update()
 
     def _compute_step_metrics(
@@ -255,7 +261,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         fused = F.normalize(fused_z, dim=-1)
         pivot = F.normalize(pivot_z, dim=-1)
 
-        top_k_values = (1, 3, self.k)
+        top_k_values = (1, 3)
         top1_mean = []
         for key, embedding in outputs.items():
             valid = self._get_y_valid(embedding)
@@ -347,6 +353,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         return root
 
+    def on_train_batch_start(self, batch, batch_idx):
+        if self.use_moco and (not self.moco_enabled) and self.global_step >= self.hparams.moco_start_step:
+            self.moco_enabled = True
+
     def state_update(self) -> Literal['bidirectional', 'causal']:
         # Randomly draw the modality we want to train on (For the time relations)
         causal_p = self.p_causal_schedule()
@@ -366,7 +376,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         self.momentum_out = None
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
-            if self.use_moco:
+            if self.use_moco and self.moco_enabled:
                 self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
 
         lr = self.trainer.optimizers[0].param_groups[0]["lr"]
@@ -480,11 +490,11 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
             # Negatives to add to batch
             zb_neg = None
-            if self.use_moco and step_type == "train":
+            if self.use_moco and self.moco_enabled and step_type == "train":
                 self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
                 zb_neg = self.moco_queue[key]
 
-            if self.use_moco and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+            if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
                 mv_k = self.momentum_out.multimodal_outs[key]
                 zb_pos = self._y_mean(mv_k, valid_rows).detach()  # [Nv, D]
                 # Enqueue momentum positives
