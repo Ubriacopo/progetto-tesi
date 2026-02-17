@@ -90,8 +90,15 @@ def main(cfg: KdConfig):
         max_epochs=-1,  # or a very large number
         accumulate_grad_batches=5,  # This is to stabilize training
     )
-    # todo test on each ds indipendently?
+
     logger.info(profiler.summary())
+    c = kd_train_datamodule.test_for_ds()
+    # Experiment on each ds independently
+    for key, value in c.items():
+        logger.info(f"Testing for dataset {key}")
+        trainer.test(module, dataloaders=value)
+
+    # Experiment on all also
     trainer.test(module, datamodule=kd_train_datamodule)
 
 

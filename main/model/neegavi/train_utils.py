@@ -34,6 +34,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
 
         self.train_dataset: Optional[IterableDataset] = None
         self.valid_dataset: Optional[IterableDataset] = None
+
+        self.test_ds_collection: dict[str, IterableDataset] = {}
         self.test_dataset: Optional[IterableDataset] = None
 
         # Tunable settings to make training faster. Non data related
@@ -42,6 +44,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.batch_size: int = batch_size
         self.batches_per_epoch: int = batches_per_epoch
         self.restore_iteration: int = restore_iteration
+
+        self.load_test = False
 
     def setup(self, stage: str) -> None:
         datasets, weights = [], []
@@ -72,19 +76,19 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 )
             )
 
-            test_datasets.append(
-                H5KdDataset(
-                    ds_path,
-                    prefix="test",
-                    block_size=32,
-                    buffer_size=96,
-                    batch_size=self.batch_size
-                )
-            )
+            if self.load_test:
+                self.test_ds_collection[shards_path.dataset_path] = (
+                    H5KdDataset(
+                        ds_path,
+                        prefix="test",
+                        block_size=32,
+                        buffer_size=96,
+                        batch_size=self.batch_size
+                    ))
 
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=16)
         self.valid_dataset = ChainDataset(val_datasets)
-        self.test_dataset = ChainDataset(test_datasets)
+        self.test_dataset = ChainDataset(self.test_ds_collection.values())
 
     def _move(self, x, device):
         if isinstance(x, torch.Tensor) or isinstance(x, TensorDict):
@@ -131,3 +135,17 @@ class KdTrainDataModule(lightning.LightningDataModule):
             persistent_workers=True,
             pin_memory=False
         )
+
+    def test_for_ds(self):
+        return {
+            name: DataLoader(
+                ds,
+                batch_size=None,
+                collate_fn=self.collate_fn,
+                num_workers=1,
+                prefetch_factor=1,
+                persistent_workers=True,
+                pin_memory=False
+            )
+            for name, ds in self.test_ds_collection.items()
+        }
