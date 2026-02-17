@@ -72,12 +72,15 @@ def check_supports(supports: nn.ModuleList) -> int:
 class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     KD_KEY = "kd"
 
-    def __init__(self,
-                 config: EegInterAviModelConfiguration,
-                 pivot: ModalityStream, *supports: ModalityStream,
-                 modality_dropout: Optional[ModalityDropout] = None,
-                 attn_blocks: list[AbstractAttentionBlock],
-                 pooling: Optional[nn.Module] = None):
+    def __init__(
+            self,
+            config: EegInterAviModelConfiguration,
+            pivot: ModalityStream,
+            *supports: ModalityStream,
+            modality_dropout: Optional[ModalityDropout] = None,
+            attn_blocks: list[AbstractAttentionBlock],
+            pooling: Optional[nn.Module] = None
+    ):
         """
         EegInterVaiModel is partially inspired by the novel approach of the Flamingo model by Google.
         It keeps the same idea of interleaving different modality data but extends it on the time axis.

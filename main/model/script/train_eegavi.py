@@ -1,3 +1,5 @@
+from random import seed
+
 import hydra
 import lightning as L
 import torch
@@ -17,7 +19,7 @@ from main.utils.logging import make_logger
 @hydra.main(config_path="config", config_name="default")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
-    logger = make_logger("hydra-main>train_eegavi")
+    logger = make_logger("hydra-main.train_eegavi")
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     init_object = hydra_utils.init_trainlike_script(cfg)
 
@@ -28,15 +30,15 @@ def main(cfg: KdConfig):
         dataset_paths=cfg.dataset_descriptors,
         batch_size=cfg.trainer.batch_size,
         batches_per_epoch=cfg.trainer.batches_per_epoch,
+        restore_iteration=cfg.trainer.dl_start_index,  # To resume a training if necessary
         seed=AppConfig.SEED
     )
 
     module = EegAviKdVateMaskedSemiSupervisedModule(
         student=student,
         teacher=teacher,
-
         datamodule=kd_train_datamodule,
-        use_moco=True,
+        use_moco=cfg.trainer.use_moco,
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,
         lr=cfg.trainer.lr,
@@ -55,11 +57,20 @@ def main(cfg: KdConfig):
     torchinfo.summary(module)
     m_key = "val/top1_mean"
     val_check_interval = 1000
+
+    model_name: str = (
+        # todo pass seed in cfg
+        f"eegavi_{AppConfig.SEED}"  
+        f"_{"moco" if cfg.trainer.use_moco else ""}"
+        f"_b{cfg.trainer.batch_size}"
+        f"_lr{cfg.trainer.lr}"
+    )
+
     trainer = L.Trainer(
         # profiler=profiler,
         # enable_progress_bar=False,
         accelerator="gpu",
-        logger=TensorBoardLogger("tb_logs", name="my_model"),
+        logger=TensorBoardLogger("tb_logs", name=model_name, version="0"),
         devices=1,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
@@ -84,10 +95,10 @@ def main(cfg: KdConfig):
         max_steps=1000000,  # 1000000
         val_check_interval=5000,
         max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=5, # This is to stabilize training
+        accumulate_grad_batches=5,  # This is to stabilize training
     )
-
-    trainer.fit(module, datamodule=kd_train_datamodule)
+    # In case we want to restore a previous training we have to set ckpt_path
+    trainer.fit(module, datamodule=kd_train_datamodule, ckpt_path=cfg.trainer.ckpt_path)
     logger.info(profiler.summary())
 
     # trainer.test(module, datamodule=kd_train_datamodule)

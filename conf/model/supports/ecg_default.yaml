@@ -12,5 +12,5 @@ config:
   out_size: ${model.supports_out_size}
   perceiver_resampler_config: ${model.factory.perceiver_resampler_config}
   timestep_seconds: 4
-  mult: 4
+  mult: 6
   dropout: 0.0

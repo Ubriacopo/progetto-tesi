@@ -16,6 +16,9 @@ class TrainerConfig:
     ecg_correction_weight: float
     kd_temperature: float
     batches_per_epoch: int
+    dl_start_index: int
+    ckpt_path: str
+    use_moco: bool
 
 
 @dataclasses.dataclass

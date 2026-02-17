@@ -14,22 +14,18 @@ supports_timestep_seconds: 4 # todo vedi se puoi togliere
 pivot: eeg
 supports: [ vid, aud, txt, ecg ]
 
-classpath: main.model.neegavi.factory.WeaklySupervisedDefaultEegInterAviFactory
-constructor_args:
+factory_path: main.model.neegavi.factory.Factory.default
+args:
+  disabled_supports: [ ]
   # Pivot
-  disabled_supports: [ txt ]
   eeg_config: ${...pivot.config}
-
   # Supports
   vid_config: ${...supports.vid.config}
   aud_config: ${...supports.aud.config}
   txt_config: ${...supports.txt.config}
   ecg_config: ${...supports.ecg.config}
 
-  wrapper_config:
-    hidden_size: 100
-    output_size: 4
-
-  attention_config: 2
+  attention_config: 4
   # Args for the construction of the EegInterAviModel
   custom_config: ${model.custom_config}
+

@@ -125,7 +125,7 @@ class Factory:
             Factory()
             .config(custom_config)
             # .pooling(None) Pooling is by default None which is a valid value
-            .modality_dropout(BernoulliSupportsModalityDropout(4, 0.1))  # TODO find good configuration
+            .modality_dropout(BernoulliSupportsModalityDropout(4, custom_config.drop_p))  # TODO find good configuration
             .attention(
                 GatedXAttentionFactory(custom_config.pivot_dim, custom_config.support_dim).build(attention_config))
             .pivot(
