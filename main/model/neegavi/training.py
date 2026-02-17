@@ -354,7 +354,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         return root
 
     def on_train_batch_start(self, batch, batch_idx):
-        if self.use_moco and (not self.moco_enabled) and self.global_step >= self.hparams.moco_start_step:
+        if self.use_moco and (not self.moco_enabled) and self.global_step >= self.moco_start_step:
             self.moco_enabled = True
 
     def state_update(self) -> Literal['bidirectional', 'causal']:
