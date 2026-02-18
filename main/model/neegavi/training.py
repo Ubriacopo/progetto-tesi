@@ -43,7 +43,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             use_moco: bool = False,
             moco_start_step: int = 3000,
             momentum: float = .9,
-            queue_size: int = 1024,
+            queue_size: int = 512,
             batch_size=None
     ):
         super().__init__()
@@ -119,18 +119,18 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         params += [
             # siglip_common_optim_configs for Fusion
-            {"params": i.parameters(), "lr": self.lr * 5, "weight_decay": 0.0}
+            {"params": i.parameters(), "lr": self.lr, "weight_decay": 0.0}
             for i in self.siglip_losses.values()
         ]
 
         params += [
             # siglip_common_optim_configs for KD
-            {"params": i.parameters(), "lr": self.lr * 5, "weight_decay": 0.0}
+            {"params": i.parameters(), "lr": self.lr, "weight_decay": 0.0}
             for i in self.kd_losses.values()
         ]
 
         params += [{"params": self.student.parameters(), "lr": self.lr}]  # Student parameters
-        optimizer = torch.optim.Adam(weight_decay=.01, params=params, fused=True)
+        optimizer = torch.optim.AdamW(params=params, weight_decay=0.01, fused=True)
         return {
             "optimizer": optimizer,
             "lr_scheduler": dict(
@@ -138,7 +138,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 # Cosine scheduler works just fine with siglip like losses
                 scheduler=get_cosine_schedule_with_warmup(
                     optimizer,
-                    num_warmup_steps=int(self.trainer.max_steps * 0.05),  # 5 %
+                    num_warmup_steps=max(1000, int(self.trainer.max_steps * 0.05)),  # 5 %
                     num_training_steps=self.trainer.max_steps,
                 ),
             )
@@ -355,7 +355,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
     def on_train_batch_start(self, batch, batch_idx):
         if self.use_moco and (not self.moco_enabled) and self.global_step >= self.moco_start_step:
-            self.moco_enabled = True
+            self.moco_enabled = True  # todo vedi se funziona questa attivazione
 
     def state_update(self) -> Literal['bidirectional', 'causal']:
         # Randomly draw the modality we want to train on (For the time relations)

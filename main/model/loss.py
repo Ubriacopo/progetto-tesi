@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 
 import torch
@@ -75,9 +76,14 @@ class SiglipLoss(nn.Module):
             zb_negative = zb_negative.detach()
             zb = torch.cat([zb, zb_negative], dim=0)
 
-        b = self.bias
-        T = self.logt.exp()
-        logits = (za @ zb.T) * T + b  # [B, B]
+
+        LOGT_MIN = math.log(5.0)    # tau=0.2
+        LOGT_MAX = math.log(100.0)  # tau=0.01
+
+        logt = self.logt.clamp(LOGT_MIN, LOGT_MAX)
+        T = logt.exp()
+
+        logits = (za @ zb.T) * T + self.bias.clamp(-20.0, 5.0)  # [B, B]
         B = za.size(0)
         # +1 on diag, -1 off-diag
 
