@@ -49,7 +49,6 @@ def main(cfg: KdConfig):
         dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"]
     )
 
-    module.hparams
     for n, p in student.named_parameters():
         logger.info(n, p.requires_grad, p.grad is None)
 
@@ -80,7 +79,7 @@ def main(cfg: KdConfig):
                 dirpath="checkpoints",
                 filename="step{step}",
                 every_n_train_steps=val_check_interval,
-                save_top_k=3,
+                save_top_k=1,
                 save_last=True,
                 monitor=m_key,
                 mode="max",
