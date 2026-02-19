@@ -60,7 +60,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         self.siglip_losses: nn.ModuleDict = nn.ModuleDict()
         for fusion_metric in fusion_metrics:
-            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=True, verbose=self.verbose)
+            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
             self.siglip_losses.add_module(fusion_metric, loss_fn)
 
         self.kd_losses: nn.ModuleDict = nn.ModuleDict()
