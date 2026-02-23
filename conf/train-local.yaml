@@ -21,7 +21,7 @@ dataset_descriptors:
     dataset_weight: 30
   - dataset_path: "/home/jacopo/dataset/EEGAVI/EAV/combined/"
     cache_path: null
-    dataset_weight: 180
+    dataset_weight: 200
 
 
 

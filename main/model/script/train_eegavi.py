@@ -75,7 +75,7 @@ def main(cfg: KdConfig):
         devices=1,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
-            EarlyStopping(monitor=m_key, min_delta=0.002, patience=12, mode="max", verbose=True),
+            EarlyStopping(monitor=m_key, min_delta=0.002, patience=8, mode="max", verbose=True),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename="step{step}",
