@@ -86,7 +86,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                         batch_size=self.batch_size
                     ))
 
-        self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=16)
+        self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=4)
         self.valid_dataset = ChainDataset(val_datasets)
         self.test_dataset = ChainDataset(self.test_ds_collection.values())
 

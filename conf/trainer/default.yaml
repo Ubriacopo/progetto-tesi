@@ -1,5 +1,5 @@
 # Training infos
-lr: 3e-4
+lr: 1.5e-4
 kd_loss_weight: 1.0
 fusion_loss_weight: 1.0
 kd_temperature: 0.2
