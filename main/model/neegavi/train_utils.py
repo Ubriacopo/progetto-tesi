@@ -108,9 +108,10 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=1,
+            num_workers=4,
             prefetch_factor=1,
-            persistent_workers=True,  # This is required for the way we handle shuffling
+            # This is required for the way we handle shuffling
+            persistent_workers=True,
             pin_memory=False
         )
 
