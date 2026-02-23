@@ -64,6 +64,7 @@ class PerceiverAttention(nn.Module):
 
 
 class PerceiverResampler(nn.Module):
+    # todo no benefit from maxnum_tseps
     def __init__(self, dim: int, depth: int, dim_head: int = 64, heads: int = 8, num_latents: int = 64,
                  max_num_time_steps: int = None, max_num_frames: int = None, ff_mult: int = 4):
         # We learn the latents
