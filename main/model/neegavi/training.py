@@ -7,7 +7,6 @@ import torch
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torch import nn
 from torch.nn import functional as F
-from torch.optim import Optimizer
 from transformers import get_cosine_schedule_with_warmup
 
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
@@ -497,8 +496,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
                 mv_k = self.momentum_out.multimodal_outs[key]
                 zb_pos = self._y_mean(mv_k, valid_rows).detach()  # [Nv, D]
-                # Enqueue momentum positives
-                self.moco_enqueue(key, zb_pos)
             else:
                 zb_pos = self._y_mean(value, valid_rows)
 
@@ -507,6 +504,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
             base_loss = base_loss + mod_loss
+
+            if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+                # Enqueue momentum positives
+                self.moco_enqueue(key, zb_pos)
 
         return base_loss / count_present
 
