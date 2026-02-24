@@ -165,3 +165,33 @@ def timed(label: str = None, longer_than: float = 0.5, suppress: bool = BaseConf
         return wrapper
 
     return decorator
+
+
+def unflatten(flat: dict):
+    root = {}
+    for key, value in flat.items():
+        parts = key.split("/")
+        current = root
+
+        for part in parts[:-1]:
+            current = current.setdefault(part, {})
+
+        current[parts[-1]] = value
+
+    return root
+
+
+def dequantize(dequantize_keys: list[str], batch: dict, dtype=torch.float16):
+    output = {}
+    for container_key, container in batch.items():
+        output[container_key] = {}
+        for key, td in container.items():
+            if key in dequantize_keys:
+                data = td["data"].to(dtype=dtype, non_blocking=True)
+                data.mul_(td["scales"])  # For optimization reasons (I dislike it)
+
+                td = {"data": data, "mask": td["mask"]}
+
+            output[container_key][key] = td
+
+    return output

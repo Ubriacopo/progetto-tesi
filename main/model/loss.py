@@ -9,6 +9,13 @@ from torch.nn.functional import normalize, logsigmoid
 from main.utils.logging import make_logger
 
 
+@torch.no_grad()
+def siglip_random_baseline(loss_fn, a, b):
+    # shuffle targets to break alignment
+    idx = torch.randperm(b.shape[0], device=b.device)
+    return loss_fn(a, b[idx])
+
+
 def lightweight_whitening(z: torch.Tensor):
     """
     common component removal / mean-centering (lightweight version of whitening that works great for small-batch contrastive training).
@@ -27,20 +34,32 @@ def lightweight_whitening(z: torch.Tensor):
 
 
 class SiglipLoss(nn.Module):
-    def __init__(self, init_tau=0.07, init_bias=-10, stop_grad_target: bool = False, verbose: bool = False):
+    def __init__(
+            self,
+            init_tau=0.07,
+            init_bias=-10,
+            tau_min: float = 0.01,
+            tau_max: float = 0.5,
+            bias_scale: float = 5.0,
+            stop_grad_target: bool = False,
+    ):
         super(SiglipLoss, self).__init__()
-
-        self.logt = nn.Parameter(torch.tensor([float(torch.log(torch.tensor(1.0 / init_tau)))]))  # ~ ln(1/τ)
-        # self.logt = torch.log(torch.tensor([1. / init_tau], device="cuda"))
-        # learnable scalar bias (start near 0 so positives can go > 0)
-        self.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float32))
-        # self.bias = torch.tensor([init_bias], device="cuda")
-        self.verbose = verbose
-        self.logger = make_logger(self.__class__.__name__)
         self.stop_grad_target: bool = stop_grad_target
-
+        self.logger = make_logger(self.__class__.__name__)
         if self.stop_grad_target:
             self.logger.info("Heads will be detached for forward pass in this class instance")
+
+        self.LOGT_MIN = math.log(1 / tau_max)
+        self.LOGT_MAX = math.log(1 / tau_min)
+
+        self.bias_scale = float(bias_scale)
+
+        init_logt = math.log(1.0 / float(init_tau))
+        p = (init_logt - self.LOGT_MIN) / (self.LOGT_MAX - self.LOGT_MIN)
+        p = min(max(p, 1e-4), 1.0 - 1e-4)  # keep invertible
+        init_u = math.log(p / (1.0 - p))
+        self.logt = nn.Parameter(torch.tensor([init_u], dtype=torch.float32))
+        self.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float32))
 
     def forward(self, za: torch.Tensor, zb: torch.Tensor, zb_negative: Optional[torch.Tensor] = None, ignore_mask=None):
         """
@@ -76,27 +95,28 @@ class SiglipLoss(nn.Module):
             zb_negative = zb_negative.detach()
             zb = torch.cat([zb, zb_negative], dim=0)
 
+        t = (self.LOGT_MIN + (self.LOGT_MAX - self.LOGT_MIN) * torch.sigmoid(self.logt)).exp()
+        bias = self.bias_scale * torch.tanh(self.bias / self.bias_scale)
 
-        LOGT_MIN = math.log(5.0)    # tau=0.2
-        LOGT_MAX = math.log(100.0)  # tau=0.01
+        logits = (za @ zb.T) * t + bias  # [B, B]
 
-        logt = self.logt.clamp(LOGT_MIN, LOGT_MAX)
-        T = logt.exp()
-
-        logits = (za @ zb.T) * T + self.bias.clamp(-20.0, 5.0)  # [B, B]
         B = za.size(0)
+        M = logits.size(1)
         # +1 on diag, -1 off-diag
 
-        labels = -torch.ones((B, logits.size(1)), device=logits.device, dtype=logits.dtype)
-        labels[torch.arange(B, device=logits.device), torch.arange(B, device=logits.device)] = 1
-
+        labels = -torch.ones((B, M), device=logits.device, dtype=logits.dtype)
+        labels[torch.arange(B, device=logits.device), torch.arange(B, device=logits.device)] = 1.
+        loss_mat = -logsigmoid(logits * labels)  # [B, M]
         if ignore_mask is not None:
-            # ignore_mask: True where we want to drop loss (e.g., duplicates off-diag)
-            logits[:, :B] = logits[:, :B].masked_fill(ignore_mask, 0.0)
-            labels[:, :B] = labels[:, :B].masked_fill(ignore_mask, 0.0)
+            assert ignore_mask.shape == (B, B) and ignore_mask.dtype == torch.bool
+            loss_mat[:, :B] = loss_mat[:, :B].masked_fill(ignore_mask, 0.0)
 
-        loss = -torch.sum(logsigmoid(logits * labels), dim=-1).mean()
-        return loss
+            valid_per_query = M - ignore_mask.sum(dim=1)  # [B]
+            per_query_loss = loss_mat.sum(dim=1) / valid_per_query.clamp_min(1)
+
+            return per_query_loss.mean()
+
+        return loss_mat.sum(dim=-1).mean()
 
 
 class InfoNCE(nn.Module):

@@ -20,6 +20,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
             batch_size: int,
             batches_per_epoch: int,
             seed: int,
+            dequantize_keys: list[str],
             collate_fn=collate,
             restore_iteration: int = None
     ):
@@ -46,6 +47,10 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.restore_iteration: int = restore_iteration
 
         self.load_test = False
+        self._dequantize_keys: list[str] = dequantize_keys
+
+    def dequantize_keys(self) -> list[str]:
+        return self._dequantize_keys
 
     def setup(self, stage: str) -> None:
         datasets, weights = [], []

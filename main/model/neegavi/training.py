@@ -9,16 +9,355 @@ from torch import nn
 from torch.nn import functional as F
 from transformers import get_cosine_schedule_with_warmup
 
+from main.core_data.utils import unflatten, dequantize
 from main.model.VATE.constrastive_model import MaskedContrastiveModel, MaskedContrastiveModelOutputs
 from main.model.blocks.pooling import ClsPooling, MaskedAvgPooling
 from main.model.blocks.time_masked import TimeMaskSwitchableProperties
 from main.model.blocks.xattention import GatedXAttentionBlock
-from main.model.loss import SiglipLoss
+from main.model.loss import SiglipLoss, siglip_random_baseline
+from main.model.neegavi.moco import MoCoAble
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs, top_k_hits_from_sim
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
+
+
+class EasyEegAviKdVateMaskedModule(MoCoAble):
+    def __init__(
+            self,
+            student: EegInterAviModel,
+            teacher: MaskedContrastiveModel,
+            datamodule: KdTrainDataModule,
+            kd_loss_weight: float,
+            fusion_loss_weight: float,
+            fusion_metrics: list[str],
+            kd_keys: list[str],
+            lr: float,
+            weight_decay: float = 0.01,
+            max_warmup_steps: int = 1000,
+            seed: int = 1,
+            # MoCo relative parameters
+            use_moco: bool = False,
+            moco_start_step: int = 3000,
+            momentum: float = .99,
+            queue_size: int = 512,
+            heavy_compute_interval: int = 10,
+            batch_size=None,
+            use_kd: bool = True,
+            use_fusion: bool = True
+    ):
+        super().__init__(use_moco=use_moco, moco_start_step=moco_start_step, momentum=momentum, queue_size=queue_size)
+        self.use_kd: bool = use_kd
+        self.use_fusion: bool = use_fusion
+
+        self.datamodule: KdTrainDataModule = datamodule
+        self.siglip_losses: nn.ModuleDict = nn.ModuleDict()
+        for fusion_metric in fusion_metrics:
+            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False)
+            self.siglip_losses.add_module(fusion_metric, loss_fn)
+
+        self.kd_losses: nn.ModuleDict = nn.ModuleDict()
+        for kd_key in kd_keys:
+            loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
+            self.kd_losses.add_module(kd_key, loss_fn.to(self.device))
+
+        self.time_mask_switch_generator = torch.Generator(device=self.device)
+        self.time_mask_switch_generator.manual_seed(seed)
+        self.inner_logger = make_logger(self.__class__.__name__)
+
+        self.student: EegInterAviModel = student
+        self.teacher: MaskedContrastiveModel = teacher
+
+        self.momentum_student: EegInterAviModel
+        if self.use_moco:
+            self.init_moco()
+
+        self.save_hyperparameters(ignore=[
+            "datamodule", "student", "teacher", "fusion_metrics", "queue_ptr", "moco_queue", "momentum_out"
+        ])
+
+    def on_train_start(self) -> None:
+        self.time_mask_switch_generator = torch.Generator(device=self.device)
+        self.time_mask_switch_generator.manual_seed(self.hparams.seed)
+
+    def training_step(self, batch, batch_idx):
+        batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
+
+        # Randomly draw the modality we want to train on (For the time relations)
+        causal_p = self.p_causal_schedule()
+        u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
+        mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
+        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+            if self.use_moco and self.moco_enabled:
+                self.momentum_student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+                self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
+
+        lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+        self.log("lr", lr, on_step=True, on_epoch=False, prog_bar=False)
+        self.observe_xattn_gates()  # More metrics to see if there are problems here.
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        return self.compute_step_metrics(stud_out, teacher_out, "train", mode, batch_idx)["loss"]
+
+    def validation_step(self, batch, batch_idx):
+        mode: Literal['causal', 'bidirectional']
+        batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+
+        loss = torch.tensor(0., device=self.device)
+        for mode in ("causal", "bidirectional"):
+            self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+            stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+            loss_object = self.compute_step_metrics(stud_out, teacher_out, 'val', mode, batch_idx)
+            loss += loss_object["loss"]
+
+        # Average between the two
+        return loss / len(("causal", "bidirectional"))
+
+    def test_step(self, batch, batch_idx):
+        return self.validation_step(batch, batch_idx)
+
+    @torch.no_grad()
+    def moco_momentum_update(self):
+        m = self.momentum
+        for model_parameter, momentum_parameter in zip(self.student.parameters(), self.momentum_student.parameters()):
+            momentum_parameter.data.mul_(m).add_(model_parameter.data, alpha=1. - m)
+
+    def init_moco(self):
+        self.momentum_student = copy.deepcopy(self.student)
+        self.momentum_student.eval()
+        for parameter in self.momentum_student.parameters():
+            parameter.requires_grad_(False)
+
+    def configure_optimizers(self) -> OptimizerLRScheduler:
+        lr = self.hparams.lr
+        optimizer = torch.optim.AdamW(
+
+            params=
+            # Parameters from the Siglip losses for the fusion
+            [{"params": i.parameters(), "lr": lr, "weight_decay": 0.0} for i in self.siglip_losses.values()]
+            # Parameters of the Siglip losses for the kd
+            + [{"params": i.parameters(), "lr": lr, "weight_decay": 0.0} for i in self.kd_losses.values()]
+            # Model parameters
+            + [{"params": self.student.parameters(), "lr": lr}],
+
+            weight_decay=self.hparams.weight_decay,  # 0.01
+            fused=True
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": dict(
+                interval="step",
+                frquency=1,
+                # Scheduler for the learning rate
+                scheduler=get_cosine_schedule_with_warmup(
+                    optimizer=optimizer,
+                    num_warmup_steps=max(self.hparams.max_warmup_steps, int(self.trainer.max_steps * 0.05)),  # 5 %
+                    num_training_steps=self.trainer.max_steps,
+                )
+            )
+        }
+
+    def compute_kd_loss(self,
+                        student_out: dict[str, MaskedValue],
+                        teacher_out: MaskedContrastiveModelOutputs,
+                        step_type: Literal['train', 'val', 'test']) -> float:
+        loss, n = .0, 0
+        for key in teacher_out.keys():
+            if key not in student_out:
+                continue  # This element is not KD or is absent from teacher so we cannot learn from it
+            student_data, teacher_data = student_out[key]["data"], teacher_out[key]['data']
+            modality_loss = self.kd_losses[key](student_data, teacher_data)
+
+            rand_baseline = siglip_random_baseline(self.kd_losses[key], student_data, teacher_data, )
+
+            self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=True, prog_bar=False)
+            self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=True, prog_bar=False)
+            loss = loss + modality_loss
+            n += 1
+
+        # Normalize so that missing modalities don't spike up the loss
+        loss = loss / max(1, n)
+
+        self.log(f"{step_type}/kd/loss", loss, on_epoch=False, on_step=True, prog_bar=True)
+        self.log(f"{step_type}/kd/n_modalities", float(n), on_epoch=True, on_step=True, prog_bar=False)
+        return loss
+
+    def compute_fusion_loss(self,
+                            fused_output: torch.Tensor,
+                            modality_outputs: dict[str, MaskedValue],
+                            step_type: Literal['train', 'val', 'test'],
+                            mode: Literal['bidirectional', 'causal']) -> torch.Tensor:
+        base_loss = torch.tensor(0.0, device=fused_output.device)
+        count_present = 0
+
+        for key, value in modality_outputs.items():
+            valid_rows = value["mask"].sum(dim=1) > 0
+            if not valid_rows.any():
+                continue
+
+            q = fused_output[valid_rows]
+            # Negatives to add to batch
+            zb_neg: Optional[torch.Tensor] = None
+            if self.use_moco and self.moco_enabled and step_type == "train":
+                self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
+                zb_neg = self.moco_queue[key]
+
+            if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+                mv_k = self.momentum_out.multimodal_outs[key]
+                zb_pos = self.y_mean(mv_k, valid_rows).detach()  # [Nv, D]
+            else:
+                zb_pos = self.y_mean(value, valid_rows)
+
+            count_present += 1
+            mod_loss = self.siglip_losses[key](q, zb_pos, zb_neg)
+            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
+            self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
+
+            base_loss = base_loss + mod_loss
+            if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+                # Enqueue momentum positives
+                self.moco_enqueue(key, zb_pos)
+
+        return base_loss / count_present
+
+    def y_mean(self, y: MaskedValue, valid_rows: torch.Tensor):
+        y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]
+        if isinstance(self.student.pooling, ClsPooling):
+            return MaskedAvgPooling()(y_before, mask)
+        with torch.no_grad():
+            return self.student.pooling(y_before, mask)
+
+    def compute_top_k_metrics(self,
+                              fused_z: torch.Tensor,
+                              pivot_z: torch.Tensor,
+                              outputs: dict,
+                              step_type: Literal['train', 'val', 'test'],
+                              mode: Optional[Literal['bidirectional', 'causal']] = None):
+        is_train = step_type == "train"
+        distance = (pivot_z - fused_z).norm(dim=1).mean()
+
+        self.log(f"{step_type}/norm(eeg-fused)", distance, on_step=is_train, on_epoch=not is_train)
+
+        fused = F.normalize(fused_z, dim=-1)
+        pivot = F.normalize(pivot_z, dim=-1)
+
+        top_k_values = (1, 3)  # TODO move somewhere else
+        top_1_mean, top_3_mean = [], []
+        nan = torch.tensor(float("nan"), device=fused_z.device, dtype=fused_z.dtype)
+        for key, embedding in outputs.items():
+            valid = embedding["mask"].sum(dim=1) > 0  # todo corretto?
+            if not valid.any():
+                pass  # No valid rows so we have nothing to calculate for this modality
+
+            e = F.normalize(self.y_mean(embedding, valid), dim=-1)
+            f, p = fused[valid], pivot[valid]
+            # Similarity between fused output and the modality prior
+            sim_fe = f @ e.T
+
+            hits_fe = top_k_hits_from_sim(sim_fe, top_k_values)
+            hits_ef = top_k_hits_from_sim(sim_fe.T, top_k_values)  # reuse transpose
+
+            prefix = f"{step_type}/fused/"
+            self.log(f"{prefix}top1_{key}", hits_fe[1], on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top1_{key}/{mode}", hits_fe[1], on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top1_{key}_R", hits_ef[1], on_step=is_train, on_epoch=not is_train)
+
+            self.log(f"{prefix}top3_{key}", hits_fe.get(3, nan), on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top3_{key}/{mode}", hits_fe.get(3, nan), on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top3_{key}_R", hits_ef.get(3, nan), on_step=is_train, on_epoch=not is_train)
+            top_1_mean.append(hits_fe[1])
+            top_3_mean.append(hits_fe.get(3, 0))
+
+            if key == self.student.pivot.code and not is_train:
+                continue
+
+            # Debug only part
+            sim_pe = p @ e.T
+            hits_pe = top_k_hits_from_sim(sim_pe, top_k_values)
+            hits_ep = top_k_hits_from_sim(sim_pe.T, top_k_values)
+            prefix = f"{step_type}/pivot/"
+
+            self.log(f"{prefix}top1_{key}", hits_pe[1], on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top1_{key}/{mode}", hits_pe[1], on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top1_{key}_R", hits_ep[1], on_step=is_train, on_epoch=not is_train)
+
+            self.log(f"{prefix}top3_{key}", hits_pe.get(3, nan), on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top3_{key}/{mode}", hits_pe.get(3, nan), on_step=is_train, on_epoch=not is_train)
+            self.log(f"{prefix}top3_{key}_R", hits_ep.get(3, nan), on_step=is_train, on_epoch=not is_train)
+            self.log(f"{step_type}/delta_{key}", hits_fe[1] - hits_pe[1], on_step=False, on_epoch=True)
+
+        top_1_mean = torch.mean(torch.stack(top_1_mean, dim=0))
+        self.log(f"{step_type}/top1_mean", top_1_mean, on_step=is_train, on_epoch=not is_train)
+
+        try:
+
+            top_3_mean = torch.mean(torch.stack(top_3_mean, dim=0))
+            self.log(f"{step_type}/top3_mean", top_3_mean, on_step=is_train, on_epoch=not is_train)
+        except Exception as e:
+            self.log("fusion_exceptions", 1, on_step=is_train, on_epoch=not is_train)
+
+    def compute_step_metrics(
+            self,
+            stud_outs: EegBaseModelOutputs,
+            teacher_outs: MaskedContrastiveModelOutputs,
+            step_type: Literal['train', 'val', 'test'],
+            mode: Literal['bidirectional', 'causal'],
+            batch_idx: int
+    ) -> dict[str, torch.Tensor | MaskedValue]:
+        loss = torch.tensor(0, device=stud_outs.embeddings['data'].device)
+        return_object: dict[str, torch.Tensor | MaskedValue] = dict(loss=loss)
+
+        if self.use_kd:
+            kd_loss = self.compute_kd_loss(student_out=stud_outs.kd_outs, teacher_out=teacher_outs, step_type=step_type)
+            return_object["loss"] = return_object["loss"] + kd_loss * self.hparams.kd_loss_weight
+
+        if self.use_fusion:
+            is_train = step_type == "train"
+            fusion_loss = self.compute_fusion_loss(stud_outs.cls, stud_outs.multimodal_outs, step_type, mode)
+            return_object["loss"] = return_object["loss"] + fusion_loss * self.hparams.fusion_loss_weight
+            self.log(f"{step_type}/fusion", fusion_loss, on_epoch=not is_train, on_step=is_train, prog_bar=True)
+
+            if step_type != "train" or batch_idx % self.hparams.heavy_compute_interval == 0:
+                outputs = {}
+                for key, masked_value in stud_outs.multimodal_outs.items():
+                    outputs[key] = MaskedValue(data=masked_value["data"].detach(), mask=masked_value["mask"].detach())
+
+                pivot_key = self.student.pivot.code
+
+                pivot_z = self.y_mean(outputs[pivot_key], outputs[pivot_key]["mask"].sum(dim=1) > 0)
+                self.compute_top_k_metrics(stud_outs.cls.detach(), pivot_z, outputs, step_type, mode)
+
+        is_train = step_type == "train"
+        self.log(f"{step_type}/loss", return_object["loss"], prog_bar=is_train, on_step=True, on_epoch=False)
+        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=True, on_epoch=False)
+
+        return return_object
+
+    def p_causal_schedule(self, start: float = .05, end: float = .8, floor_bidirectional: float = .1) -> float:
+        """
+        Common practice: Current setups favors bidirectional at lower epochs and causal later ones.
+        AntLM (2024): explicitly describes a unified framework that alternates/switches between causal LM (causal mask) and masked LM (bidirectional attention).
+        :param start: The starting probability
+        :param end: The target ending probability
+        :param floor_bidirectional: Flooring to avoid one modality domination
+        :return: The probability of being causal
+        """
+        t = min(self.trainer.global_step / self.trainer.max_steps, 1.0)
+        # Cosine ramp
+        p = start + 0.5 * (end - start) * (1 - math.cos(math.pi * t))
+        return min(p, 1.0 - floor_bidirectional)  # At most p=0.9
+
+    def observe_xattn_gates(self):
+        xattn_layer: GatedXAttentionBlock
+        for idx, xattn_layer in enumerate(self.student.gatedXAttn_layers):
+            self.log(f"model/attn_gate_{idx}", xattn_layer.attn_gate, on_step=True, on_epoch=False, prog_bar=False)
+            self.log(f"model/ff_gate_{idx}", xattn_layer.ff_gate, on_step=True, on_epoch=True, prog_bar=False)
 
 
 class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
@@ -48,6 +387,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
         super().__init__()
         # todo usa hparams
         # self.save_hyperparameters(ignore=["student", "teacher", "datamodule"])
+
         self.batch_size = batch_size
         self.datamodule: KdTrainDataModule = datamodule
 
@@ -59,7 +399,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         self.siglip_losses: nn.ModuleDict = nn.ModuleDict()
         for fusion_metric in fusion_metrics:
-            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False, verbose=self.verbose)
+            loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False)
             self.siglip_losses.add_module(fusion_metric, loss_fn)
 
         self.kd_losses: nn.ModuleDict = nn.ModuleDict()
@@ -146,7 +486,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
     def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, ) -> None:
         # Let Lightning handle closure semantics properly
         optimizer.step(closure=optimizer_closure)
-
         # Update EMA after the actual optimizer step
         if self.use_moco and self.moco_enabled:
             self.moco_momentum_update()
@@ -224,6 +563,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             first = self.queue_size - ptr
             self.moco_queue[key][ptr:] = x[:first]
             self.moco_queue[key][:end - self.queue_size] = x[first:]
+
         ptr_buf.fill_((ptr + x.size(0)) % self.queue_size)
 
     @staticmethod
@@ -510,22 +850,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 self.moco_enqueue(key, zb_pos)
 
         return base_loss / count_present
-
-    @staticmethod
-    def _top_1(x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:
-        return EegAviKdVateMaskedSemiSupervisedModule._top_k(x, y, 1)
-
-    @staticmethod
-    def _top_k(x: torch.Tensor, y: torch.Tensor, k: int) -> Optional[torch.Tensor]:
-        x = F.normalize(x, dim=-1)
-        y = F.normalize(y, dim=-1)
-
-        similarity = x @ y.T
-        k = min(k, similarity.size(1))
-
-        top_k = similarity.topk(k, dim=1).indices
-        gt = torch.arange(similarity.size(0), device=similarity.device).unsqueeze(1)
-        return (top_k == gt).any(dim=1).float().mean()
 
     def observe_xattn_gates(self):
         xattn_layer: GatedXAttentionBlock

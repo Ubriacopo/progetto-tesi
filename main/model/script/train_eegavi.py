@@ -10,7 +10,7 @@ from lightning.pytorch.profilers import SimpleProfiler
 
 import hydra_utils
 from main.app_config import AppConfig
-from main.model.neegavi.training import EegAviKdVateMaskedSemiSupervisedModule
+from main.model.neegavi.training import EegAviKdVateMaskedSemiSupervisedModule, EasyEegAviKdVateMaskedModule
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
@@ -31,10 +31,11 @@ def main(cfg: KdConfig):
         batch_size=cfg.trainer.batch_size,
         batches_per_epoch=cfg.trainer.batches_per_epoch,
         restore_iteration=cfg.trainer.dl_start_index,  # To resume a training if necessary
+        dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
         seed=AppConfig.SEED
     )
 
-    module = EegAviKdVateMaskedSemiSupervisedModule(
+    module = EasyEegAviKdVateMaskedModule(
         student=student,
         teacher=teacher,
         datamodule=kd_train_datamodule,
@@ -42,11 +43,10 @@ def main(cfg: KdConfig):
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,
         lr=cfg.trainer.lr,
-        kd_temperature=cfg.trainer.kd_temperature,
+        seed=cfg.seed,
         # All modalities contribute to fusion
         fusion_metrics=init_object.fusion_metric_codes,
         kd_keys=list(map(lambda o: o.key, init_object.teacher_keys)),
-        dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"]
     )
 
     for n, p in student.named_parameters():
