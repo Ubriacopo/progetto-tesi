@@ -42,7 +42,7 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             seed: int = 1,
             use_moco: bool = False,
             moco_start_step: int = 3000,
-            momentum: float = .9,
+            momentum: float = .99,
             queue_size: int = 512,
             batch_size=None
     ):
