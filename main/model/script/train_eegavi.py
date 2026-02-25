@@ -10,7 +10,7 @@ from lightning.pytorch.profilers import SimpleProfiler
 
 import hydra_utils
 from main.app_config import AppConfig
-from main.model.neegavi.training import EegAviKdVateMaskedSemiSupervisedModule, EasyEegAviKdVateMaskedModule
+from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
@@ -66,7 +66,7 @@ def main(cfg: KdConfig):
         f"_lr{cfg.trainer.lr}"
         "no-grad-stop"
     )
-
+    limit_train_batches = 2500 # 900 b=64
     trainer = L.Trainer(
         # profiler=profiler,
         # enable_progress_bar=False,
@@ -78,8 +78,8 @@ def main(cfg: KdConfig):
             EarlyStopping(monitor=m_key, min_delta=0.002, patience=20, mode="max", verbose=True),
             ModelCheckpoint(
                 dirpath="checkpoints",
-                filename="step{step}",
-                every_n_train_steps=val_check_interval,
+                filename="epoch{epoch}-step{step}",
+                every_n_train_steps=limit_train_batches,
                 save_top_k=1,
                 save_last=True,
                 monitor=m_key,
@@ -89,14 +89,15 @@ def main(cfg: KdConfig):
         ],
         # num_sanity_val_steps=1,
         precision="16-mixed",  # P6000 has no tensor cores
-        log_every_n_steps=int(10),  # Plot every 1%
+        limit_train_batches=limit_train_batches,
+        log_every_n_steps=int(20),  # Plot every 1%
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
-        max_steps=100_000,  # 1000000
-        val_check_interval=int(400),
-        max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=2,  # This is to stabilize training todo pass from config
+        # max_steps=100_000,  # 1000000
+        val_check_interval=1.0,
+        max_epochs=1000,  # or a very large number
+        accumulate_grad_batches=4,  # This is to stabilize training todo pass from config
     )
     # In case we want to restore a previous training we have to set ckpt_path
     trainer.fit(module, datamodule=kd_train_datamodule, ckpt_path=cfg.trainer.ckpt_path)
