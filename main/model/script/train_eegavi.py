@@ -61,7 +61,7 @@ def main(cfg: KdConfig):
     model_name: str = (
         # todo pass seed in cfg
         f"eegavi_{AppConfig.SEED}"
-        f"_{"moco" if cfg.trainer.use_moco else ""}"
+        f"_{"moco-immediate" if cfg.trainer.use_moco else ""}"
         f"_b{cfg.trainer.batch_size}"
         f"_lr{cfg.trainer.lr}"
         "no-grad-stop"
@@ -75,7 +75,7 @@ def main(cfg: KdConfig):
         devices=1,
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
-            EarlyStopping(monitor=m_key, min_delta=0.002, patience=8, mode="max", verbose=True),
+            EarlyStopping(monitor=m_key, min_delta=0.002, patience=20, mode="max", verbose=True),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename="step{step}",
@@ -89,14 +89,14 @@ def main(cfg: KdConfig):
         ],
         # num_sanity_val_steps=1,
         precision="16-mixed",  # P6000 has no tensor cores
-        log_every_n_steps=int(25),  # Plot every 1%
+        log_every_n_steps=int(10),  # Plot every 1%
         # This experiment is considered in steps and not epochs because sampling is non-uniform and ds is hard to exhaust
         # without creating bias. Approaches like this are common and seen in CLIP/SigLIP-style applications
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
         max_steps=100_000,  # 1000000
-        val_check_interval=int(1000),
+        val_check_interval=int(400),
         max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=4,  # This is to stabilize training todo pass from config
+        accumulate_grad_batches=2,  # This is to stabilize training todo pass from config
     )
     # In case we want to restore a previous training we have to set ckpt_path
     trainer.fit(module, datamodule=kd_train_datamodule, ckpt_path=cfg.trainer.ckpt_path)
