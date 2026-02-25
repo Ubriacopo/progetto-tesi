@@ -96,7 +96,7 @@ def main(cfg: KdConfig):
         max_steps=100_000,  # 1000000
         val_check_interval=int(1000),
         max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=4,  # This is to stabilize training
+        accumulate_grad_batches=4,  # This is to stabilize training todo pass from config
     )
     # In case we want to restore a previous training we have to set ckpt_path
     trainer.fit(module, datamodule=kd_train_datamodule, ckpt_path=cfg.trainer.ckpt_path)

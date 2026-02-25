@@ -39,7 +39,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             seed: int = 1,
             # MoCo relative parameters
             use_moco: bool = False,
-            moco_start_step: int = 3000,
             momentum: float = .99,
             queue_size: int = 512,
             heavy_compute_interval: int = 10,
@@ -47,7 +46,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             use_kd: bool = True,
             use_fusion: bool = True
     ):
-        super().__init__(use_moco=use_moco, moco_start_step=moco_start_step, momentum=momentum, queue_size=queue_size)
+        super().__init__(use_moco=use_moco, momentum=momentum, queue_size=queue_size)
         self.use_kd: bool = use_kd
         self.use_fusion: bool = use_fusion
 
@@ -70,9 +69,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         self.teacher: MaskedContrastiveModel = teacher
 
         self.momentum_student: EegInterAviModel
-        if self.use_moco:
-            self.init_moco()
-
         self.save_hyperparameters(ignore=[
             "datamodule", "student", "teacher", "fusion_metrics", "queue_ptr", "moco_queue", "momentum_out"
         ])
@@ -92,7 +88,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
-            if self.use_moco and self.moco_enabled:
+            if self.use_moco:
                 self.momentum_student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
                 self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
 
@@ -126,6 +122,9 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         m = self.momentum
         for model_parameter, momentum_parameter in zip(self.student.parameters(), self.momentum_student.parameters()):
             momentum_parameter.data.mul_(m).add_(model_parameter.data, alpha=1. - m)
+
+    def on_fit_start(self) -> None:
+        self.init_moco()
 
     def init_moco(self):
         self.momentum_student = copy.deepcopy(self.student)
@@ -203,12 +202,14 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
             q = fused_output[valid_rows]
             # Negatives to add to batch
-            zb_neg: Optional[torch.Tensor] = None
-            if self.use_moco and self.moco_enabled and step_type == "train":
+            # Always ensure queue exists (does not mean we use it)
+            if self.use_moco and step_type == "train":
                 self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
-                zb_neg = self.moco_queue[key]
 
-            if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+            use_moco = self.use_moco and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs
+            zb_neg: Optional[torch.Tensor] = self.moco_queue[key] if use_moco else None
+
+            if use_moco:
                 mv_k = self.momentum_out.multimodal_outs[key]
                 zb_pos = self.y_mean(mv_k, valid_rows).detach()  # [Nv, D]
             else:
@@ -220,11 +221,11 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=True, prog_bar=False)
 
             base_loss = base_loss + mod_loss
-            if self.use_moco and self.moco_enabled and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs:
+            if use_moco:
                 # Enqueue momentum positives
                 self.moco_enqueue(key, zb_pos)
 
-        return base_loss / count_present
+        return base_loss / max(1, count_present)
 
     def y_mean(self, y: MaskedValue, valid_rows: torch.Tensor):
         y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]
@@ -379,7 +380,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
             bidirectional_p: float = .9,  # For ATTN
             seed: int = 1,
             use_moco: bool = False,
-            moco_start_step: int = 3000,
             momentum: float = .99,
             queue_size: int = 512,
             batch_size=None
@@ -433,7 +433,6 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
 
         # If MoCo style training is enabled
         self.use_moco: bool = use_moco
-        self.moco_start_step: int = moco_start_step
         self.moco_enabled: bool = False  # This is an inner flag
 
         self.momentum_modality_pooled: Optional[dict[str, torch.Tensor]] = None
@@ -826,10 +825,10 @@ class EegAviKdVateMaskedSemiSupervisedModule(L.LightningModule):
                 continue
 
             q = fused_output[valid_rows]
-
+            use_moco = self.use_moco and step_type == "train" and self.momentum_out is not None and key in self.momentum_out.multimodal_outs
             # Negatives to add to batch
             zb_neg = None
-            if self.use_moco and self.moco_enabled and step_type == "train":
+            if use_moco:
                 self.moco_init_queue(key, dim=fused_output.size(-1), device=fused_output.device)
                 zb_neg = self.moco_queue[key]
 

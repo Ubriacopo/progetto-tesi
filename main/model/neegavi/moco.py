@@ -7,13 +7,10 @@ from torch.nn import functional as F
 
 
 class MoCoAble[T](ABC, lightning.LightningModule):
-    def __init__(self, use_moco: bool, moco_start_step: int, momentum: float = .99, queue_size: int = 512, ):
+    def __init__(self, use_moco: bool, momentum: float = .99, queue_size: int = 512, ):
         super().__init__()
         # If MoCo style training is enabled
         self.use_moco: bool = use_moco
-        self.moco_start_step: int = moco_start_step
-        self.moco_enabled: bool = False  # This is an inner flag
-
         self.momentum: float = momentum
         self.queue_size: int = queue_size
 
@@ -62,13 +59,10 @@ class MoCoAble[T](ABC, lightning.LightningModule):
 
         ptr_buf.fill_((ptr + x.size(0)) % self.queue_size)
 
-    def on_train_batch_start(self, batch, batch_idx):
-        if self.use_moco and (not self.moco_enabled) and self.global_step >= self.moco_start_step:
-            self.moco_enabled = True  # todo vedi se funziona questa attivazione
 
     def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, ) -> None:
         # Let Lightning handle closure semantics properly
         optimizer.step(closure=optimizer_closure)
         # Update EMA after the actual optimizer step
-        if self.use_moco and self.moco_enabled:
+        if self.use_moco:
             self.moco_momentum_update()
