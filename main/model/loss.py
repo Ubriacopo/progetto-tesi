@@ -16,23 +16,6 @@ def siglip_random_baseline(loss_fn, a, b):
     return loss_fn(a, b[idx])
 
 
-def lightweight_whitening(z: torch.Tensor):
-    """
-    common component removal / mean-centering (lightweight version of whitening that works great for small-batch contrastive training).
-    Remember: this makes the loss batch-dependent (the center is computed over the current batch).
-    Usually fine in practice. (no good for multi GPUs)
-
-    As seen in SimCLR / MoCo-v3 / BYOL-A and formulated in Whitening Contrastive Learning (WCL, CVPR 2021)
-    TODO: Read paper
-
-    :param z: Tensor to normalize
-    :return: The normalized z centered on mean
-    """
-    # z = F.normalize(z, dim=-1)
-    z = F.normalize(z - z.mean(0, keepdim=True), dim=-1)  # optional but stabilizes small-batch
-    return z
-
-
 class SiglipLoss(nn.Module):
     def __init__(
             self,
@@ -85,13 +68,13 @@ class SiglipLoss(nn.Module):
         :return:
         """
         # Normalization
-        za = lightweight_whitening(za)
+        za = F.normalize(za, dim=-1)
         if self.stop_grad_target:
             zb = zb.detach()
 
-        zb = lightweight_whitening(zb)
+        zb = F.normalize(zb, dim=-1)
         if zb_negative is not None:
-            zb_negative = lightweight_whitening(zb_negative)
+            zb_negative = F.normalize(zb_negative, dim=-1)
             zb_negative = zb_negative.detach()
             zb = torch.cat([zb, zb_negative], dim=0)
 
@@ -172,86 +155,8 @@ class InfoNCE(nn.Module):
                         reduction=self.reduction, negative_mode=self.negative_mode)
 
 
-def normalize(*xs):
-    return [None if x is None else F.normalize(x, dim=-1) for x in xs]
-
-
-def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired'):
-    # Check input dimensionality.
-    if query.dim() != 2:
-        raise ValueError('<query> must have 2 dimensions.')
-    if positive_key.dim() != 2:
-        raise ValueError('<positive_key> must have 2 dimensions.')
-    if negative_keys is not None:
-        if negative_mode == 'unpaired' and negative_keys.dim() != 2:
-            raise ValueError("<negative_keys> must have 2 dimensions if <negative_mode> == 'unpaired'.")
-        if negative_mode == 'paired' and negative_keys.dim() != 3:
-            raise ValueError("<negative_keys> must have 3 dimensions if <negative_mode> == 'paired'.")
-
-    # Check matching number of samples.
-    if len(query) != len(positive_key):
-        raise ValueError('<query> and <positive_key> must must have the same number of samples.')
-    if negative_keys is not None:
-        if negative_mode == 'paired' and len(query) != len(negative_keys):
-            raise ValueError(
-                "If negative_mode == 'paired', then <negative_keys> must have the same number of samples as <query>.")
-
-    # Embedding vectors should have same number of components.
-    if query.shape[-1] != positive_key.shape[-1]:
-        raise ValueError('Vectors of <query> and <positive_key> should have the same number of components.')
-    if negative_keys is not None:
-        if query.shape[-1] != negative_keys.shape[-1]:
-            raise ValueError('Vectors of <query> and <negative_keys> should have the same number of components.')
-
-    # Normalize to unit vectors
-    query, positive_key, negative_keys = normalize(query, positive_key, negative_keys)
-    if negative_keys is not None:
-        # Explicit negative keys
-
-        # Cosine between positive pairs
-        positive_logit = torch.sum(query * positive_key, dim=1, keepdim=True)
-
-        if negative_mode == 'unpaired':
-            # Cosine between all query-negative combinations
-            negative_logits = query @ transpose(negative_keys)
-
-        elif negative_mode == 'paired':
-            query = query.unsqueeze(1)
-            negative_logits = query @ transpose(negative_keys)
-            negative_logits = negative_logits.squeeze(1)
-
-        # First index in last dimension are the positive samples
-        logits = torch.cat([positive_logit, negative_logits], dim=1)
-        labels = torch.zeros(len(logits), dtype=torch.long, device=query.device)
-    else:
-        # Negative keys are implicitly off-diagonal positive keys.
-
-        # Cosine between all combinations
-        logits = query @ transpose(positive_key)
-
-        # Positive keys are the entries on the diagonal
-        labels = torch.arange(len(query), device=query.device)
-
-    return F.cross_entropy(logits / temperature, labels, reduction=reduction)
-
-
 def transpose(x):
     return x.transpose(-2, -1)
-
-
-def masked_info_nce_2d(za: Tensor, za_mask: Tensor, zb: Tensor, zb_mask: Tensor, tau: float = .05) \
-        -> tuple[Tensor, int]:
-    idx = (za_mask.bool() & zb_mask.bool()).nonzero(as_tuple=True)[0]
-    if idx.numel() <= 1:
-        return torch.tensor(.0, device=za.device), 0
-
-    a = F.normalize(za[idx])
-    b = F.normalize(zb[idx].detach())
-    logits = (a @ b.T) / tau
-
-    # Return the INFO NCE loss + valid number of rows for this loss calc. As loss is compared with others we have to reduce it
-    # to a valid range [0,1]. This allows the loss to be better controlled while training.
-    return F.cross_entropy(logits, torch.arange(idx.numel(), device=a.device)), idx.numel()
 
 
 def masked_cosine_similarity(za: Tensor, zb: Tensor, present: Tensor):

@@ -167,7 +167,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
                 # closer to 1 indicating top-tier, efficient ranking.
                 #
                 # rank_i = 1 + number of candidates with strictly higher sim than the true match
-                rank = 1 + (similarity >= similarity.diag()[:, None]).sum(dim=1)  # (N,)
+                rank = 1 + (similarity > similarity.diag()[:, None]).sum(dim=1)  # (N,)
                 mrr = (1.0 / rank.float()).mean()
                 mrr_items.append(mrr)
                 self.log(f"val_global/fused/{time_modality}/meanR@{combined}_{key}", mean_r, on_epoch=True)
@@ -316,8 +316,8 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         y_before, mask = y["data"][valid_rows], y["mask"][valid_rows]
         if isinstance(self.student.pooling, ClsPooling):
             return MaskedAvgPooling()(y_before, mask)
-        with torch.no_grad():
-            return self.student.pooling(y_before, mask)
+
+        return self.student.pooling(y_before, mask)
 
     def compute_top_k_metrics(self,
                               fused_z: torch.Tensor,
