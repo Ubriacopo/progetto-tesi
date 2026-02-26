@@ -140,21 +140,60 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def on_validation_epoch_end(self):
         # Potential memory blow-up in on_validation_epoch_end.
         top_k = (1, 3, 5, 10)
+        combined = '-'.join(map(str, top_k))
         for time_modality, pairs in [("bidirectional", self._val_pairs_bidi), ("causal", self._val_pairs_causal)]:
             mean_acc = {top: [] for top in top_k}
+            mean_r_items, mrr_items = [], []
+
             for key, pe in pairs.items():
                 f = torch.cat(pe["f"], dim=0)
                 e = torch.cat(pe["e"], dim=0)
-                sim = f @ e.T
-                hits = top_k_hits_from_sim(sim, top_k)
+                similarity = f @ e.T
+                hits = top_k_hits_from_sim(similarity, top_k)
+
                 for top in top_k:
                     self.log(f"val_global/fused/{time_modality}/top{top}_{key}", hits[top], on_epoch=True)
                     mean_acc[top].append(hits[top])
+
+                # Mean Recall@K over selected Ks
+                mean_r = torch.stack([hits[k] for k in top_k]).mean()
+                mean_r_items.append(mean_r)
+
+                # MRR (Mean Reciprocal Rank)
+                #
+                # Mean Reciprocal Rank (MRR) is a statistic for evaluating systems that return ranked lists of answers,
+                # such as search engines or RAG models, by averaging the inverse rank (1/position) of the first relevant
+                # result across multiple queries. It measures how quickly a user finds the correct answer, with a score
+                # closer to 1 indicating top-tier, efficient ranking.
+                #
+                # rank_i = 1 + number of candidates with strictly higher sim than the true match
+                rank = 1 + (similarity >= similarity.diag()[:, None]).sum(dim=1)  # (N,)
+                mrr = (1.0 / rank.float()).mean()
+                mrr_items.append(mrr)
+                self.log(f"val_global/fused/{time_modality}/meanR@{combined}_{key}", mean_r, on_epoch=True)
+                self.log(f"val_global/fused/{time_modality}/mrr_{key}", mrr, on_epoch=True)
+
+                alignment = similarity.diag().mean()
+                self.log(f"val_global/fused/{time_modality}/alignment_{key}", alignment, on_epoch=True)
+
+                # Margin between positives and typical negatives
+                pos = similarity.diag()
+                neg_mean = (similarity.sum(dim=1) - pos) / (similarity.size(1) - 1)
+                margin = (pos - neg_mean).mean()
+                self.log(f"val_global/fused/{time_modality}/margin_{key}", margin, on_epoch=True)
 
             for top in top_k:
                 if mean_acc[top]:
                     top_mean_value = torch.stack(mean_acc[top]).mean()
                     self.log(f"val_global/fused/{time_modality}/top{top}_mean", top_mean_value, on_epoch=True)
+
+            if mean_r_items:
+                mean_r_mean = torch.stack(mean_r_items).mean()
+                self.log(f"val_global/fused/{time_modality}/meanR@{combined}_mean", mean_r_mean, on_epoch=True)
+
+            if mrr_items:
+                mrr_items_mean = torch.stack(mrr_items).mean()
+                self.log(f"val_global/fused/{time_modality}/mrr_mean", mrr_items_mean, on_epoch=True)
 
             pairs.clear()
 
@@ -293,8 +332,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         fused = F.normalize(fused_z, dim=-1)
         pivot = F.normalize(pivot_z, dim=-1)
-
-        # TODO move somewhere else
         top_k_values = (1, 3, 5, 10)
         top_k_means: dict[int, list[torch.Tensor]] = {i: [] for i in top_k_values}
 
@@ -313,6 +350,10 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             hits_ef = top_k_hits_from_sim(sim_fe.T, top_k_values)  # reuse transpose
 
             prefix = f"{step_type}/fused/"
+            alignment = sim_fe.diag().mean()
+            self.log(f"{step_type}/alignment", alignment, on_step=True, on_epoch=False)
+            self.log(f"{step_type}/alignment/{mode}", alignment, on_step=True, on_epoch=False)
+
             for k in top_k_values:
                 self.log(f"{prefix}top{k}_{key}", hits_fe.get(k, nan), on_epoch=True)
                 self.log(f"{prefix}top{k}_{key}/{mode}", hits_fe.get(k, nan), on_epoch=True)
@@ -333,8 +374,8 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             for k in top_k_values:
                 self.log(f"{prefix}top{k}_{key}", hits_pe.get(k, nan), on_epoch=True)
                 self.log(f"{prefix}top{k}_{key}/{mode}", hits_pe.get(k, nan), on_epoch=True)
-                self.log(f"{prefix}top{k}_{key}_R", hits_ep[1], on_epoch=True)
-                self.log(f"{step_type}/delta_{key}", hits_fe.get(k, nan) - hits_pe.get(k, nan), on_epoch=True)
+                self.log(f"{prefix}top{k}_{key}_R", hits_ep.get(k, nan), on_epoch=True)
+                self.log(f"{step_type}/delta_{key}{k}", hits_fe.get(k, nan) - hits_pe.get(k, nan), on_epoch=True)
 
         for k, value in top_k_means.items():
             try:

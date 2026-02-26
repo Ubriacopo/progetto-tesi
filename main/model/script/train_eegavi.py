@@ -76,7 +76,7 @@ def main(cfg: KdConfig):
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
             EarlyStopping(
-                monitor="val_global/fused/bidirectional/top1_mean",
+                monitor="val_global/fused/bidirectional/mrr_mean",
                 min_delta=0.002,
                 patience=20,
                 mode="max",
