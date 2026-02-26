@@ -38,8 +38,8 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             seed: int = 1,
             # MoCo relative parameters
             use_moco: bool = False,
-            momentum: float = .99,
-            queue_size: int = 512,
+            momentum: float = .995,
+            queue_size: int = 1024,
             heavy_compute_interval: int = 10,
             batch_size=None,
             use_kd: bool = True,
@@ -67,13 +67,17 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         self.student: EegInterAviModel = student
         self.teacher: MaskedContrastiveModel = teacher
 
+        self._val_pairs_causal = {}
+        self._val_pairs_bidi = {}
+
         self.momentum_student: EegInterAviModel
         self.save_hyperparameters(ignore=[
             "datamodule", "student", "teacher", "fusion_metrics", "queue_ptr", "moco_queue", "momentum_out"
         ])
 
     def on_validation_epoch_start(self):
-        self._val_pairs = {}
+        self._val_pairs_causal = {}
+        self._val_pairs_bidi = {}
 
     def on_train_start(self) -> None:
         self.time_mask_switch_generator = torch.Generator(device=self.device)
@@ -112,24 +116,23 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
             loss_object = self.compute_step_metrics(stud_out, teacher_out, 'val', mode, batch_idx)
 
-            if mode == "bidirectional":
+            valid_p = stud_out.multimodal_outs[self.student.pivot.code]["mask"].sum(dim=1) > 0
+            for k, mv in stud_out.multimodal_outs.items():
+                valid_k = mv["mask"].sum(1) > 0
+                valid_both = valid_p & valid_k
+                if not valid_both.any():
+                    continue
 
-                valid_p = stud_out.multimodal_outs[self.student.pivot.code]["mask"].sum(dim=1) > 0
+                f = F.normalize(stud_out.cls[valid_both], dim=-1)
+                e = F.normalize(self.y_mean(mv, valid_both), dim=-1)
 
-                for k, mv in stud_out.multimodal_outs.items():
-                    valid_k = mv["mask"].sum(1) > 0
-                    valid_both = valid_p & valid_k
-                    if not valid_both.any():
-                        continue
+                pairs_source = self._val_pairs_causal if mode == "causal" else self._val_pairs_bidi
+                entry = pairs_source.setdefault(k, {"f": [], "e": []})
 
-                    f = F.normalize(stud_out.cls[valid_both], dim=-1)
-                    e = F.normalize(self.y_mean(mv, valid_both), dim=-1)
+                entry["f"].append(f)
+                entry["e"].append(e)
 
-                    entry = self._val_pairs.setdefault(k, {"f": [], "e": []})
-                    entry["f"].append(f)
-                    entry["e"].append(e)
-
-                loss += loss_object["loss"]
+            loss += loss_object["loss"]
 
         # Average between the two
         return loss / len(("causal", "bidirectional"))
@@ -137,15 +140,23 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def on_validation_epoch_end(self):
         # Potential memory blow-up in on_validation_epoch_end.
         top_k = (1, 3, 5, 10)
-        for key, pe in self._val_pairs.items():
-            f = torch.cat(pe["f"], dim=0)
-            e = torch.cat(pe["e"], dim=0)
-            sim = f @ e.T
-            hits = top_k_hits_from_sim(sim, top_k)
-            for top in top_k:
-                self.log(f"val_global/fused/top{top}_{key}", hits[top], on_epoch=True)
+        for time_modality, pairs in [("bidirectional", self._val_pairs_bidi), ("causal", self._val_pairs_causal)]:
+            mean_acc = {top: [] for top in top_k}
+            for key, pe in pairs.items():
+                f = torch.cat(pe["f"], dim=0)
+                e = torch.cat(pe["e"], dim=0)
+                sim = f @ e.T
+                hits = top_k_hits_from_sim(sim, top_k)
+                for top in top_k:
+                    self.log(f"val_global/fused/{time_modality}/top{top}_{key}", hits[top], on_epoch=True)
+                    mean_acc[top].append(hits[top])
 
-        self._val_pairs.clear()
+            for top in top_k:
+                if mean_acc[top]:
+                    top_mean_value = torch.stack(mean_acc[top]).mean()
+                    self.log(f"val_global/fused/{time_modality}/top{top}_mean", top_mean_value, on_epoch=True)
+
+            pairs.clear()
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
