@@ -1,12 +1,11 @@
 from abc import abstractmethod, ABC
-from typing import Optional
 
 import lightning
 import torch
 from torch.nn import functional as F
 
 
-class MoCoAble[T](ABC, lightning.LightningModule):
+class MoCoAble(ABC, lightning.LightningModule):
     def __init__(self, use_moco: bool, momentum: float = .99, queue_size: int = 512, ):
         super().__init__()
         # If MoCo style training is enabled
@@ -16,7 +15,6 @@ class MoCoAble[T](ABC, lightning.LightningModule):
 
         self.moco_queue = {}  # key -> tensor [K, D]
         self.queue_ptr = {}  # key -> 0-dim long buffer
-        self.momentum_out: Optional[T] = None
 
     @abstractmethod
     def init_moco(self):
@@ -59,8 +57,7 @@ class MoCoAble[T](ABC, lightning.LightningModule):
 
         ptr_buf.fill_((ptr + x.size(0)) % self.queue_size)
 
-
-    def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, ) -> None:
+    def optimizer_step(self, epoch: int, batch_idx: int, optimizer, optimizer_closure=None, **kwargs) -> None:
         # Let Lightning handle closure semantics properly
         optimizer.step(closure=optimizer_closure)
         # Update EMA after the actual optimizer step
