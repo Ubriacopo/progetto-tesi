@@ -9,7 +9,7 @@
 
 \textit{EEGAVI} is a multimodal architecture built on frozen backbone encoders for each modality.
 The frozen representations are further elaborated before getting to a \textit{cross attention} mechanism.
-\textit{EEG} is the main modality of the model acting as \textit{pivot} while the others are \textit{supports}.
+\textit{EEG} is the main modality of the model acting as a \textit{pivot} while the others are \textit{supports}.
 This structure allows the model to generalize well even with limited or absent supporting modalities.
 Like many other representation models \textit{EEGAVI} outputs a \textit{CLS} token that condenses sample information in a tighter space.
 It is used during training for contrastive alignment.
@@ -326,7 +326,7 @@ The negative samples drawn from the queue built by MoCo ignore the dataset.
 This allows the model to still combine samples coming from different datasets during the loss computation.
 
 The inputs of the model define a temporal structure, this is an element controlled by the attention mechanism.
-Inspired by other applications like ANTLM instead of taking single position of the time control we opt for a dynamic training on the setting.
+Inspired by other applications like AntLM instead of taking single position of the time control we opt for a dynamic training on the setting.
 The model can elaborate the inputs in either \textit{causal} or \textit{bidirectional} setting.
 When \textit{causal} is selected future time steps relative to the current in the attention mechanism are masked out,
 this way the model only has prior information to generate the outputs.
