@@ -21,11 +21,19 @@ Most of these lack some modalities that the model can process.
 
 \begin{table}
     \centering
-    \caption{datasets}
     \label{tab:datasets}
-    \begin{tabular}{c | c | c| c}
-        Dataset & Subject & Modalities & Ending samples \linebreak
+    \begin{tabular}{c | c | c| c | c| c| c | c| c}
+        Dataset & Subjects & Experiments & EEG    & Video  & Audio  & Text   & ECG    & Samples \\
+        \hline
+        AMIGOS  & 40       & 16 + 4      & \cmark & \cmark & \cmark & \cmark & \cmark & 22k     \\
+        EAV     & 42       & 200         & \cmark & \cmark & \cmark & \cmark & \xmark & 40k     \\
+        DEAP    & 32       & 40          & \cmark & \cmark & \xmark & \xmark & \xmark & 12k     \\
+        MAHNOB  & 29       & 20(1*)      & \cmark & \cmark & \xmark & \xmark & \cmark & 1k      \\
     \end{tabular}
+    \caption{
+        Datasets used for training summary.
+        MAHNOB is missing most experiments as only few for participant are accessible.
+    }
 \end{table}
 
 
@@ -36,44 +44,47 @@ Most of these lack some modalities that the model can process.
     For the second one subjects watched 4 long videos, some alone and some in groups.
     Self-assessments and external annotations on affective levels and emotions were also tracked.
 
-    After sampling the dataset produced a total of around 22k samples.
-
-    \item \textit{EAV}: \textit{EEG-Audio-Video Dataset for Emotion Recognition in Conversational Contexts (EAV)}
+    \item \textbf{EAV}: \textit{EEG-Audio-Video Dataset for Emotion Recognition in Conversational Contexts (EAV)}
     measures 30-channel EEG, audio and video from 42 participants.
     The scenarios proposed are done in a cue-based conversation designed on five distinct emotions.
     Each participant contributed in a total of 200 interactions.
     Participants tracked self-assessments for the emotion of the experiment (happy, calm, angry and sad) and their level of arousal.
     They were also evaluated by the experimenters on the same structure.
 
-    After sampling the dataset produced a total of around 40k samples.
-
-    \item \textit{MAHNOB-HCI}: is a broad dataset recorded in response to affective stimuli.
+    \item \textbf{MAHNOB-HCI}: is a broad dataset recorded in response to affective stimuli.
     Unlike other datasets MAHNOB also tracks gaze signals, but it is too limited in size to use.
     We did not include an explicit gaze stream due to lack of calibrated gaze targets and potential estimation noise from frontal videos.
     However, eye- and head-related cues could be extracted as an auxiliary modality in future work.
 
-    After sampling the dataset produced a total of around K samples.
-
-    \item \textit{DEAP}: \textit{Database for Emotion Analysis} is a dataset composed by data of 32 participants.
+    \item \textbf{DEAP}: \textit{Database for Emotion Analysis} is a dataset composed by data of 32 participants.
     Each watched 40 one-minute long clips of music videos.
     Subjects rated their valence, arousal, like/dislike, dominance and familiarity levels.
     Audio for these is not given for copyright reasons.
 
-    After sampling the dataset produced a total of around 12K samples.
 \end{itemize}
+
+
+\begin{table}
+    \centering
+    \begin{tabular}{c | c | c | c | c}
+        Dataset & Train (70\%) & Validation (10\%) & Test (15\%) \\
+        \hline
+        AMIGOS  & 30           & 4                 & 6           \\
+        EAV     & 32           & 4                 & 6           \\
+        DEAP    & 24           & 3                 & 5           \\
+        MAHNOB  & 22           & 3                 & 4           \\
+    \end{tabular}
+    \caption{
+        Repartition of the subjects in the three data splits for training EEGAVI.
+    }
+    \label{tab:datasetspartitoning}
+\end{table}
 
 All datasets are partitioned in train, validation and test set around (70-10-15)\%.
 As commonly done for EEG applications the partitioning is not on the sample level but on the participants directly,
 meaning the real division might be a little off if data is corrupted, missing or a participant just made fewer experiments.
-
-# todo rendi table
-The partitioning of subjects for the model training:
-\begin{itemize}
-    \item AMIGOS: train = 30, test=6, val=4
-    \item EAV: train =32 ,test=6, val=4
-    \item MAHNOB: train=,test=,val=
-    \item DEAP: train=,test=,val=
-\end{itemize}
+Thi should allow the model to force a stronger cross subject generalizaiton.
+Partitioning of the data is reported in table \ref{tab:datasetspartitoning}.
 
 \subsubsection{Sampling Strategy}
 Affective responses unfold across multiple temporal scales, for this reason the model must generalize well on both short events and longer temporal dynamics.
@@ -81,61 +92,71 @@ While short clips may capture localized affective outbursts, long ones can encod
 For the model to be robust across scales we sample variable-length EEG segments between 1 and 32 seconds using an EEG-centric sampling strategy.
 
 Segment durations are sampled from a log-uniform distribution, favoring shorter clips.
-A sample is either taken at random from the clip or selected as a point of interest from the signal with a probability $p$.
+A sample is either taken at random from the clip with probability $p$ or selected as a point of interest from the signal with probability $1-p$.
+In the experimental setup $p=0.6$.
 When an \textit{anchor} point is selected short segments are built by left-aligning the window at the anchor time rather than centering it.
 This design may introduce a slight potential positional bias in short clips; however longer segments are centered on previously extracted short ones and therefore do not have this behavior.
 
 If the resulting segment respects the overlap constraints defined for that class it is stored as a sample, else discarded.
 Segments are of three different settings as reported in table \ref{tab:sample}.
+The process is iterated until it fails to present new valid segments after running out of patience.
 
 \begin{table}
     \centering
-    \caption{}
-    \label{tab:sample}
     \begin{tabular}{c|c|c|c|c}
 
         Class  & Max length (s) & Same class IoU & Cross class IoU & Jitter Frac \\ \hline
-        Short  & 4              & 0              & 0.7             & 0.0         \\
+        Short  & 4              & 0              & 0.7             & -           \\
         Medium & 16             & 0.35           & 0.7             & 0.3         \\
-        Large  & 32             & 0.25           & 0.7             & 0.4
+        Large  & 32             & 0.25           & 0.7             & 0.4         \\
     \end{tabular}
+    \caption{The jitter fraction indicates the maximum relative displacement applied to a segment's center. }
+    \label{tab:sample}
 \end{table}
 
-The process is iterated until it fails to present new valid segments after running out of patience.
-
 The candidate extractor first computes STFT-based frame features per EEG channel.
-The search for points of interest when passing to STFT representation follows a set of heuristics commonly used when processing EEG:
+The points of interest are extracted in the STFT domain following a set of heuristics commonly used when processing EEG.
+These anchors are identified through a multi-descriptor scoring mechanism that combines the following indicators:
 \begin{itemize}
-        % todo riscrivi lista
-    \item \textbf{Relative band-power per frame}: Fraction of total spectral power contained in predefined frequency bands (0.5–4, 4–8, 8–13, 13–30 Hz).
-    \item \textbf{Spectral entropy}: Shannon entropy of the normalized power spectrum; high when the spectrum is flat (distributed energy), low when concentrated.
-    \item \textbf{Spectral flux}: Frame-to-frame positive spectral change computed on magnitude spectra, capturing rapid spectral dynamics.
-    \item \textbf{Root-mean-square (RMS)}: Measures the average signal energy in a window, independent of frequency content.
-    \item \textbf{Line length}: It is a simple but powerful time-domain EEG feature that measures the total amount of change in the signal within a window.
-    It averages absolute first difference; proxies “spikiness/complexity”.
-    In EEG is often associated with high activity as scares/epilepsy or motion artifacts.
-    \item \textbf{TKEO}: Teager–Kaiser Energy Operator; captures bursty, high-frequency energy.
-    Sensitive to rapid changes, it is popular in EEG, speech and seismic signal analysis.
+    \item \textit{Relative band-power per frame}: Fraction of total spectral power contained in predefined frequency bands (0.5–4, 4–8, 8–13, 13–30 Hz).
+    Sudden dominance of a specific band indicates a change in oscillatory regime contributing positively to salience.
+
+    \item \textit{Spectral entropy}: Shannon entropy of the normalized power spectrum; high when the spectrum is flat (distributed energy), low when concentrated.
+    Lower entropy is favored as it indicates structured spectral content rather than broadband noise.
+
+    \item \textit{Spectral flux}: Frame-to-frame positive spectral change computed on magnitude spectra, capturing rapid spectral dynamics.
+    Rapid spectral changes are rewarded in the saliency extraction process.
+
+    \item \textit{Root-mean-square (RMS)}: Measures the average signal energy in a window, independent of frequency content.
+    Higher energy contributes positively to candidate selection as it highlights strong neural responses.
+
+    \item \textit{Line length}: It is a simple but powerful time-domain EEG feature that measures the total amount of change in the signal within a window.
+    It computes the average absolute first difference, acting as a proxy for signal complexity.
+    In EEG it is often associated with high activity as scares/epilepsy or motion artifacts, therefore its contribution is moderated in the scoring process.
+
+    \item \textit{Teager–Kaiser Energy Operator (TKEO)}: It captures bursty, high-frequency energy.
+    Sensitive to rapid changes, it is popular in EEG analysis; adds robustness to the process as it might capture patterns not recognized by RMS alone.
 \end{itemize}
 
 Afterward each channel's features are standardized with a rolling median/MAD estimator with a 30s window.
 This is done to prevent high-variance features from dominating the saliency score, mitigating the effect of outliers.
 A saliency score per channel as a weighted sum of z-scored features is formed.
-These scores are aggregated by taking the mean of the top k channels ($k=0.4 * C$).
+These scores are aggregated by taking the mean of the top $k$ channels.
 Artifact annotations are used to downweight candidate frames before anchor selection.
 Lastly a greedy top-score selection with a minimum time gap constraint is applied to select the points.
 
 \subsubsection{Preprocessing}
 All modalities are processed individually.
+
 For memory efficiency the samples are passed through the frozen backbone of each modality directly in preprocessing.
 Given this limitation it is impossible to compute training augmentations on demand, thus the idea was dropped entirely.
-All pre-processing is done for both \textit{EEGAVI} and \textit{VATE} with each their corresponding pipelines.
+Pre-processing is done for both \textit{EEGAVI} and \textit{VATE} with each their own pipelines.
 
 Given the intrinsic time structure our data has, a sample's modalities are partitioned into smaller time blocks on which the embedding model is called.
 To avoid the excessive storage growth sequence resampling is performed to generate segments that will act as temporal unit tokens.
-- fare esempio? Una immagine?-
 
-All supported modalities are also quantized in $int8$ per dimension with a scale vector to further reduce the space load.
+All supported modalities are also symmetrically quantized in $int8$ per dimension with a per-dimension scale vector to further reduce the space load.
+
 Knowing that media can occasionally miss and that segments following our sampling strategy can vary in size all modalities of a single sample are masked.
 
 %# todo improvement potrebbe essere che al posto di comprimere a priori ogni 4s facessi compressione in modo da occupare
@@ -143,40 +164,88 @@ Knowing that media can occasionally miss and that segments following our samplin
 
 \paragraph{EEG (pivot)}
 The main modality of the model.
+
 As described when introduced, \textit{CBraMod} works on the relative built space between the measuring electrodes.
 So, for it to work correctly, each dataset has to be first mapped into a common channel layout.
 We call this the canonical order, and it becomes part of the model definition as it has to be consistently applied across datasets.
-The canonical order composed of 33 different EEG channels used by the project is reported in table TABLE. # todo table
+The canonical order composed of 34 different EEG channels used by the project is reported in table \ref{tab:eegorder}.
+All datasets are mapped into this canonical channel order; missing electrodes are zero-filled and masked.
+
 The signal has also to be resampled ($fs=200$) to generate one-second tokens by \textit{CBraMod}.
 A sample can miss some channels, for this reason EEG data is masked with a boolean tensor and initialized to a zero vector.
-Conceptually \textit{EEGAVI} is able to handle a variable number of input channels because it flattens the generated channel representation with the last dimension.
-For EEG handling and preprocessing, we use \textit{MNE}.
 
-All supporting modalities have to match, based on the final model's architecture, on the time unit size.
-This is not the case for pivot as its interaction with other modalities comes later downstream.
-\textit{Supports} inputs have been partitioned in segments of 4 seconds, their time unit.
+Conceptually \textit{EEGAVI} is able to handle a variable number of input channels because it flattens the generated channel representation with the last dimension.
+For EEG handling and preprocessing we use the \textit{MNE} library.
+
+For \textit{EEGAVI} to work all supporting modalities have to match the same time unit size.
+Their time unit has been selected to be 4 seconds.
+This is not necessary for \textit{pivot} whose time unit is of 1 second.
+
+\begin{table}
+    \centering
+    \begin{tabular}{c|c|c|c|c|c}
+        Index & Channel & AMIGOS & EAV    & DEAP   & MAHNOB \\ \hline
+        00    & AF3     & \cmark & \xmark & \cmark & \cmark \\
+        01    & F7      & \cmark & \cmark & \cmark & \cmark \\
+        02    & F3      & \cmark & \cmark & \cmark & \cmark \\
+        03    & FC5     & \cmark & \cmark & \cmark & \cmark \\
+        04    & T7      & \cmark & \cmark & \cmark & \cmark \\
+        05    & P7      & \cmark & \cmark & \cmark & \cmark \\
+        06    & O1      & \cmark & \cmark & \cmark & \cmark \\
+        07    & O2      & \cmark & \cmark & \cmark & \cmark \\
+        08    & P8      & \cmark & \cmark & \cmark & \cmark \\
+        09    & T8      & \cmark & \cmark & \cmark & \cmark \\
+        10    & FC6     & \cmark & \cmark & \cmark & \cmark \\
+        11    & F4      & \cmark & \cmark & \cmark & \cmark \\
+        12    & F8      & \cmark & \cmark & \cmark & \cmark \\
+        13    & AF4     & \cmark & \xmark & \cmark & \cmark \\
+        14    & Fp1     & \xmark & \cmark & \cmark & \cmark \\
+        15    & FC1     & \xmark & \cmark & \cmark & \cmark \\
+        16    & C3      & \xmark & \cmark & \cmark & \cmark \\
+        17    & CP5     & \xmark & \cmark & \cmark & \cmark \\
+        18    & CP1     & \xmark & \cmark & \cmark & \cmark \\
+        19    & P3      & \xmark & \cmark & \cmark & \cmark \\
+        20    & PO3     & \xmark & \xmark & \cmark & \cmark \\
+        21    & Oz      & \xmark & \cmark & \cmark & \cmark \\
+        22    & Pz      & \xmark & \cmark & \cmark & \cmark \\
+        23    & Fp2     & \xmark & \cmark & \cmark & \cmark \\
+        24    & Fz      & \xmark & \cmark & \cmark & \cmark \\
+        25    & FC2     & \xmark & \cmark & \cmark & \cmark \\
+        26    & Cz      & \xmark & \cmark & \cmark & \cmark \\
+        27    & C4      & \xmark & \cmark & \cmark & \cmark \\
+        28    & CP6     & \xmark & \cmark & \cmark & \cmark \\
+        29    & CP2     & \xmark & \cmark & \cmark & \cmark \\
+        30    & P4      & \xmark & \cmark & \cmark & \cmark \\
+        31    & PO4     & \xmark & \xmark & \cmark & \cmark \\
+        32    & PO9     & \xmark & \cmark & \xmark & \xmark \\
+        33    & PO10    & \xmark & \cmark & \xmark & \xmark \\
+    \end{tabular}
+    \caption{
+        The canonical EEG channel order used by EEGAVI is based on the 10-20 system.
+        The table reports the presence of each channel across datasets.
+        AMIGOS employs the Emotiv EPOC headset therefore it has less tracked electrodes.
+    }
+    \label{tab:eegorder}
+\end{table}
 
 \paragraph{Video}
 All videos have a similar setup where the image is centered on the face of the subject.
 For this reason no cropping to the input videos was performed.
+
 The selected backbone for the Video embeddings is ViViT\footnote{ViViT: google/vivit-b-16x2-kinetics400}.
 To preserve spatial-temporal richness we use the model's \textit{last\_hidden\_state} output.
 The raw output is high-dimensional and memory intensive, a single sample is of the shape $(16, 14, 14, 768)$ which is then repeated for $T$ time steps.
 To solve this problem 2D pooling is performed on the $(14,14)$ frame with $stride=2$ and $kernel=3$.
 
-\textit{Modality found in: AMIGOS, EAV, MAHNOB, DEAP}
-
 \paragraph{Audio}
 All audio, when present, is turned into a mono signal and resampled to match the required $fs=16kHz$ by WavLM\footnote{WavLM: microsoft/wavlm-base} .
-The model is primarily speech/paralinguistic model which might limit generalization to non-verbal vocalizations.
+It is primarily a speech/paralinguistic model which might limit generalization to non-verbal vocalizations.
 EAV tracks speech of the subject but AMIGOS's audio doesn't have the participant as direct interlocutor.
 Future work could evaluate alternative audio encoders or separate speech vs. reaction audio streams.
 
-\textit{Modality found in: AMIGOS, EAV}
-
 \paragraph{Text}
 No dataset provides a textual transcript of the experiments.
-For this reason we transcribe speech using \textit{Whisper}\footnote{Whisper: openai/whisper-medium} by OpenAI .
+For this reason we transcribe speech using \textit{Whisper}\footnote{Whisper: openai/whisper-medium} by OpenAI.
 The process is only possible when an audio track is available and if the duration of the media is shorter than 5 minutes.
 Whisper should actually be able to process long clips but the need for timestamps on the extracted words makes this unfeasible.
 
@@ -185,22 +254,16 @@ To give a stronger representation power to the speech the segments are extended 
 They receive information from past blocks while also some from the one immediately after.
 This is done because embedding models, textual in particular, are known to make stronger representations when context is broader.
 
-\textit{Modality found in: AMIGOS, EAV}
-
 \paragraph{ECG}
-Most experiments track the electrocardiogram of a subject.
 These measurements are often versatile as it is possible to reconstruct more of the signal even if the measurements are limited.
 As ECG foundation model we opted for ECG-FM that in reported to perform well at giving signals even when the data channels are incomplete.
-
-
-\textit{Modality found in: AMIGOS, MAHNOB}
 
 \subsection{Model}
 The model takes as input a sample that has a representation for each modality defined for the model.
 The core element of \textit{EEGAVI} is the \textit{gated cross attention} module.
 The model performs pivot-centric cross-modal conditioning followed by intra-modal re-integration.
-
 Before passing through it each modality follows a distinct flow that adds expressional power to the input embeddings.
+
 This is to allow the \textit{KD} to have effect on the model during backpropagation as the embeddings come from a frozen state.
 Having selected a contrastive model trained on \textit{VATE}, the modalities that actively participate in the \textit{KD} process are video, text and audio.
 Of these Audio and Video, given the way they are processed, are structurally complex.
@@ -214,39 +277,55 @@ vector obtained from the "adapter" modules that come before the \textit{Modality
 The student is drawn towards the teachers representational space with SigLIP loss, defined later.
 
 After the possible branching caused by \textit{KD} all modalities are tagged with a \textit{modality encoder} and later stacked in a single embedding vector.
-This resulting vector acts as key-value in the \textit{cross attention} process while the EEG branch is the query.
+The resulting vector acts as key-value in the \textit{cross attention} process while the EEG branch is the query.
 This way the conditioning is only directed by EEG data.
-Structurally the \textit{cross attention} module EEGAVI first does attention on the input query and key-value vectors
+
+Being the model masked on all of its steps, to enure stronger generalization capabilities, sample-modality level dropout is performed.
+Each sample of the batch with a set probability $p$ can be masked out during the whole process downstream.
+This should allow the model to better manage data in situations where supporting modalities might be missing.
+
+Structurally the \textit{cross attention} module in EEGAVI does attention on the input query and key-value vectors
 and then proceeds to run self attention to do global integration of the conditioned signals.
-It also prevents support features from acting like isolated bias enabling global integration among the conditioned EEG tokens.
+This allows the information that was merged at different time steps to interact and propagate beyond local injections.
 Lastly a feed forward block is used to introduce a non-linearity, without it the process would behave as a structured linear mixer.
 Gating logic is also applied to every step of the module to control each step's contribution magnitude.
 
 In the first definition of the model two \textit{gated cross-attention} modules have been stacked on each other.
 
 \subsection{Training Strategy}
-The model was trained using \textit{AdamW} with a learning rate scheduler with an initial warmup process.
-Given that the source datasets have different sizes after the sampling process to avoid making the model too biased
-towards the most prominent dataset we decided to draw samples from each following the power law.
-This allows the data points to reflect their prevalence when more numerous than their counterparts while also
-balancing non-linearly the distribution among all datasets.
-For this reason when referring to an epoch of the model it counts a hypothetical but unlikely full pass of the whole aggregated datasets.
+The model was trained using \textit{AdamW} with a learning rate scheduler and an initial warmup process.
+To avoid the model becoming too biased towards the most numerous dataset in terms of samples we decided to build batches by following the power law ($\alpha=0.5$):
+$$P(i) = \frac{n_i^\alpha}{\sum_{j}{n_j^\alpha}}$$.
+This preserves the relative prevalence of larger datasets while also balancing their dominance through non-linear downweighting.
+For this reason when referring to an epoch of the model the stochastic sampling is unlikely to make it an exact pass.
 
 A sample tends to be very large because of the multiple modalities and their representation shape.
 For this reason training the model becomes memory demanding in large batch settings.
 While learning with small batches itself is fine and helps with regularization in contrastive setups it can be harmful.
-We adopted for training the \textit{SigLIP} loss, a loss function that is inspired by InfoNCE but solves some issues.
-$$l = - 1/|B| \sum_{i=1} \sum_{j=1} log{\frac{1}{1 + e^{z_{ij}(-tx_i * y_j + b)}}}$$
+We adopted for training the \textit{SigLIP} loss, a loss function that is inspired by InfoNCE.
+$$l = - \frac{1}{N} \sum_{i=1}^{N} \sum_{j=1}^{N} log{\frac{1}{1 + e^{z_{ij}(-tx_i * y_j + b)}}}$$
 
-Generally speaking SigLIP is less sensitive to batch size.
+Generally speaking SigLIP is less sensitive to batch size.\\
 The reason for this is that SigLIP doesn’t rely on softmax over in-batch negatives as it uses independent binary logistic losses.
 There is therefore no global softmax normalization, thus the gradient does not depend on the number of negatives.
 
 While this helps, to make training even more robust MoCo was used.
+Standard values for the technique were initially used (momentum $m=0.99$, queue size $q=1024$) but will be in future work fine-tuned.
+The use of MoCo grants the model a larger number of negatives samples to compute the loss from, acting as a stabilizer for training.
 
-Data mixing is good but having EEG and knowing different experiments are relatively different we decided to make training batches built only from one dataset at a time.
+Mixing data is generally a good practice but in the context of EEG it can act as limitation.
+We decided to make training batches built only from one dataset at a time.
 This technique allows the batch of training to present generally harder situations for the model to separate, a phenomenon shown to improve learning in contrastive setups.
 The negative samples drawn from the queue built by MoCo ignore the dataset.
 This allows the model to still combine samples coming from different datasets during the loss computation.
 
-Causal-bidirectional todo
+The inputs of the model define a temporal structure, this is an element controlled by the attention mechanism.
+Inspired by other applications like ANTLM instead of taking single position of the time control we opt for a dynamic training on the setting.
+The model can elaborate the inputs in either \textit{causal} or \textit{bidirectional} setting.
+When \textit{causal} is selected future time steps relative to the current in the attention mechanism are masked out,
+this way the model only has prior information to generate the outputs.
+The \textit{bidirectional} setting allows for the whole sequence to be attended to.
+The AntLM model explicitly describes a unified framework that alternates between causal and masked in the field of language models.
+We take the same idea by balancing with a random probability $p$ in what masking mode the next batch in training is.
+To make training simpler in earlier steps bidirectionality is preferred becoming more causal in later stages of the training process,
+this controlled by a cosine ramp schedule.

@@ -1,10 +1,6 @@
 import dataclasses
 
-import numpy as np
-
 from main.core_data.media.audio.config import AudSourceConfig
-from main.core_data.media.ecg import ECG
-from main.core_data.media.ecg.config import EcgSourceConfig
 from main.core_data.media.eeg.config import EegSourceConfig
 from main.core_data.media.video.config import VidSourceConfig
 from main.dataset.base_config import DatasetConfig
