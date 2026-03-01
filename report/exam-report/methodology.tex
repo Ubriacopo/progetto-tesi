@@ -259,6 +259,12 @@ These measurements are often versatile as it is possible to reconstruct more of 
 As ECG foundation model we opted for ECG-FM that in reported to perform well at giving signals even when the data channels are incomplete.
 
 \subsection{Model}
+\begin{figure}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{/home/jacopo/PycharmProjects/progetto-tesi/report/exam-report/model-graph}
+    \caption{The model's general architecture. Single custom blocks are reported at the end of the report in the resources section.}
+    \label{fig:model-graph}
+\end{figure}
 The model takes as input a sample that has a representation for each modality defined for the model.
 The core element of \textit{EEGAVI} is the \textit{gated cross attention} module.
 The model performs pivot-centric cross-modal conditioning followed by intra-modal re-integration.
