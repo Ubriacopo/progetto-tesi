@@ -1,21 +1,37 @@
 %! Author = jacopo
 %! Date = 2/25/26
 
-% Preamble
 
-% Document
 \section{First Results}
+The first training attempts on the model report values in table.
 
-Metrics for evlaution brief description.
+Early stopping on the global averaged value of \textit{mrr} was applied with patience of 12 epochs.
+
+The training was stable as reported in the loss graph.
+Early stopping initiated the model's stopping as model plateaued.
+
+The metrics tracked to evaluate the objective are based on the idea of being able to identify for originating modality from the fused vector.
+This common assumption is robust for understanding if the information contained in the end embeddings correctly condense the information before the fusion.
+
+A strong used metric is \textit{mean reciprocal rank (mrr)} that ... explain here ..
+In the results the comparisons show that MRR retrieval for fused embeddings outperform the main modality when not aligned.
+This means that each modality adds complimentary information.
+
+Text is not providing consistent signal (or is poorly paired / too noisy / too weak) from the alignment measurements.
+Alignment measures .. def of alignment here ..
+Fused embeddings consistently outperform pre-fusion EEG representations in cross-modal retrieval
+
+Beyond the \textit{mrr} and \textit{alignment} metrics we also calculate the \textit{top-k} behaviours of the data.
+The test samples of our partitioned dataset amount to a total of: xxxx.
+This considering the results are ???. As reported in the table below.
+
+
+These first results lead us to believe the model can improve further and that the process is working.
+By tuning the hyperparameters we assume to be able to reach better performances.
+
+% todo misura per buckets 4 16 32 s
 
 Results in tables.
 
-stay short
-
-% FORSE
-Metrics (Top-1 retrieval, cross-modal retrieval, etc.)
-Training behavior
-Observed trends
-Limitations
 
 

@@ -7,16 +7,81 @@
 
 
 \section{Next steps}
-Planned ablations
-Evaluation strategy (retrieval metrics, possibly CCC if feasible)
-Scaling experiments
-Downstream taks to evaluate the model
-How we want to evaluate compared to CBraMod
 
+\subsection{Hyperparameter Tuning}
+Exhaustive tuning on low-level architectural parameters is avoided to favor a limited set of high-leverage hyperparameters.
+This is because the goal of the research is not to produce a \textit{State-of-the-Art (SotA)} model but rather to verify the robustness of the proposed design choices.
+We ask ourselves if \textit{KD} provides gains to the training pipeline and if multimodal alignments help to create richer representations of the data.
 
-A completely Flamingo like approach. Currently we opted for something simpler for Occarms Razor. (No other fusion models are there)
-but using CbraMod the way the LM was used with multiple inputs interleaved could be a stronger modelling as we feed
-the information gradually during the generation of the embeddings.
+\begin{table}
+    \centering
+
+    \begin{tabular}{c|c|c}
+        & Default              & Term                                  \\ \hline
+        $\alpha$ & 1.0                  & Weight of the fusion loss term        \\
+        $\beta$  & 1.0                  & Weight of the KD loss term            \\
+        queue    & 1024                 & Size of the MoCo queue                \\
+        xattn    & 2                    & Layers of \textit{cross-attention}    \\
+        $lr$     & $1.5 \times 10^{-4}$ & Learning rate                         \\
+        $b$      & 64                   & Batch size                            \\
+        $p$      & 0.1                  & Dropout $p$ for supporting modalities
+    \end{tabular}
+    \caption{Hyperparameters to tune and their default value.}
+    \label{tab:hp}
+\end{table}
+
+The hyperparameters to tune are reported in table \ref{tab:hp}.
+The $\alpha$ and $\beta$ terms are used to balance the loss which is aggregated from the fusion and \textit{KD} as:
+$$ \mathcal{L} = \alpha \mathcal{L}_{fusion}  + \beta \mathcal{L}_{kd}$$
+
+To reduce the search space we could fix $\alpha$ and only tune $\beta$.
+
+\subsection{Ablation}
+Once the hyperparameters tuning process is concluded, ablation is performed to assess the research question.
+The elements we focus on for the process are \textit{KD} and modality fusion.
+
+\paragraph{Knowledge Distillation} We assume the technique helps with the learning process by integrating information
+encoded in the structure of the contrastive model of \textit{VATE}.
+To see if the process really is of benefit we ablate it entirely.
+This allows us to quantify its contribution.
+
+We also ablate each modality independently, since text in the initial training experiments showed poor performance on our evaluation metrics.
+If the teacher model has a weak performance on a modality, distillation from that branch may introduce noise rather than useful supervisory signal.
+
+\paragraph{Modality fusion} Not all modalities showed strong performance in the initial training experiments.
+It is possible that some modalities are too noisy or missing too often to extract information from.
+For this reason we remove one modality at a time to evaluate its individual contribution to the fused representation.
+
+To assess whether fusion enriches EEG representations we compare the full model with a version trained using EEG representations only.
+
+To further see if the contrastive alignment is strong we ablate the MoCo process as well.
+This ablation verifies whether improvements are due to improved negative sampling rather than multimodal integration alone.
+We expect a drop in performance considering its contribution during training.
+
+\subsubsection{Downstream tasks}
+To really measure the effectiveness of the modality fusion we have to apply the trained model to a downstream task.
+
+For a first approach we will produce a simple predictor on \textit{Valence-Arousal} using \textit{EEGAVI} as frozen backbone.
+Given that we use all the data we can in the training of EEGAVI we have to exploit its validation and test sets.
+By having \textit{EEGAVI} as frozen backbone, this does not lead to data leakage.
+% da decidere potrei volerlo integrare
+We also integrate data from \textit{DREAMER}, a dataset composed of EEG and ECG recordings that was not used in the training of \textit{EEGAVI}.
+
+We expect \textit{EEGAVI} to outperform \textit{CBraMod} on the task for two reasons:
+\begin{itemize}
+    \item EEGAVI was pretrained on data drawn from the same sources
+    \item The integration of multiple modalities favors richer embeddings than those computed by \textit{CBraMod}
+\end{itemize}
+
+Once this experiment is performed, a more complex one will be done on "A Multimodal Virtual Reality Data Acquisition Platform and Dataset to Assess Systemic Human Cognitive States".
+The dataset is designed to measure human cognitive states in virtual reality environments.
+The dataset focuses mostly on cognitive workload, mental fatigue and stress, metrics it tracks from self-assessments of the subjects.
+We train two downstream predictors using \textit{EEGAVI} and \textit{CBraMod} as frozen backbone and compare their performances.
+Our analysis aims to see if \textit{EEGAVI} was able to encode richer information on the affective cognitive state of a subject by the integration of multimodal information.
+
+For future work a completely \textit{Flamingo}-like approach could be studied.
+The current implementation is simpler as the fusion is only done at the end of the model's architecture.
+Interleaving layers of CBraMod with cross-attention blocks could result in a stronger model as we feed the information gradually during the generation of the embeddings.
 
 \newpage
 % todo appendix
