@@ -9,36 +9,77 @@ The first training attempts of the model report the values shown in Table \ref{t
     \centering
     \begin{tabular}{c c | c | c || c | c}
         & & \multicolumn{2}{c}{$EEG_{fused}$} & \multicolumn{2}{c}{$EEG_{only}$} \\ \hline
-        &                 & Train & Test & Train & Test \\ \hline
-        Audio &                 &       &      &       &      \\
-        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
-        Video &                 &       &      &       &      \\
-        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
-        Text  &                 &       &      &       &      \\
-        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
-        ECG   &                 &       &      &       &      \\
-        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
-        Mean  &                 &       &      &       &      \\
-        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
-        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
+        &                 & Val  & Test & Val & Test \\ \hline
+        Audio &                 &      &      &     &      \\
+        & \textit{MRR}    & 0.96 & 0.98 & 0.0 & 0.0  \\
+        & \textit{Margin} & 0.19 & 0.20 & 0.0 & 0.0  \\
+        & \textit{Top-1}  & 0.92 & 0.96 & 0.0 & 0.0  \\ \hline
+        ECG   &                 &      &      &     &      \\
+        & \textit{MRR}    & 0.63 & 0.59 & 0.0 & 0.0  \\
+        & \textit{Margin} & 0.17 & 0.16 & 0.0 & 0.0  \\
+        & \textit{Top-1}  & 0.50 & 0.47 & 0.0 & 0.0  \\ \hline
+        EEG   &                 &      &      &     &      \\
+        & \textit{MRR}    & 0.90 & 0.88 & 0.0 & 0.0  \\
+        & \textit{Margin} & 0.31 & 0.31 & 0.0 & 0.0  \\
+        & \textit{Top-1}  & 0.85 & 0.84 & 0.0 & 0.0  \\ \hline
+        Text  &                 &      &      &     &      \\
+        & \textit{MRR}    & 0.70 & 0.63 & 0.0 & 0.0  \\
+        & \textit{Margin} & 0.14 & 0.15 & 0.0 & 0.0  \\
+        & \textit{Top-1}  & 0.47 & 0.50 & 0.0 & 0.0  \\ \hline
+        Video &                 &      &      &     &      \\
+        & \textit{MRR}    & 0.65 & 0.74 & 0.0 & 0.0  \\
+        & \textit{Margin} & 0.27 & 0.29 & 0.0 & 0.0  \\
+        & \textit{Top-1}  & 0.53 & 0.62 & 0.0 & 0.0  \\ \hline
+        Mean  &                 &      &      &     &      \\
+        & \textit{MRR}    & 0.77 & 0.76 & 0.0 & 0.0  \\
+        & \textit{Margin} & 0.21 & 0.0  & 0.0 & 0.0  \\
+        & \textit{Top-1}  & 0.66 & 0.68 & 0.0 & 0.0  \\ \hline
     \end{tabular}
 
-    \caption{EEG is trivial thus not reported.}
+    \caption{}
     \label{tab:metrics}
 \end{table}
 
 
-We applied early stopping on the global averaged value of \textit{mrr} with a patience of 12 epochs.
-The training was stable as reported in the loss graph running for a total of n epochs.
+\begin{table}
+    \centering
+    \begin{tabular}{c c | c | c | c | c}
+        &                 & AMIGOS & DEAP & MAHNOB & EAV  \\ \hline
+        Audio &                 &        &      &        &      \\
+        & \textit{MRR}    & 0.97   & -    & -      & 1    \\
+        & \textit{Margin} & 0.16   & -    & -      & 0.21 \\
+        & \textit{Top-1}  & 0.95   & -    & -      & 0.99 \\ \hline
+        ECG   &                 &        &      &        &      \\
+        & \textit{MRR}    & 0.60   & -    & 0.42   & -    \\
+        & \textit{Margin} & 0.16   & -    & 0.15   & -    \\
+        & \textit{Top-1}  & 0.48   & -    & 0.25   & -    \\ \hline
+        EEG   &                 &        &      &        &      \\
+        & \textit{MRR}    & 0.92   & 0.98 & 0.97   & 0.99 \\
+        & \textit{Margin} & 0.26   & 0.35 & 0.30   & 0.32 \\
+        & \textit{Top-1}  & 0.88   & 0.97 & 0.96   & 0.98 \\ \hline
+        Text  &                 &        &      &        &      \\
+        & \textit{MRR}    & 0.40   & -    & -      & 0.93 \\
+        & \textit{Margin} & 0.07   & -    & -      & 0.19 \\
+        & \textit{Top-1}  & 0.17   & -    & -      & 0.87 \\ \hline
+        Video &                 &        &      &        &      \\
+        & \textit{MRR}    & 0.55   & 0.76 & 0.78   & 0.81 \\
+        & \textit{Margin} & 0.17   & 0.33 & 0.23   & 0.29 \\
+        & \textit{Top-1}  & 0.41   & 0.64 & 0.65   & 0.71 \\ \hline
+        Mean  &                 &        &      &        &      \\
+        & \textit{MRR}    & 0.69   & 0.88 & 0.72   & 0.93 \\
+        & \textit{Margin} & 0.21   & 0.34 & 0.27   & 0.33 \\
+        & \textit{Top-1}  & 0.58   & 0.81 & 0.62   & 0.89 \\ \hline
+    \end{tabular}
+
+    \caption{Test results on each dataset independently.}
+    \label{tab:metrics-per-ds}
+\end{table}
+
+
+
+We applied early stopping on the global averaged value of \textit{mrr} with patience of 12 epochs and a total limit of 40 epochs.
+The training was stable as reported in the loss graph running for a total of 40 epochs.
+The signal could still have improved over time.
 
 The tracked metrics evaluate the results by measuring the capability to identify the originating modality from the fused vector.
 This idea is a robust method for understanding if the final embedding correctly condenses the information from the various modalities.
