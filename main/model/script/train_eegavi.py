@@ -54,18 +54,16 @@ def main(cfg: KdConfig):
     profiler = SimpleProfiler()
 
     torchinfo.summary(module)
-    m_key = "val/top1_mean"
-    val_check_interval = 1000
+    monitor_key = "val_global/fused/bidirectional/mrr_mean"
 
     model_name: str = (
-        # todo pass seed in cfg
-        f"eegavi_{AppConfig.SEED}"
+        f"eegavi_{cfg.seed}"
         f"_{"moco-immediate" if cfg.trainer.use_moco else ""}"
         f"_b{cfg.trainer.batch_size}"
         f"_lr{cfg.trainer.lr}"
         "no-grad-stop"
     )
-    limit_train_batches = 2500 # 900 b=64
+    limit_train_batches = 2500  # 900 b=64
     trainer = L.Trainer(
         # profiler=profiler,
         # enable_progress_bar=False,
@@ -75,7 +73,7 @@ def main(cfg: KdConfig):
         callbacks=[
             # TQDMProgressBar(leave=True, refresh_rate=40)
             EarlyStopping(
-                monitor="val_global/fused/bidirectional/mrr_mean",
+                monitor=monitor_key,
                 min_delta=0.002,
                 patience=20,
                 mode="max",
@@ -87,7 +85,7 @@ def main(cfg: KdConfig):
                 every_n_train_steps=limit_train_batches,
                 save_top_k=1,
                 save_last=True,
-                monitor=m_key,
+                monitor=monitor_key,
                 mode="max",
             ),
             RichProgressBar()
