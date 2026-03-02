@@ -46,7 +46,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.batches_per_epoch: int = batches_per_epoch
         self.restore_iteration: int = restore_iteration
 
-        self.load_test = False
+        self.load_test = True
         self._dequantize_keys: list[str] = dequantize_keys
 
     def dequantize_keys(self) -> list[str]:

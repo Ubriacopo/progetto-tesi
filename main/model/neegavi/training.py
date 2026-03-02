@@ -200,6 +200,9 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
 
+    def on_test_epoch_end(self) -> None:
+        self.on_validation_epoch_end()
+
     @torch.no_grad()
     def moco_momentum_update(self):
         m = self.momentum

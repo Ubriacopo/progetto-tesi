@@ -7,33 +7,33 @@ The first training attempts of the model report the values shown in Table \ref{t
 
 \begin{table}
     \centering
-    \begin{tabular}{c c | c | c || c | c}
-        & & \multicolumn{2}{c}{$EEG_{fused}$} & \multicolumn{2}{c}{$EEG_{only}$} \\ \hline
-        &                 & Val  & Test & Val & Test \\ \hline
-        Audio &                 &      &      &     &      \\
-        & \textit{MRR}    & 0.96 & 0.98 & 0.0 & 0.0  \\
-        & \textit{Margin} & 0.19 & 0.20 & 0.0 & 0.0  \\
-        & \textit{Top-1}  & 0.92 & 0.96 & 0.0 & 0.0  \\ \hline
-        ECG   &                 &      &      &     &      \\
-        & \textit{MRR}    & 0.63 & 0.59 & 0.0 & 0.0  \\
-        & \textit{Margin} & 0.17 & 0.16 & 0.0 & 0.0  \\
-        & \textit{Top-1}  & 0.50 & 0.47 & 0.0 & 0.0  \\ \hline
-        EEG   &                 &      &      &     &      \\
-        & \textit{MRR}    & 0.90 & 0.88 & 0.0 & 0.0  \\
-        & \textit{Margin} & 0.31 & 0.31 & 0.0 & 0.0  \\
-        & \textit{Top-1}  & 0.85 & 0.84 & 0.0 & 0.0  \\ \hline
-        Text  &                 &      &      &     &      \\
-        & \textit{MRR}    & 0.70 & 0.63 & 0.0 & 0.0  \\
-        & \textit{Margin} & 0.14 & 0.15 & 0.0 & 0.0  \\
-        & \textit{Top-1}  & 0.47 & 0.50 & 0.0 & 0.0  \\ \hline
-        Video &                 &      &      &     &      \\
-        & \textit{MRR}    & 0.65 & 0.74 & 0.0 & 0.0  \\
-        & \textit{Margin} & 0.27 & 0.29 & 0.0 & 0.0  \\
-        & \textit{Top-1}  & 0.53 & 0.62 & 0.0 & 0.0  \\ \hline
-        Mean  &                 &      &      &     &      \\
-        & \textit{MRR}    & 0.77 & 0.76 & 0.0 & 0.0  \\
-        & \textit{Margin} & 0.21 & 0.0  & 0.0 & 0.0  \\
-        & \textit{Top-1}  & 0.66 & 0.68 & 0.0 & 0.0  \\ \hline
+    \begin{tabular}{c c | c | c ||  c}
+        & & \multicolumn{2}{c}{$EEG_{fused}$} & {$EEG_{only}$} \\ \hline
+        &                 & Val  & Test & Test  \\ \hline
+        Audio &                 &      &      &       \\
+        & \textit{MRR}    & 0.96 & 0.98 & 0     \\
+        & \textit{Margin} & 0.19 & 0.20 & 0     \\
+        & \textit{Top-1}  & 0.92 & 0.96 & 0     \\ \hline
+        ECG   &                 &      &      &       \\
+        & \textit{MRR}    & 0.63 & 0.59 & -7.05 \\
+        & \textit{Margin} & 0.17 & 0.16 & 0     \\
+        & \textit{Top-1}  & 0.50 & 0.47 & 0     \\ \hline
+        EEG   &                 &      &      &       \\
+        & \textit{MRR}    & 0.90 & 0.88 & 1.0   \\
+        & \textit{Margin} & 0.31 & 0.31 & 0.51  \\
+        & \textit{Top-1}  & 0.85 & 0.84 & 1.0   \\ \hline
+        Text  &                 &      &      &       \\
+        & \textit{MRR}    & 0.70 & 0.63 & 0.04  \\
+        & \textit{Margin} & 0.14 & 0.15 & 0.00  \\
+        & \textit{Top-1}  & 0.47 & 0.50 & 0     \\ \hline
+        Video &                 &      &      &       \\
+        & \textit{MRR}    & 0.65 & 0.74 & 0     \\
+        & \textit{Margin} & 0.27 & 0.29 & -9.94 \\
+        & \textit{Top-1}  & 0.53 & 0.62 & 0     \\ \hline
+        Mean  &                 &      &      &       \\
+        & \textit{MRR}    & 0.77 & 0.76 & 0.21  \\
+        & \textit{Margin} & 0.21 & 0.0  & 0.0   \\
+        & \textit{Top-1}  & 0.66 & 0.68 & 0.20  \\ \hline
     \end{tabular}
 
     \caption{}
