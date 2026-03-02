@@ -275,12 +275,10 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
             support = torch.cat(support_outs, dim=1)
             mask = torch.cat(mask_outs, dim=1)
             time = torch.cat(time_outs, dim=1)
-
-        # We force for test
-        # Default empty return
-        support = torch.empty(b, 0, self.supports_feature_size, device=device)
-        mask = torch.empty(b, 0, device=device, dtype=torch.bool)
-        time = torch.empty(b, 0, device=device)
+        else:
+            support = torch.empty(b, 0, self.supports_feature_size, device=device)
+            mask = torch.empty(b, 0, device=device, dtype=torch.bool)
+            time = torch.empty(b, 0, device=device)
 
         return support, mask, time
 
