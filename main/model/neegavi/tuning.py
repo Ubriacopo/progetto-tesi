@@ -53,7 +53,7 @@ def objective(
 
     custom_config = copy.deepcopy(custom_config)
     custom_config.drop_p = drop_p
-
+    # todo fai queste chiamate in una funziona sola visto che si duplica tra script
     student = Factory.default(
         eeg_config=eeg_config,
         vid_config=vid_config,
