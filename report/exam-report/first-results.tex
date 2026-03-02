@@ -3,35 +3,66 @@
 
 
 \section{First Results}
-The first training attempts on the model report values in table.
+The first training attempts of the model report the values shown in Table \ref{tab:metrics}.
 
-Early stopping on the global averaged value of \textit{mrr} was applied with patience of 12 epochs.
+\begin{table}
+    \centering
+    \begin{tabular}{c c | c | c || c | c}
+        & & \multicolumn{2}{c}{$EEG_{fused}$} & \multicolumn{2}{c}{$EEG_{only}$} \\ \hline
+        &                 & Train & Test & Train & Test \\ \hline
+        Audio &                 &       &      &       &      \\
+        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
+        Video &                 &       &      &       &      \\
+        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
+        Text  &                 &       &      &       &      \\
+        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
+        ECG   &                 &       &      &       &      \\
+        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
+        Mean  &                 &       &      &       &      \\
+        & \textit{MRR}    & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Margin} & 0.0   & 0.0  & 0.0   & 0.0  \\
+        & \textit{Top-1}  & 0.0   & 0.0  & 0.0   & 0.0  \\ \hline
+    \end{tabular}
 
-The training was stable as reported in the loss graph.
-Early stopping initiated the model's stopping as model plateaued.
-
-The metrics tracked to evaluate the objective are based on the idea of being able to identify for originating modality from the fused vector.
-This common assumption is robust for understanding if the information contained in the end embeddings correctly condense the information before the fusion.
-
-A strong used metric is \textit{mean reciprocal rank (mrr)} that ... explain here ..
-In the results the comparisons show that MRR retrieval for fused embeddings outperform the main modality when not aligned.
-This means that each modality adds complimentary information.
-
-Text is not providing consistent signal (or is poorly paired / too noisy / too weak) from the alignment measurements.
-Alignment measures .. def of alignment here ..
-Fused embeddings consistently outperform pre-fusion EEG representations in cross-modal retrieval
-
-Beyond the \textit{mrr} and \textit{alignment} metrics we also calculate the \textit{top-k} behaviours of the data.
-The test samples of our partitioned dataset amount to a total of: xxxx.
-This considering the results are ???. As reported in the table below.
+    \caption{EEG is trivial thus not reported.}
+    \label{tab:metrics}
+\end{table}
 
 
-These first results lead us to believe the model can improve further and that the process is working.
-By tuning the hyperparameters we assume to be able to reach better performances.
+We applied early stopping on the global averaged value of \textit{mrr} with a patience of 12 epochs.
+The training was stable as reported in the loss graph running for a total of n epochs.
 
+The tracked metrics evaluate the results by measuring the capability to identify the originating modality from the fused vector.
+This idea is a robust method for understanding if the final embedding correctly condenses the information from the various modalities.
+
+An often used metric to measure this behavior is \textit{mean reciprocal rank (MRR)}.
+It is a statistic that measures ranking systems by averaging the inverse rank of the first relevant result across multiple queries.
+The value is defined in the range $MRR \in [0,1]$ with 1 indicating consistently being \textit{top1}:
+$$MRR = \frac{1}{|Q|} \sum_{i=1}^{|Q|} \frac{1}{rank_i}$$
+
+It is commonly used in information retrieval and scenarios where only the first correct answer matters.
+
+Text exhibits significantly lower margin and MRR values, suggesting weaker cross-modal alignment.
+Margin measures the relative separation between positives and negatives pairs in the embedding space.
+
+Beyond the \textit{MRR} and \textit{margin} we also calculate the \textit{top-k} behaviors of the data.
+All measurements depend on the size of the sample.
+During training the value is moderated by the \textit{MoCo} queue and the batch size while in validation and test
+it is the size of the dataset partition.
+The test samples of our partitioned dataset amount to a total of: xxxx, thus making top-1 retrieval not trivial.
+All results of the measured metrics are reported in table \ref{tab:metrics}.
+For reference all modalities are compared with an EEG-only version to see if fusion helps in the process of retrieval.
+
+A hyperparameter tuning process may improve reported performance.
 % todo misura per buckets 4 16 32 s
-
-Results in tables.
 
 
 
