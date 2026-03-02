@@ -46,3 +46,4 @@ colorlog
 hydra_colorlog
 mlflow
 webdataset
+optuna

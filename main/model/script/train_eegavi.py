@@ -29,7 +29,6 @@ def main(cfg: KdConfig):
     kd_train_datamodule = KdTrainDataModule(
         dataset_paths=cfg.dataset_descriptors,
         batch_size=cfg.trainer.batch_size,
-        batches_per_epoch=cfg.trainer.batches_per_epoch,
         restore_iteration=cfg.trainer.dl_start_index,  # To resume a training if necessary
         dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
         seed=AppConfig.SEED

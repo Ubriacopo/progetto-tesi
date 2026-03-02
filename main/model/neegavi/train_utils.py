@@ -18,7 +18,6 @@ class KdTrainDataModule(lightning.LightningDataModule):
             dataset_paths: list[CachableDatasetDescriptor],
             # Parameters for stuff less related to the data itself
             batch_size: int,
-            batches_per_epoch: int,
             seed: int,
             dequantize_keys: list[str],
             collate_fn=collate,
@@ -43,7 +42,6 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.seed = seed
         self.collate_fn = collate_fn
         self.batch_size: int = batch_size
-        self.batches_per_epoch: int = batches_per_epoch
         self.restore_iteration: int = restore_iteration
 
         self.load_test = True
