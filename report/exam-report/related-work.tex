@@ -7,20 +7,21 @@
 \section{Related Work}
 
 \subsection{EEG Foundation models}
-Foundation models are large scale machine learning models trained on vast datasets.
+Foundation models are large-scale machine learning models trained on vast datasets.
 The ones that adopt self-supervised learning techniques typically learn general latent representations.
 These models are commonly used as backbones for downstream tasks.
 There have been various proposals for EEG foundation models.
 These, most times, suffer from limitations that are directly linked to the size and task specificity of their datasets.
-EEG measurements are very experiment dependant and subject specific.
-Unless a novel approach is able to abstract the subject-specific encoding inside the data most solutions will encode the identity features in the learnt representations.
-For this reason, evaluations in the field are more commonly performed subject rather than experiment wise.
+EEG measurements are very experiment-dependent and subject-specific.
+Unless a novel approach is able to abstract the subject-specific encoding inside the data, most solutions will encode the identity features in the learnt representations.
+For this reason, evaluations in the field are more commonly performed subject rather than experiment-wise.
 Beyond this, EEG experiments can vary much between different datasets.
-The measurements layout used for \textit{AMIGOS} with the \textit{Emotiv EPOC Neuroheadset} for example, does share some nodes with the one used in \textit{DEAP}
-\textit{BioSemi ActiveTwo EEG recording system}, but they mostly track different electrodes and different sampling rates.
+The measurement layout used for \textit{AMIGOS} with the \textit{Emotiv EPOC Neuroheadset}, for example only tracks some
+of the electrodes tracked by \textit{DEAP} and its \textit{BioSemi ActiveTwo EEG recording system}.
+It also runs at a different sampling rate.
 Thus, the cross-dataset compatibility tends to be lower than for other common tasks such as vision and audio.
 
-\textit{CBraMod} has been designed to tackle these problems, its representations are in fact not tied to the single
+\textit{CBraMod} has been designed to tackle these problems as its representations are in fact not tied to the single
 electrode position but to the relative space the nodes occupy.
 This way the model learns geometry-aware representations of the data reducing the bias coming from the measurement setup.
 But it is not able to overcome the data limitations on its own.
@@ -32,7 +33,7 @@ Gathering more data is often a costly and difficult task.
 This motivates us to explore ways to exploit information from all available data modalities.
 
 Such approaches have been widely adopted in many fields.
-\textit{Flamingo} by Google Deepmind is an application that partially inspired this work.
+\textit{Flamingo} by Google DeepMind is an application that partially inspired this work.
 It is a Visual-Language model that uses two frozen backbones for image and text generation.
 It leverages information given by the visual encoder to enrich the textual representations.
 The model requires the two data sources to be interleaved to encode the spatio-temporal information that derives
@@ -43,9 +44,9 @@ This is applied in an interleaved way between the layers defined inside the froz
 This way, the model is able to preserve the capabilities of its \textit{LM} while injecting the multimodal information progressively.
 
 A commonly adopted alternative is CLIP style models which resemble more our approach.
-Instead of fusing the information in the whole architecture, alignment it is performed only at the embedding level.
+Instead of fusing the information in the whole architecture the alignment is performed only at the embedding level.
 
-It is safer regarding overfitting as data limitations or noise in \textit{Flamingo} can limit model's generalization performance.
+It is safer regarding overfitting as data limitations or noise in \textit{Flamingo} can limit the model's generalization performance.
 CLIP also solves a problem posed by \textit{Flamingo} in the domain of this application: it is completely unsupervised.
 CLIP style losses train the model on the batch level.
 Their objective is to align representations from two different modalities within a shared embedding space.
@@ -66,12 +67,12 @@ Its idea is to leverage a teacher in a process where its learnt representations 
 Its most common use case is for model compression, reducing the parameter count and computational cost.
 
 Distillation as a framework can be applied at different points of a model's architecture.
-It can also happen in recursive fashion as self-distillation.
+It can also happen in a recursive fashion as self-distillation.
 
 \textit{KD} introduces an auxiliary signal that guides the optimization process during training, acting as a secondary loss term.
 This way the information contained in the teacher is transferred indirectly to the student.
 The student model is trained to approximate the teacher’s representations, thereby transferring higher-level structural information into a more constrained architecture.
-For the distillation to work it is necessary that both models process aligned data, or else alignment would be pointless.
+For the distillation to work, it is necessary that both models process aligned data, or else alignment would be pointless.
 VATE, a multimodal dataset for video, audio and text in the affective computing domain, provides a suitable teacher source for cross-modal distillation into EEG representations.
 
 The technique in cross-modal applications is being explored more and more in many contexts.
@@ -79,4 +80,4 @@ However, its application to EEG representation learning is still limited even wh
 For this reason, we investigate cross-modal distillation in the EEG domain.
 
 
-Taken together the integration of these techniques are not sufficiently explored yet.
+Taken together the integration of these techniques is not sufficiently explored yet.
