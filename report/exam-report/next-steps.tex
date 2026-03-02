@@ -73,7 +73,7 @@ We expect \textit{EEGAVI} to outperform \textit{CBraMod} on the task for two rea
     \item The integration of multiple modalities favors richer embeddings than those computed by \textit{CBraMod}
 \end{itemize}
 
-Once this experiment is performed, a more complex one will be done on "A Multimodal Virtual Reality Data Acquisition Platform and Dataset to Assess Systemic Human Cognitive States".
+Once this experiment is performed, a more complex one will be done on "A Multimodal Virtual Reality Data Acquisition Platform and Dataset to Assess Systemic Human Cognitive States"\cite{Aygun2025}.
 The dataset is designed to measure human cognitive states in virtual reality environments.
 The dataset focuses mostly on cognitive workload, mental fatigue and stress, metrics it tracks from self-assessments of the subjects.
 We train two downstream predictors using \textit{EEGAVI} and \textit{CBraMod} as frozen backbone and compare their performances.
@@ -82,26 +82,3 @@ Our analysis aims to see if \textit{EEGAVI} was able to encode richer informatio
 For future work a completely \textit{Flamingo}-like approach could be studied.
 The current implementation is simpler as the fusion is only done at the end of the model's architecture.
 Interleaving layers of CBraMod with cross-attention blocks could result in a stronger model as we feed the information gradually during the generation of the embeddings.
-
-\newpage
-% todo appendix
-\begin{figure}
-    \centering
-    \includegraphics[width=\textwidth, keepaspectratio]{/home/jacopo/PycharmProjects/progetto-tesi/report/exam-report/kd-xattn}
-    \caption{The \textit{Knowledge Distillation} and the \textit{gated cross-attention} blocks.}
-    \label{fig:kd-xattn}
-\end{figure}
-
-\begin{figure}
-    \centering
-    \includegraphics[width=\textwidth, keepaspectratio]{/home/jacopo/PycharmProjects/progetto-tesi/report/exam-report/eegadapter-perceiver}
-    \caption{The EEGAdapter, used by the EEG branch, and the PerceiverAdapter used by video and audio streams.}
-    \label{fig:eegadapter-perceiver}
-\end{figure}
-
-\begin{figure}
-    \centering
-    \includegraphics[width=\textwidth, keepaspectratio]{/home/jacopo/PycharmProjects/progetto-tesi/report/exam-report/temporal-ffadapter}
-    \caption{Adapters used by ECG and text branch as seen in the model's architecture graph. }
-    \label{fig:temporal-ffadapter}
-\end{figure}

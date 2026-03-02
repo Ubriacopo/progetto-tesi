@@ -15,9 +15,10 @@ Our approach is limited to the affective aspect of neurological data processing,
 
 EEGAVI transfers information from multiple modalities into the EEG, aiming to enhance the representational capacity.
 It employs a principled integration of existing techniques (cross-attention + contrastive loss + knowledge distillation) applied to EEG under data scarcity.
-The model uses multiple frozen backbones to elaborate the input modalities. For the EEG data stream it is CBraMod.
+The model uses multiple frozen backbones to elaborate the input modalities.
+For the EEG data stream it is CBraMod\cite{wang2025cbramodcrisscrossbrainfoundation}.
 
 Beyond the need for a foundation model, the research question focuses on the impact of \textit{knowledge distillation} in the proposed context.
 In particular, we aim to investigate whether distillation in a multimodal context where sources and target do not belong to the same modality is of benefit to the training pipeline or not.
-To answer this question, we pretrain an instance of EEGAVI and analyze its performance using CBraMod as a reference point.
+To answer this question, we pretrain an instance of \textit{EEGAVI} and analyze its performance using CBraMod as a reference point.
 These analyses are first performed on cross-retrieval metrics on the held-out data and later in various downstream tasks.

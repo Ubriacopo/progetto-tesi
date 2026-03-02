@@ -44,14 +44,14 @@ Most of these lack some modalities that the model can process.
     For the second one, subjects watched 4 long videos, some alone and some in groups.
     Self-assessments and external annotations on affective levels and emotions were also tracked.
 
-    \item \textbf{EAV}: \textit{EEG-Audio-Video Dataset for Emotion Recognition in Conversational Contexts (EAV)}
+    \item \textbf{EAV}\cite{article-eav}: \textit{EEG-Audio-Video Dataset for Emotion Recognition in Conversational Contexts (EAV)}
     measures 30-channel EEG, audio and video from 42 participants.
     The scenarios proposed are done in a cue-based conversation designed around five distinct emotions.
     Each participant contributed in a total of 200 interactions.
     Participants tracked self-assessments for the emotion of the experiment (happy, calm, angry and sad) and their level of arousal.
     They were also evaluated by the experimenters on the same protocol.
 
-    \item \textbf{MAHNOB-HCI}: is a broad dataset recorded in response to affective stimuli.
+    \item \textbf{MAHNOB-HCI}\cite{5975141}: is a broad dataset recorded in response to affective stimuli.
     Unlike other datasets \textit{MAHNOB} also tracks gaze signals, but it is too limited in size to use.
     We did not include an explicit gaze stream due to a lack of calibrated gaze targets and potential estimation noise from frontal videos.
     However, eye- and head-related cues could be extracted as an auxiliary modality in future work.
@@ -232,31 +232,32 @@ This is not necessary for \textit{pivot} whose time unit is 1 second.
 All videos have a similar setup where the image is centered on the face of the subject.
 For this reason, no cropping to the input videos was performed.
 
-The selected backbone for the Video embeddings is ViViT\footnote{ViViT: google/vivit-b-16x2-kinetics400}.
+The selected backbone for the Video embeddings is ViViT\footnote{ViViT: google/vivit-b-16x2-kinetics400}\cite{arnab2021vivitvideovisiontransformer}.
 To preserve spatial-temporal richness we use the model's \textit{last\_hidden\_state} output.
 The raw output is high-dimensional and memory intensive, a single sample is of the shape $(16, 14, 14, 768)$ which is then repeated for $T$ time steps.
 To solve this problem 2D pooling is applied on the $(14,14)$ frame with $stride=2$ and $kernel=3$.
 
 \paragraph{Audio}
-All audio, when present, is turned into a mono signal and resampled to match the required $fs=16kHz$ by WavLM\footnote{WavLM: microsoft/wavlm-base} .
+All audio, when present, is turned into a mono signal and resampled to match the required $fs=16kHz$ by WavLM\footnote{WavLM: microsoft/wavlm-base}\cite{Chen_2022}.
 It is primarily a speech/paralinguistic model which might limit generalization to non-verbal vocalizations.
 EAV tracks speech of the subject but AMIGOS's audio doesn't have the participant as direct interlocutor.
 Future work could evaluate alternative audio encoders or separate speech vs. reaction audio streams.
 
 \paragraph{Text}
 No dataset provides a textual transcript of the experiments.
-For this reason, we transcribe speech using \textit{Whisper}\footnote{Whisper: openai/whisper-medium} by OpenAI.
+For this reason, we transcribe speech using \textit{Whisper}\footnote{Whisper: openai/whisper-medium} by OpenAI\cite{radford2022robustspeechrecognitionlargescale}.
 The process is only possible when an audio track is available and the duration of the media is shorter than 5 minutes.
 Whisper should be able to process long clips but the need for timestamps on the extracted words makes this unfeasible.
 
-The Text processing pipeline uses MiniLM\footnote{sentence-transformers/all-MiniLM-L6-v2} to generate embeddings of the text.
+The Text processing pipeline uses MiniLM\footnote{sentence-transformers/all-MiniLM-L6-v2}\cite{wang2020minilmdeepselfattentiondistillation}
+to generate embeddings of the text.
 To provide richer representations the segments are extended beyond their time window.
 They receive information from past blocks while also some from the one immediately after.
 This is done because embedding models, textual ones in particular, are known to make stronger representations when context is broader.
 
 \paragraph{ECG}
 These measurements are often versatile, as it is possible to reconstruct more of the signal even if the measurements are limited.
-As ECG foundation model, we opted for the ECG-FM which is reported to perform when the data channels are incomplete.
+As ECG foundation model, we opted for the ECG-FM\cite{mckeen2025ecgfmopenelectrocardiogramfoundation} which is reported to perform when the data channels are incomplete.
 
 \subsection{Model}
 \begin{figure}
@@ -272,7 +273,7 @@ Before passing through it, each modality follows a distinct flow that adds expre
 
 This is to allow \textit{KD} to affect the model during backpropagation, since the embeddings come from a frozen state.
 Having selected a contrastive model trained on \textit{VATE}, the modalities that actively participate in the \textit{KD} process are video, text and audio.
-Of these Audio and Video, given the way they are processed, are structurally complex.
+Of these audio and video, given the way they are processed, are structurally complex.
 For this reason a more complex module to capture the information and condense them is used: the Perceiver Resampler.
 It was first introduced by Flamingo and its goal was to be able to elaborate all different kinds of shapes to standardize.
 In our case data is always of the same structure for the way the inputs are masked, thus it only acts as data compressor.
@@ -308,7 +309,7 @@ For this reason, when referring to an epoch of the model the stochastic sampling
 Samples tends to be very large because of the multiple modalities and their representation shape.
 For this reason training the model becomes memory demanding in large batch settings.
 While learning with small batches itself is fine and helps with regularization in contrastive setups it can be harmful.
-We adopt the \textit{SigLIP} loss for training, a loss function that is inspired by InfoNCE.
+We adopt the \textit{SigLIP}\cite{zhai2023sigmoidlosslanguageimage} loss for training, a loss function that is inspired by InfoNCE.
 $$l = - \frac{1}{N} \sum_{i=1}^{N} \sum_{j=1}^{N} log{\frac{1}{1 + e^{z_{ij}(-tx_i * y_j + b)}}}$$
 
 Generally speaking, SigLIP is less sensitive to batch size.\\
@@ -326,7 +327,7 @@ The negative samples drawn from the queue built by MoCo ignore the dataset.
 This allows the model to still combine samples coming from different datasets during the loss computation.
 
 The inputs of the model define a temporal structure, this is an element controlled by the attention mechanism.
-Inspired by other applications such as AntLM, instead of taking single position of the time control we opt for a dynamic training on the setting.
+Inspired by other applications such as AntLM\cite{yu2024antlmbridgingcausalmasked}, instead of taking single position of the time control we opt for a dynamic training on the setting.
 The model can elaborate the inputs in either \textit{causal} or \textit{bidirectional} setting.
 When \textit{causal} is selected future time steps relative to the current in the attention mechanism are masked out,
 this way the model only has prior information to generate the outputs.
