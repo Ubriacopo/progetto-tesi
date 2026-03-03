@@ -27,6 +27,8 @@ class MaskedContrastiveModelOutputs(TypedDict):
 
 
 class MaskedContrastiveModel(nn.Module):
+    keys = [Video.modality_code(), Audio.modality_code(), Text.modality_code()]
+
     def __init__(self, hidden_channels: int, out_channels: int):
         super().__init__()
         self.hidden_channels: int = hidden_channels

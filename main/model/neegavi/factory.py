@@ -168,5 +168,4 @@ class Factory:
 
         for disabled_support_code in disabled_supports:
             factory.disabled(disabled_support_code)
-
         return factory

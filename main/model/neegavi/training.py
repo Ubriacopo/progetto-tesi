@@ -30,8 +30,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             datamodule: KdTrainDataModule,
             kd_loss_weight: float,
             fusion_loss_weight: float,
-            fusion_metrics: list[str],
-            kd_keys: list[str],
             lr: float,
             weight_decay: float = 0.01,
             max_warmup_steps: int = 1000,
@@ -51,12 +49,12 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         self.datamodule: KdTrainDataModule = datamodule
         self.siglip_losses: nn.ModuleDict = nn.ModuleDict()
-        for fusion_metric in fusion_metrics:
+        for fusion_metric in student.fusion_keys():
             loss_fn = SiglipLoss(init_tau=0.07, init_bias=-10, stop_grad_target=False)
             self.siglip_losses.add_module(fusion_metric, loss_fn)
 
         self.kd_losses: nn.ModuleDict = nn.ModuleDict()
-        for kd_key in kd_keys:
+        for kd_key in teacher.keys:
             loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
             self.kd_losses.add_module(kd_key, loss_fn)
 

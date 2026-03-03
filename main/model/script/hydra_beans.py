@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 from main.core_data.dataset import CachableDatasetDescriptor
 from main.model.neegavi.model import EegInterAviModelConfiguration
 
-
+# todo remove unused fields
 @dataclasses.dataclass
 class TrainerConfig:
     lr: float
@@ -12,9 +12,6 @@ class TrainerConfig:
     epochs: int
     kd_loss_weight: float
     fusion_loss_weight: float
-    weakly_supervised_weight: float
-    ecg_correction_weight: float
-    kd_temperature: float
     batches_per_epoch: int
     dl_start_index: int
     ckpt_path: str

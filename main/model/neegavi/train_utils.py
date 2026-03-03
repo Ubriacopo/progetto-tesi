@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Literal
 
 import lightning
 import torch
@@ -47,51 +47,51 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.load_test = True
         self._dequantize_keys: list[str] = dequantize_keys
 
+        self.setup_done: bool = False
+        self.lengths: dict[str, int] = {"train": 0, "val": 0, "test": 0}
+
     def dequantize_keys(self) -> list[str]:
         return self._dequantize_keys
 
+    def size(self, split: Literal["train", "val", "test"]) -> int:
+        if not self.setup_done:
+            raise ValueError("Setup has to be done before calling length")
+        return self.lengths[split]
+
     def setup(self, stage: str) -> None:
+
         datasets, weights = [], []
         val_datasets, test_datasets = [], []
+
+        it_id = self.restore_iteration
         for shards_path in self.shards_path:
             ds_path = shards_path.dataset_path
 
             weights.append(shards_path.dataset_weight)
-            datasets.append(
-                H5KdDataset(
-                    ds_path,
-                    prefix="train",
-                    block_size=32,
-                    buffer_size=384,
-                    batch_size=self.batch_size,
-                    iterator_id=self.restore_iteration
-                )
+            dataset = H5KdDataset(
+                ds_path, prefix="train", block_size=32, buffer_size=384, batch_size=self.batch_size, iterator_id=it_id
             )
 
-            val_datasets.append(
-                H5KdDataset(
-                    ds_path,
-                    prefix="val",
-                    block_size=32,
-                    buffer_size=96,
-                    batch_size=self.batch_size,
-                    shuffle=False
-                )
+            self.lengths["train"] += len(dataset)
+            datasets.append(dataset)
+
+            val_dataset = H5KdDataset(
+                ds_path, prefix="val", block_size=32, buffer_size=96, batch_size=self.batch_size, shuffle=False
             )
+
+            self.lengths["val"] += len(val_dataset)
+            val_datasets.append(val_dataset)
 
             if self.load_test:
-                self.test_ds_collection[shards_path.dataset_path] = (
-                    H5KdDataset(
-                        ds_path,
-                        prefix="test",
-                        block_size=32,
-                        buffer_size=96,
-                        batch_size=self.batch_size
-                    ))
+                test_ds = H5KdDataset(ds_path, prefix="test", block_size=32, buffer_size=96, batch_size=self.batch_size)
+                self.lengths["val"] += len(test_ds)
+                self.test_ds_collection[shards_path.dataset_path] = test_ds
 
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=4)
         self.valid_dataset = ChainDataset(val_datasets)
         self.test_dataset = ChainDataset(self.test_ds_collection.values())
+
+        self.setup_done = True
 
     def _move(self, x, device):
         if isinstance(x, torch.Tensor) or isinstance(x, TensorDict):

@@ -13,7 +13,7 @@ custom_config:
   pivot_dim: ${model.pivot_out_size}
   support_dim: ${model.supports_out_size}
   # Drop probability for modalities during training. (Each is evaluated on its own.)
-  drop_p: 0.2
+  drop_p: 0.1
   # If we want to add a modality embedding to vectors before doing fusion.
   use_modality_encoder: True
   output_size: 384

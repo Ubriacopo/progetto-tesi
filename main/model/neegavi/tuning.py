@@ -1,88 +1,94 @@
-# todo this next
 import copy
+import dataclasses
+from abc import ABC
 
 import lightning
 import optuna
 import torch
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import RichProgressBar
-from sklearn.model_selection import learning_curve
 from optuna.integration import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks import RichProgressBar
+
 from main.app_config import AppConfig
-from main.core_data.dataset import CachableDatasetDescriptor
-from main.model.VATE.constrastive_model import MaskedContrastiveModel
-from main.model.neegavi.config import EegModalityConfig, MaskedFeedForwardConfig, KdPerceiverModalityConfig
-from main.model.neegavi.factory import Factory
-from main.model.neegavi.model import EegInterAviModelConfiguration
-from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
+from main.model.neegavi.helpers import build_easy_eegavi_module
+from main.model.script.hydra_beans import KdConfig
 
 
-# todo cerca di tenere le cose il piu posisibli semplici
-def objective(
-        trial: optuna.Trial,
+@dataclasses.dataclass
+class Definition[T](ABC):
+    pass
 
-        teacher: MaskedContrastiveModel,
-        dataset_descriptors: list[CachableDatasetDescriptor],
 
-        eeg_config: EegModalityConfig,
-        vid_config: KdPerceiverModalityConfig,
-        aud_config: KdPerceiverModalityConfig,
-        txt_config: KdPerceiverModalityConfig,
-        ecg_config: MaskedFeedForwardConfig,
-        custom_config: EegInterAviModelConfiguration,
-        fusion_metric_codes: list[str],
-        teacher_keys: list[str],
-        seed: int,
-        drop_p_min: float = 0.05,
-        drop_p_max: float = 0.2,
-        attention_max_layers: int = 4,
-        attention_min_layers: int = 2,
-):
+@dataclasses.dataclass
+class ChoiceDefinition[T](Definition[T]):
+    values: list[T]
+
+
+@dataclasses.dataclass
+class StepDefinition[T](Definition[T]):
+    low: T
+    high: T
+    step: T | None
+    is_log: bool
+
+    def __post_init__(self):
+        # reject bool explicitly (since bool is a subclass of int)
+        if isinstance(self.low, bool) or isinstance(self.high, bool) or isinstance(self.step, bool):
+            raise TypeError("StepDefinition does not accept bool.")
+
+
+@dataclasses.dataclass
+class TuningSearchSpace:
+    lr: Definition[float]
+    batch_size: Definition[int]
+    attn_layers: Definition[int]  # Min-Max-Step
+    beta: Definition[float]
+    use_moco: Definition[bool] = ChoiceDefinition[bool]([True, False])
+
+    def suggest(self, key: str, trial: optuna.Trial):
+        if not hasattr(self, key):
+            raise IndexError("Invalid trial key: {}".format(key))
+
+        o = self.__getattribute__(key)
+        if isinstance(o, ChoiceDefinition):
+            return trial.suggest_categorical(key, o.values)
+
+        if isinstance(o, StepDefinition):
+            if isinstance(o.low, int):
+                if o.step is None:
+                    o.step = 1  # Default value deriving from optuna for ints
+                return trial.suggest_int(key, low=o.low, high=o.high, step=o.step, log=o.is_log)
+            return trial.suggest_float(key, low=o.low, high=o.high, step=o.step, log=o.is_log)
+
+        raise TypeError("Invalid set object type: {}".format(type(o)))
+
+
+def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace) -> float:
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     # Tuned grid of parameters
-    lr = trial.suggest_float("lr", 1e-5, 5e-3, log=True)  # TODO run on lr only first
-
-    attn_layers = trial.suggest_int(name="attn_layers", low=attention_min_layers, high=attention_max_layers, step=1)
-    drop_p = trial.suggest_float(name="drop_p", low=drop_p_min, high=drop_p_max, step=0.05)
-    batch_size = trial.suggest_categorical(name="batch_size", choices=[32, 64, 128])
-    use_moco = trial.suggest_categorical(name="use_moco", choices=[True, False])
+    # Stage 1
+    lr = search_space.suggest("lr", trial)
+    batch_size = search_space.suggest("batch_size", trial)
+    # Stage 2
+    attn_layers = search_space.suggest("attn_layers", trial)
+    use_moco = search_space.suggest("use_moco", trial)
     # alpha = trial.suggest_float(name="alpha(fusion)", low=0.01, high=1.0, step=0.1)  # Fixed at the moment
     beta = trial.suggest_float("beta(kd)", 1e-2, 10.0, log=True)
 
-    custom_config = copy.deepcopy(custom_config)
-    custom_config.drop_p = drop_p
+    custom_config = copy.deepcopy(cfg)
+    # Stage 1: First to tune
+    custom_config.trainer.lr = lr
+    custom_config.trainer.batch_size = batch_size
+    # Stage 2:
+    custom_config.model.factory.args.attention_config = attn_layers
+    custom_config.trainer.kd_loss_weight = beta
+    custom_config.trainer.use_moco = use_moco
+    # Stage 3: (If MoCo still on)
+    # moco_queue_size
+
     # todo fai queste chiamate in una funziona sola visto che si duplica tra script
-    student = Factory.default(
-        eeg_config=eeg_config,
-        vid_config=vid_config,
-        aud_config=aud_config,
-        txt_config=txt_config,
-        ecg_config=ecg_config,
-        attention_config=attn_layers,  # Simple is strong, just choose how many to stack togheter
-        custom_config=custom_config,
-    )
-
-    datamodule = KdTrainDataModule(
-        dataset_paths=dataset_descriptors,
-        batch_size=batch_size,
-        dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
-        seed=AppConfig.SEED
-    )
-
-    module = EasyEegAviKdVateMaskedModule(
-        student=student,
-        teacher=teacher,
-        datamodule=datamodule,
-        use_moco=use_moco,
-        kd_loss_weight=beta,
-        fusion_loss_weight=1.0,
-        lr=lr,
-        seed=seed,
-        fusion_metrics=fusion_metric_codes,
-        kd_keys=list(map(lambda o: o.key, teacher_keys)),
-    )
+    module = build_easy_eegavi_module(custom_config)
 
     max_epochs = 10
     monitor_key = "val_global/fused/bidirectional/mrr_mean"
@@ -104,6 +110,6 @@ def objective(
         accumulate_grad_batches=4,  # This is to stabilize training todo pass from config
     )
 
-    trainer.fit(module, datamodule=datamodule)
-    results = trainer.validate(module, datamodule=datamodule)
+    trainer.fit(module, datamodule=module.datamodule)
+    results = trainer.validate(module, datamodule=module.datamodule)
     return results[0][monitor_key]

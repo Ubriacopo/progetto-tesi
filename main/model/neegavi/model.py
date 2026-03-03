@@ -282,6 +282,14 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
         return support, mask, time
 
+    def modality_is_fused(self, modality_code: str):
+        # TODO: If it ever is the case we have to change behaviour we at least the function ready
+        return True
+
+    def fusion_keys(self):
+        support: ModalityStream  # We know those are modality streams by construction
+        return [support.code for support in self.supports if self.modality_is_fused(support.code)] + [self.pivot.code]
+
     def forward(self, x: dict, use_kd: bool = False, return_dict: bool = False):
         # Initialize current device and output object
         device = x[self.pivot.get_code()]["data"].device
