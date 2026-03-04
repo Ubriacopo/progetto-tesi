@@ -42,7 +42,7 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         self.norm_kv = nn.LayerNorm(dim)
         self.norm_ff = nn.LayerNorm(dim)
 
-        self.self_attn: Optional[nn.Module] = None
+        self.self_attn: Optional[nn.MultiheadAttention] = None
         self.self_attn_gate: Optional[nn.Parameter] = None
 
         if with_self_attn:
@@ -60,6 +60,7 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.
             # Also respect the convention of torch of passing mask with True where ignore.
             norm_q = self.norm_self_attn(q)
+            # todo bug risolvere manca maschera su self attn per causal/bidi
             out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
             q = q + self.self_attn_gate.tanh() * out
 

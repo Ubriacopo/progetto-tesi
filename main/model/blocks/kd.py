@@ -13,6 +13,7 @@ class KDHead(nn.Module):
         Inputs in my model are mostly 4D while the teacher is 1D so we have to pool dimensions.
         """
         super().__init__()
+        # TODO Drop the transform
         self.transform = nn.Sequential(
             nn.Linear(input_size, 4 * target_size),
             nn.GELU(),
