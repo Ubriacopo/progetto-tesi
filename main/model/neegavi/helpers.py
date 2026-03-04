@@ -53,7 +53,8 @@ def default_trainer(epochs: int, model_name: str, profiler, limit_train_batches:
             )
         ],
         precision="16-mixed",
-        max_steps=int(limit_train_batches * epochs / accumulate_grad_batches),
+        max_epochs=epochs,
+        max_steps=int(limit_train_batches * epochs ),
 
         limit_train_batches=limit_train_batches,
         val_check_interval=1.0,

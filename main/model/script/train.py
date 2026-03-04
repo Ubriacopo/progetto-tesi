@@ -25,7 +25,7 @@ def main(cfg: KdConfig):
     profiling = False
     profiler = SimpleProfiler() if profiling else None
     trainer = default_trainer(
-        epochs=20,
+        epochs=40,
         model_name=model_name,
         profiler=profiler,
         limit_train_batches=train_batches,  # TODO Calculate from batch size
