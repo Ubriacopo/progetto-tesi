@@ -15,12 +15,12 @@ class EegCanonicalOrder:
         "C3",
         "Cz",
         "C4",
-        "T8"  # T4, 
-        "P7"  # T5,
+        "T8",  # T4,
+        "P7",  # T5,
         "P3",
         "Pz",
         "P4",
-        "P8"  # T6,
+        "P8",  # T6,
         "O1",
         "O2"
     ]
