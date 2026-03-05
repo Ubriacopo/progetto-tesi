@@ -3,45 +3,26 @@ import torch
 
 class EegCanonicalOrder:
     order: list[str] = [
-        # First 14 channels are dominated by AMIGOS and DREAMER as it they have less (Emotiv EPOC)
-        # Because the 10–20 system was renamed over time. The electrodes are the same physical positions, but the labels changed between older and newer conventions
-        # This is for those noted with eq(other) (legacy labels)
-        "AF3",  # Not in CBra training
+        # 10 - 20
+        "Fp1",
+        "Fp2",
         "F7",
         "F3",
-        "FC5",  # Not in CBra training
-        "T7",  # eq(T3) not in CBra
-        "P7",  # eq(T5)
-        "O1",
-        "O2",
-        "P8",  # eq(T6)
-        "T8",  # eq(T4)
-        "FC6",  # Not in CBra training
+        "Fz",
         "F4",
         "F8",
-        "AF4"  # Not in CBra training,
-        # DEAP rest
-        "FP1",
-        "FC1",  # Not in CBra training
+        "T7",  # T3
         "C3",
-        "CP5",  # Not in CBra training
-        "CP1",  # Not in CBra training
-        "P3",
-        "PO3",
-        "Oz",  # Not in CBra training
-        "Pz",
-        "Fp2",
-        "Fz",
-        "FC2",  # Not in CBra training
         "Cz",
         "C4",
-        "CP6",  # Not in CBra training
-        "CP2",  # Not in CBra training
+        "T8"  # T4, 
+        "P7"  # T5,
+        "P3",
+        "Pz",
         "P4",
-        "PO4",  # Not in CBra training
-        # Coming From EAV
-        "PO9",  # Not in CBra training
-        "PO10"  # Not in CBra training
+        "P8"  # T6,
+        "O1",
+        "O2"
     ]
 
     def __init__(self):
@@ -52,6 +33,9 @@ class EegCanonicalOrder:
         mask = torch.zeros(*return_tensor.shape[:-1], device=eeg.device)
 
         for current_idx, entry in enumerate(tensor_order):
+            if not entry.lower() in self.order_to_index:
+                continue  # Non valid elements are not tracked
+
             new_idx = self.order_to_index[entry.lower()]
             return_tensor[new_idx] = eeg[current_idx]
             mask[new_idx] = 1
