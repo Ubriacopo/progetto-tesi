@@ -30,7 +30,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
         MultimediaPadding(max_length=max_length),
         DataQuantizationTransform(),
         # From our ViVit 2D pooling we get 400 patches while 768 is just the output size of ViViT
-        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, 400, 768), mask_shape=(max_length,)),
+        default_remap=EmptyQuantizedObjectTransform(shape=(max_length, 256, 768), mask_shape=(max_length,)),
     )
 
 
