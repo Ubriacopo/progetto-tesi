@@ -426,7 +426,7 @@ class ViVit2DPooling(nn.Module):
         t = x.shape[0]
         x = rearrange(x, "t (P F) D -> t P F D", P=16)  # (Temporal Patch x Frame) decomposition
         x = rearrange(x, "t P (F h) D -> (t P) D F h", h=14)
-        x = torch.nn.functional.avg_pool2d(x, self.stride, self.kernel_size)
+        x = torch.nn.functional.avg_pool2d(x, self.kernel_size, self.stride)
         x = rearrange(x, "(t P) D F h -> t P (F h) D", t=t)
         x = rearrange(x, "t P F D -> t (P F) D")
         return x

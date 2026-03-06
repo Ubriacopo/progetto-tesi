@@ -26,7 +26,7 @@ def vid_vivit_interleaved_transform_pipe(config: DatasetConfig) \
             frames_resampler=RegularFrameResampling(max_length=config.vid_target_config.max_frames, drop_mask=True),
         ),
         ViVitEmbedderTransform(map_to="cpu"),
-        ViVit2DPooling(2, 3),
+        ViVit2DPooling(3, 3),
         MultimediaPadding(max_length=max_length),
         DataQuantizationTransform(),
         # From our ViVit 2D pooling we get 400 patches while 768 is just the output size of ViViT

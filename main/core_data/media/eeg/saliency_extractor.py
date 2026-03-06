@@ -1,8 +1,7 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import mne
 import numpy as np
-from numpy import dtype
 from scipy.ndimage import median_filter
 from scipy.signal import stft
 
@@ -24,7 +23,7 @@ class EEGFeatureExtractor:
         self.weights: Optional[np.ndarray] = weights
         if self.weights is None:
             # Entropy - Spectral Flux - RMS - Line Length - TKEO (Teager-Kaiser)
-            self.weights = np.array([-0.4, 1.5, 0.7, -1.0, -1.0])
+            self.weights = np.array([-0.4, 1.5, 0.7, -0.5, 0.5])
 
         self.k_frac = .4
 
