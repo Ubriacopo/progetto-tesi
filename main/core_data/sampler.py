@@ -215,7 +215,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
     def decide_start_anchor(self, eeg: EEG, t: float, d: float, candidate_anchors: np.ndarray) \
             -> tuple[float, float, Optional[int]]:
         # Returns start. We favour more based on features than on random selection here.
-        base_on_feature = np.random.random() < .6 and len(candidate_anchors) > 0
+        base_on_feature = np.random.random() < .7 and len(candidate_anchors) > 0
         if base_on_feature:
             selected_candidate: Optional[int] = np.random.choice(len(candidate_anchors))
             # For now keep it simple: All our segments have a duration of 4 seconds if short.
