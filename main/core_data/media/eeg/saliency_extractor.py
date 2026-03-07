@@ -180,10 +180,12 @@ class EEGFeatureExtractor:
         return -(p_normalized * np.log(p_normalized + eps)).sum(axis=0)
 
     def _stft_features(self, duration_s: float, hop_s: float, bands=((0.5, 4), (4, 8), (8, 13), (13, 30))):
-        x, fs = self.raw.get_data(picks='eeg'), self.raw.info['sfreq']
+        fs = self.raw.info['sfreq']
         # Normalize
-        x = (x - x.mean(axis=1, keepdims=True)) / (x.std(axis=1, keepdims=True) + self.epsilon)
-        C, T = x.shape
+        x_raw = self.raw.get_data(picks='eeg')
+        x_norm = (x_raw - x_raw.mean(axis=1, keepdims=True)) / (x_raw.std(axis=1, keepdims=True) + self.epsilon)
+
+        C, T = x_raw.shape
 
         n_samples = int(round(duration_s * fs))
         hop_samples = int(round(hop_s * fs))
@@ -194,16 +196,17 @@ class EEGFeatureExtractor:
         if hop_samples > n_samples and self.raw.n_times < n_samples + hop_samples:
             raise ValueError("hop_s too large for duration_s and signal length")
 
-        f, t_sec, Z0 = stft(x[0], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
+        f, t_sec, _ = stft(x_norm[0], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
         centers = np.round(t_sec * fs).astype(int)
         starts_all = np.clip(centers - n_samples // 2, 0, max(0, T - n_samples))
+
         nF = len(starts_all)
         if nF == 0:
             raise RuntimeError("No frames produced; check duration_s/hop_s vs signal length")
 
         feats = []
         for c in range(C):
-            _, _, Z = stft(x[c], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
+            _, _, Z = stft(x_norm[c], fs=fs, nperseg=n_samples, noverlap=n_overlap, boundary=None, padded=False)
             P = np.abs(Z) ** 2  # Power spectrogram
             nF_use = min(nF, P.shape[1])
             starts_use = starts_all[:nF_use]
@@ -222,16 +225,21 @@ class EEGFeatureExtractor:
                     relative_P.append(bp / total_P)
 
             relative_P = np.stack(relative_P, axis=1)  # (nF_use, n_bands)
+
             # Time domain same framing
-            frames = np.stack([x[c, s:s + n_samples] for s in starts_use])
+            # Time-domain features from raw signal
+            frames_raw = np.stack([x_raw[c, s:s + n_samples] for s in starts_use])
 
             feats.append(
                 np.c_[
                     relative_P,  # Relative band-power per frame
                         # Frequency-domain dynamics
-                    self.entropy(P, self.epsilon), self.spectral_flux(np.sqrt(P), self.epsilon),
+                    self.entropy(P, self.epsilon),
+                    self.spectral_flux(np.sqrt(P), self.epsilon),
                         # Time-domain dynamics
-                    self.rms(frames), self.line_length(frames), self.tkeo(frames)
+                    self.rms(frames_raw),
+                    self.line_length(frames_raw),
+                    self.tkeo(frames_raw)
                 ])
 
         feat_names = [f"rel_{lo}-{hi}" for lo, hi in bands] + ["ent", "flux", "rms", "ll", "tkeo"]
