@@ -246,8 +246,6 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
             end = min(int(t * eeg.fs), start + length)
             # keep exact window size if clipped
             start = max(0, end - length)
-
-            self.logger.info(f"Picked an anchor: ({start}, {end})")
             return start, end, selected_candidate
 
         else:
@@ -384,8 +382,9 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
             self.logger.info(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
-                             f"candidate_anchors: {candidate_anchors}.\n\n")
+                             f"candidate_anchors: {len(candidate_anchors) - 1}.\n\n")
             candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
+
         if reference_anchor is not None:
             # This anchor was used so we "register" its usage
             anchors.append(reference_anchor)
