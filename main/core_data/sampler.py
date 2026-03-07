@@ -129,7 +129,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         self.logger = make_logger(self.__class__.__name__)
 
     def sample_duration(self):
-        p = [0.4, 0.35, 0.25]  # short, medium, long
+        p = [0.45, 0.4, 0.15]  # short, medium, long
         feature = np.random.choice(self.features_specs, p=p)
 
         if feature == SHORT_FEATURE:
