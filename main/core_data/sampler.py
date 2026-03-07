@@ -151,6 +151,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
             self.anchor_modality.max_length, self.anchor_identification_hop,
             bands=((4, 8), (8, 13), (13, 30)), band_weights=(0.4, 0.5, 0.4)
         )
+        self.logger.info(f"Found a  total of {len(candidate_anchors)} anchors: {candidate_anchors}")
 
         num_slots = int(np.ceil(sample.data.duration / self.coverage_resolution_sec))
         anchors = {spec.key: [] for spec in self.features_specs}
