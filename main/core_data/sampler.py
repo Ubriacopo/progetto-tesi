@@ -232,6 +232,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
             # keep exact window size if clipped
             start = max(0, end - length)
 
+            self.logger.info(f"Picked an anchor: ({start}, {end})")
             return start, end, selected_candidate
 
         else:
