@@ -1,11 +1,11 @@
 from __future__ import annotations
+
 import dataclasses
 from abc import abstractmethod, ABC
 from typing import Optional
 
 import numpy as np
 
-from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.media.eeg import EEG
 from main.core_data.media.eeg.saliency_extractor import EEGFeatureExtractor
 from main.utils.logging import make_logger
@@ -219,8 +219,18 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         if base_on_feature:
             selected_candidate: Optional[int] = np.random.choice(len(candidate_anchors))
             # For now keep it simple: All our segments have a duration of 4 seconds if short.
-            start = int(candidate_anchors[selected_candidate])
-            return start, start + self.anchor_modality.max_length * eeg.fs, selected_candidate
+            anchor = int(candidate_anchors[selected_candidate])
+            length = int(self.anchor_modality.max_length * eeg.fs)
+
+            half = length // 2
+
+            start = max(0, anchor - half)
+            end = min(int(t * eeg.fs), start + length)
+            # keep exact window size if clipped
+            start = max(0, end - length)
+
+            return start, end, selected_candidate
+
         else:
             start = int(np.random.uniform(0., max(1e-9, (t - d) * eeg.fs)))
             return start, int(start + d * eeg.fs), None
@@ -352,7 +362,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
             self.logger.info(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
-                                   f"candidate_anchors: {candidate_anchors}.\n\n")
+                             f"candidate_anchors: {candidate_anchors}.\n\n")
             candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
         if reference_anchor is not None:
             # This anchor was used so we "register" its usage
