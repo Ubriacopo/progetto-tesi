@@ -128,10 +128,25 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         self.verbose: bool = verbose
         self.logger = make_logger(self.__class__.__name__)
 
-    def sample_duration_log_uniform(self):
-        uniform = np.random.uniform(0., 1.)
-        duration = np.exp(np.log(self.min_length) + uniform * (np.log(self.max_length) - np.log(self.min_length)))
-        return float(duration)
+    def sample_duration(self):
+        p = [0.4, 0.35, 0.25]  # short, medium, long
+        feature = np.random.choice(self.features_specs, p=p)
+
+        if feature == SHORT_FEATURE:
+            low, high = self.min_length, SHORT_FEATURE.max_length
+
+        elif feature == MEDIUM_FEATURE:
+            low, high = SHORT_FEATURE.max_length, MEDIUM_FEATURE.max_length
+
+        else:
+            low, high = MEDIUM_FEATURE.max_length, LONG_FEATURE.max_length
+
+        low = max(float(low), 1e-6)
+        if low == high:
+            return low
+
+        u = np.random.uniform(0., 1.)
+        return float(np.exp(np.log(low) + u * (np.log(high) - np.log(low))))
 
     def classify_duration(self, duration: float) -> Feature:
         for feature in self.features_specs:
@@ -163,7 +178,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         # global coverage across all feature types
         global_coverage = np.zeros(num_slots, dtype=np.int16)
 
-        for duration in sorted([self.sample_duration_log_uniform() for _ in range(num_segments)]):
+        for duration in sorted([self.sample_duration() for _ in range(num_segments)]):
             feature = self.classify_duration(duration)
             ok, candidate_anchors = self.extract(
                 eeg=sample,
@@ -186,7 +201,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                 and self._coverage_ratio(global_coverage) < self.min_coverage_ratio
                 and coverage_attempts < self.max_coverage_expansion_attempts
         ):
-            duration = self.sample_duration_log_uniform()
+            duration = self.sample_duration()
             feature = self.classify_duration(duration)
             ok, candidate_anchors = self.extract(
                 eeg=sample,
@@ -356,6 +371,9 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
                 f"Check failed for ({start}-{stop}) ({base_feature.key})."
                 f"Problem was: {'IoU' if not ok_iou else 'coverage'}."
                 f"It generated from {'extraction' if extracted_anchor is not None else 'segment/random'}.")
+            if extracted_anchor is not None:
+                candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
+
             return self.extract(
                 eeg, t, d, base_feature, candidate_anchors, anchors, segments, coverage, global_coverage, attempt + 1
             )
