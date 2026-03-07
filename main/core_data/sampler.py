@@ -381,8 +381,8 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         if extracted_anchor is not None:
             # Remove extracted element as it was taken.
-            self.logger.info(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor}).\n"
-                             f"candidate_anchors: {len(candidate_anchors) - 1}")
+            self.logger.info(f"We used anchor: {candidate_anchors[extracted_anchor]} ({extracted_anchor})."
+                             f"Remaining candidate_anchors: {len(candidate_anchors) - 1}")
             candidate_anchors = np.delete(candidate_anchors, extracted_anchor)
 
         if reference_anchor is not None:
