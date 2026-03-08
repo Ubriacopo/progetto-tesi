@@ -1,8 +1,5 @@
-import math
 from abc import abstractmethod, ABC
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from itertools import batched
 from pathlib import Path
 from typing import Optional, TypeVar, Generic, Literal
 
@@ -52,8 +49,10 @@ class Preprocessor(ABC, Generic[T]):
             counter: int = 0
             for i in tqdm(loader.scan(), total=total, desc="Processing"):
                 key = i.get_identifier()
+
                 if existing_df is not None and (existing_df[key] == i.eid).any():
-                    tqdm.write(f"Element {key} will be skipped as it was already processed.")
+                    tqdm.write(f"Element {key}={i.eid} will be skipped as it was already processed.")
+                    counter += 1
                     continue  # This element was already processed.
 
                 docs = [e for e in self.preprocess(i)]
@@ -116,7 +115,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         return_segments = sanitize_for_ast(return_segments)
         return return_segments
 
-    @timed(suppress=False)
+    @timed()
     def preprocess_segment(self, x: FlexibleDatasetPoint,
                            segment: tuple[int | float | np.ndarray, int | float | np.ndarray],
                            ) -> FlexibleDatasetPoint:
@@ -204,7 +203,7 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
 
         return return_segments
 
-    @timed(suppress=False)
+    @timed()
     def preprocess_segment(self, x: FlexibleDatasetPoint,
                            segment: tuple[int | float | np.ndarray, int | float | np.ndarray],
                            target: Literal['student', 'teacher']
