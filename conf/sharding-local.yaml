@@ -1,4 +1,4 @@
-base_path: /home/jacopo/PycharmProjects/progetto-tesi/data/EEGAVI/
+base_path: /home/jacopo/datset/EEGAVI/
 defaults:
   - hydra-setup
   - sharding: ???
