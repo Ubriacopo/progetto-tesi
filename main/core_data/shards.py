@@ -402,8 +402,10 @@ class FusedDataSharder:
         for record in self.df.itertuples(index=False):
             if record.person_id in val_persons:
                 val_eid[record.eid].append(record)
+
             elif record.person_id in test_persons:
                 test_eid[record.eid].append(record)
+
             else:
                 train_eid[record.eid].append(record)
 
@@ -512,22 +514,14 @@ class FusedDataSharder:
         total_written = 0
         pbar = tqdm(total=self.shard_size_bytes, desc="Resharding", unit="B", unit_scale=True, unit_divisor=1024)
         while active_eid_collection:
-            # todo per qualche motivo doppio?
             eid = active_eid_collection.popleft()
-            current = self.consume(
-                h5=h5,
-                eid=eid,
-                pos_track=pos,
-                rows_by_eid=rows_by_eid,
-                count=count,
-            )
+            current = self.consume(h5=h5, eid=eid, pos_track=pos, rows_by_eid=rows_by_eid, count=count, )
 
             if current != count:
                 active_eid_collection.append(eid)
                 total_written += 1
 
             count = current
-
             if total_written % 256 == 0:
                 h5.flush()
 
