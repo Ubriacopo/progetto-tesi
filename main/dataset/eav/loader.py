@@ -9,11 +9,11 @@ from mne.io import RawArray
 from moviepy import VideoFileClip, AudioFileClip
 from scipy.io import loadmat
 
-from main.core_data.media.metadata.metadata import MetaObject
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
+from main.core_data.media.metadata.metadata import MetaObject
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
@@ -87,8 +87,6 @@ class EavPointsLoader(DataPointsLoader):
                             audio: Optional[AudioFileClip] = AudioFileClip(audio_filepath)
 
                         nei = self.dataset_uid_store.uid(subject_id, str(index) + "_" + emotion, "EAV")
-                        # Store the current to fs so that we have it ready
-                        self.dataset_uid_store.store_dictionary()
                         metadata = MetaObject(
                             experiment=nei, dataset_id=self.DATASET_ID, person_id=int(subject_id), trial=index
                         )

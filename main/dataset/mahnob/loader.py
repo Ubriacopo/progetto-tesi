@@ -1,4 +1,3 @@
-import logging
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
@@ -73,8 +72,6 @@ class MahnobPointsLoader(DataPointsLoader):
                     experiment=nei, dataset_id=self.DATASET_ID, person_id=participant_id, trial=int(experiment_id)
                 )
 
-                # Store the current to fs so that we have it ready
-                self.dataset_uid_store.store_dictionary()
                 yield FlexibleDatasetPoint(
                     nei,
                     EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),

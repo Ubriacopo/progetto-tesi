@@ -79,9 +79,6 @@ class AmigosPointsLoader(DataPointsLoader):
                     experiment=nei, dataset_id=self.DATASET_ID, person_id=int(person[1:]), trial=video_id,
                 )
 
-                # Store the current to fs so that we have it ready
-                self.dataset_uid_store.store_dictionary()
-
                 yield FlexibleDatasetPoint(
                     nei,
                     EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq'], ).as_mod_tuple(),

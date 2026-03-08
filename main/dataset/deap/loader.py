@@ -50,8 +50,6 @@ class DeapPointsLoader(DataPointsLoader):
                     media_path: str = f"{self.base_path}videos/{uid}/{eid}.avi"
 
                     nei = self.dataset_uid_store.uid(uid, eid, "deap")
-                    # Store the current to fs so that we have it ready
-                    self.dataset_uid_store.store_dictionary()
 
                     # Create EEG data
                     info = mne.create_info(
