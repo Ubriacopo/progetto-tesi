@@ -1,4 +1,4 @@
-base_path: /home/jacopo/datset/EEGAVI/
+base_path: /home/jacopo/dataset/EEGAVI/
 defaults:
   - hydra-setup
   - sharding: ???
