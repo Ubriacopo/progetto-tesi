@@ -65,156 +65,12 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         self.student: EegInterAviModel = student
         self.teacher: MaskedContrastiveModel = teacher
 
-        self._val_pairs_causal = {}
-        self._val_pairs_bidi = {}
+        self._validation_pairs = {}
 
         self.momentum_student: EegInterAviModel | None = None
         self.save_hyperparameters(ignore=[
             "datamodule", "student", "teacher", "fusion_metrics", "queue_ptr", "moco_queue", "momentum_out"
         ])
-
-    def on_validation_epoch_start(self):
-        self._val_pairs_causal = {}
-        self._val_pairs_bidi = {}
-
-    def on_train_start(self) -> None:
-        self.time_mask_switch_generator = torch.Generator(device=self.device)
-        self.time_mask_switch_generator.manual_seed(self.hparams.seed)
-
-    def training_step(self, batch, batch_idx):
-        batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
-
-        # Randomly draw the modality we want to train on (For the time relations)
-        causal_p = self.p_causal_schedule()
-        u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
-        mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
-        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
-
-        with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
-            if self.use_moco and self.momentum_student is not None:
-                self.momentum_student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
-                self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
-
-        lr = self.trainer.optimizers[0].param_groups[0]["lr"]
-        self.log("lr", lr, on_step=True, on_epoch=False, prog_bar=False)
-        self.observe_xattn_gates()  # More metrics to see if there are problems here.
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
-        return self.compute_step_metrics(stud_out, teacher_out, "train", mode, batch_idx)["loss"]
-
-    def validation_step(self, batch, batch_idx):
-        mode: Literal['causal', 'bidirectional']
-        batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
-        with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
-
-        loss = torch.tensor(0., device=self.device)
-        for mode in ("causal", "bidirectional"):
-            self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
-            stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
-            loss_object = self.compute_step_metrics(stud_out, teacher_out, 'val', mode, batch_idx)
-
-            valid_p = stud_out.multimodal_outs[self.student.pivot.code]["mask"].sum(dim=1) > 0
-            for k, mv in stud_out.multimodal_outs.items():
-                valid_k = mv["mask"].sum(1) > 0
-                valid_both = valid_p & valid_k
-                if not valid_both.any():
-                    continue
-
-                f = F.normalize(stud_out.cls[valid_both], dim=-1)
-                e = F.normalize(self.y_mean(mv, valid_both), dim=-1)
-
-                pairs_source = self._val_pairs_causal if mode == "causal" else self._val_pairs_bidi
-                entry = pairs_source.setdefault(k, {"f": [], "e": []})
-
-                entry["f"].append(f)
-                entry["e"].append(e)
-
-            loss += loss_object["loss"]
-
-        # Average between the two
-        return loss / len(("causal", "bidirectional"))
-
-    def on_validation_epoch_end(self):
-        # Potential memory blow-up in on_validation_epoch_end.
-        top_k = (1, 3, 5, 10)
-        combined = '-'.join(map(str, top_k))
-        for time_modality, pairs in [("bidirectional", self._val_pairs_bidi), ("causal", self._val_pairs_causal)]:
-            mean_acc = {top: [] for top in top_k}
-            mean_r_items, mrr_items = [], []
-
-            for key, pe in pairs.items():
-                f = torch.cat(pe["f"], dim=0)
-                e = torch.cat(pe["e"], dim=0)
-                similarity = f @ e.T
-                hits = top_k_hits_from_sim(similarity, top_k)
-
-                for top in top_k:
-                    self.log(f"val_global/fused/{time_modality}/top{top}_{key}", hits[top], on_epoch=True)
-                    mean_acc[top].append(hits[top])
-
-                # Mean Recall@K over selected Ks
-                mean_r = torch.stack([hits[k] for k in top_k]).mean()
-                mean_r_items.append(mean_r)
-
-                # MRR (Mean Reciprocal Rank)
-                #
-                # Mean Reciprocal Rank (MRR) is a statistic for evaluating systems that return ranked lists of answers,
-                # such as search engines or RAG models, by averaging the inverse rank (1/position) of the first relevant
-                # result across multiple queries. It measures how quickly a user finds the correct answer, with a score
-                # closer to 1 indicating top-tier, efficient ranking.
-                #
-                # rank_i = 1 + number of candidates with strictly higher sim than the true match
-                rank = 1 + (similarity > similarity.diag()[:, None]).sum(dim=1)  # (N,)
-                mrr = (1.0 / rank.float()).mean()
-                mrr_items.append(mrr)
-                self.log(f"val_global/fused/{time_modality}/meanR@{combined}_{key}", mean_r, on_epoch=True)
-                self.log(f"val_global/fused/{time_modality}/mrr_{key}", mrr, on_epoch=True)
-
-                alignment = similarity.diag().mean()
-                self.log(f"val_global/fused/{time_modality}/alignment_{key}", alignment, on_epoch=True)
-
-                # Margin between positives and typical negatives
-                pos = similarity.diag()
-                neg_mean = (similarity.sum(dim=1) - pos) / (similarity.size(1) - 1)
-                margin = (pos - neg_mean).mean()
-                self.log(f"val_global/fused/{time_modality}/margin_{key}", margin, on_epoch=True)
-
-            for top in top_k:
-                if mean_acc[top]:
-                    top_mean_value = torch.stack(mean_acc[top]).mean()
-                    self.log(f"val_global/fused/{time_modality}/top{top}_mean", top_mean_value, on_epoch=True)
-
-            if mean_r_items:
-                mean_r_mean = torch.stack(mean_r_items).mean()
-                self.log(f"val_global/fused/{time_modality}/meanR@{combined}_mean", mean_r_mean, on_epoch=True)
-
-            if mrr_items:
-                mrr_items_mean = torch.stack(mrr_items).mean()
-                self.log(f"val_global/fused/{time_modality}/mrr_mean", mrr_items_mean, on_epoch=True)
-
-            pairs.clear()
-
-    def test_step(self, batch, batch_idx):
-        return self.validation_step(batch, batch_idx)
-
-    def on_test_epoch_end(self) -> None:
-        self.on_validation_epoch_end()
-
-    @torch.no_grad()
-    def moco_momentum_update(self):
-        m = self.momentum
-        for model_parameter, momentum_parameter in zip(self.student.parameters(), self.momentum_student.parameters()):
-            momentum_parameter.data.mul_(m).add_(model_parameter.data, alpha=1. - m)
-
-    def on_fit_start(self) -> None:
-        self.init_moco()
-
-    def init_moco(self):
-        self.momentum_student = copy.deepcopy(self.student)
-        self.momentum_student.eval()
-        for parameter in self.momentum_student.parameters():
-            parameter.requires_grad_(False)
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         lr = self.hparams.lr
@@ -270,6 +126,146 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             )
         }
 
+
+    def on_validation_epoch_start(self):
+        self._validation_pairs = {}
+
+    def on_train_start(self) -> None:
+        self.time_mask_switch_generator = torch.Generator(device=self.device)
+        self.time_mask_switch_generator.manual_seed(self.hparams.seed)
+
+    def training_step(self, batch, batch_idx):
+        batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
+
+        # Randomly draw the modality we want to train on (For the time relations)
+        causal_p = self.p_causal_schedule()
+        u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
+        mode: Literal['bidirectional', 'causal'] = "causal" if u < causal_p else "bidirectional"
+        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+            if self.use_moco and self.momentum_student is not None:
+                self.momentum_student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
+                self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
+
+        lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+        self.log("lr", lr, on_step=True, on_epoch=False, prog_bar=False)
+        self.observe_xattn_gates()  # More metrics to see if there are problems here.
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        return self.compute_step_metrics(stud_out, teacher_out, "train", batch_idx)["loss"]
+
+    def validation_step(self, batch, batch_idx):
+        mode: Literal['causal', 'bidirectional']
+        batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
+        with torch.inference_mode():
+            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+
+        # We only evaluate on bidirectional from now on. It is just a learning trick in the architecture now.
+        self.student.set_attention_modality(TimeMaskSwitchableProperties(mode="bidirectional"))
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        loss_object = self.compute_step_metrics(stud_out, teacher_out, 'val', batch_idx)
+
+        valid_p = stud_out.multimodal_outs[self.student.pivot.code]["mask"].sum(dim=1) > 0
+        for k, mv in stud_out.multimodal_outs.items():
+            valid_k = mv["mask"].sum(1) > 0
+            valid_both = valid_p & valid_k
+            if not valid_both.any():
+                continue
+
+            f = F.normalize(stud_out.cls[valid_both], dim=-1)
+            e = F.normalize(self.y_mean(mv, valid_both), dim=-1)
+
+            entry = self._validation_pairs.setdefault(k, {"f": [], "e": []})
+            entry["f"].append(f)
+            entry["e"].append(e)
+
+        return loss_object["loss"]
+
+    def compute_batch_metrics(self, step_type: Literal['train', 'val', 'test']):
+        # Potential memory blow-up in on_validation_epoch_end.
+        top_k = (1, 3, 5, 10)
+        combined = '-'.join(map(str, top_k))
+        mean_acc = {top: [] for top in top_k}
+        mean_r_items, mrr_items = [], []
+
+        for key, pe in self._validation_pairs.items():
+            f = torch.cat(pe["f"], dim=0)
+            e = torch.cat(pe["e"], dim=0)
+
+            similarity = f @ e.T
+            hits = top_k_hits_from_sim(similarity, top_k)
+            for top in top_k:
+                self.log(f"{step_type}/fused/top{top}_{key}", hits[top], on_epoch=True)
+                mean_acc[top].append(hits[top])
+
+            # Mean Recall@K over selected Ks
+            mean_r = torch.stack([hits[k] for k in top_k]).mean()
+            mean_r_items.append(mean_r)
+
+            # MRR (Mean Reciprocal Rank)
+            #
+            # Mean Reciprocal Rank (MRR) is a statistic for evaluating systems that return ranked lists of answers,
+            # such as search engines or RAG models, by averaging the inverse rank (1/position) of the first relevant
+            # result across multiple queries. It measures how quickly a user finds the correct answer, with a score
+            # closer to 1 indicating top-tier, efficient ranking.
+            #
+            # rank_i = 1 + number of candidates with strictly higher sim than the true match
+            rank = 1 + (similarity > similarity.diag()[:, None]).sum(dim=1)  # (N,)
+            mrr = (1.0 / rank.float()).mean()
+
+            mrr_items.append(mrr)
+
+            self.log(f"{step_type}/fused/meanR@{combined}_{key}", mean_r, on_epoch=True)
+            self.log(f"{step_type}/fused/mrr_{key}", mrr, on_epoch=True)
+
+            alignment = similarity.diag().mean()
+            self.log(f"{step_type}/fused/alignment_{key}", alignment, on_epoch=True)
+
+            # Margin between positives and typical negatives
+            pos = similarity.diag()
+            neg_mean = (similarity.sum(dim=1) - pos) / (similarity.size(1) - 1)
+            margin = (pos - neg_mean).mean()
+            self.log(f"{step_type}/fused/margin_{key}", margin, on_epoch=True)
+
+        for top in top_k:
+            if mean_acc[top]:
+                top_mean_value = torch.stack(mean_acc[top]).mean()
+                self.log(f"{step_type}/fused/top{top}_mean", top_mean_value, on_epoch=True)
+
+        if mean_r_items:
+            mean_r_mean = torch.stack(mean_r_items).mean()
+            self.log(f"{step_type}/fused/meanR@{combined}_mean", mean_r_mean, on_epoch=True)
+
+        if mrr_items:
+            mrr_items_mean = torch.stack(mrr_items).mean()
+            self.log(f"{step_type}/fused/mrr_mean", mrr_items_mean, on_epoch=True)
+
+    def on_validation_epoch_end(self):
+        self.compute_batch_metrics("val")
+
+    def test_step(self, batch, batch_idx):
+        return self.validation_step(batch, batch_idx)
+
+    def on_test_epoch_end(self) -> None:
+        self.compute_batch_metrics("test")
+
+    @torch.no_grad()
+    def moco_momentum_update(self):
+        m = self.momentum
+        for model_parameter, momentum_parameter in zip(self.student.parameters(), self.momentum_student.parameters()):
+            momentum_parameter.data.mul_(m).add_(model_parameter.data, alpha=1. - m)
+
+    def on_fit_start(self) -> None:
+        self.init_moco()
+
+    def init_moco(self):
+        self.momentum_student = copy.deepcopy(self.student)
+        self.momentum_student.eval()
+        for parameter in self.momentum_student.parameters():
+            parameter.requires_grad_(False)
+
+
     def compute_kd_loss(self,
                         student_out: dict[str, MaskedValue],
                         teacher_out: MaskedContrastiveModelOutputs,
@@ -298,8 +294,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def compute_fusion_loss(self,
                             fused_output: torch.Tensor,
                             modality_outputs: dict[str, MaskedValue],
-                            step_type: Literal['train', 'val', 'test'],
-                            mode: Literal['bidirectional', 'causal']) -> torch.Tensor:
+                            step_type: Literal['train', 'val', 'test'], ) -> torch.Tensor:
         base_loss = torch.tensor(0.0, device=fused_output.device)
         count_present = 0
 
@@ -326,7 +321,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             count_present += 1
             mod_loss = self.siglip_losses[key](q, zb_pos, zb_neg)
             is_train = step_type == "train"
-            self.log(f"{step_type}/fusion/{mode}/{key}", mod_loss, on_epoch=True, on_step=is_train, prog_bar=False)
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=is_train, prog_bar=False)
 
             base_loss = base_loss + mod_loss
@@ -343,77 +337,11 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         return self.student.pooling(y_before, mask)
 
-    def compute_top_k_metrics(self,
-                              fused_z: torch.Tensor,
-                              pivot_z: torch.Tensor,
-                              outputs: dict,
-                              step_type: Literal['train', 'val', 'test'],
-                              mode: Optional[Literal['bidirectional', 'causal']] = None):
-        is_train = step_type == "train"
-        distance = (pivot_z - fused_z).norm(dim=1).mean()
-
-        self.log(f"{step_type}/norm(eeg-fused)", distance, on_step=is_train, on_epoch=True)
-
-        fused = F.normalize(fused_z, dim=-1)
-        pivot = F.normalize(pivot_z, dim=-1)
-        top_k_values = (1, 3, 5, 10)
-        top_k_means: dict[int, list[torch.Tensor]] = {i: [] for i in top_k_values}
-
-        nan = torch.tensor(float("nan"), device=fused_z.device, dtype=fused_z.dtype)
-        for key, embedding in outputs.items():
-            valid = embedding["mask"].sum(dim=1) > 0
-            if not valid.any():
-                continue  # No valid rows so we have nothing to calculate for this modality
-
-            e = F.normalize(self.y_mean(embedding, valid), dim=-1)
-            f, p = fused[valid], pivot[valid]
-            # Similarity between fused output and the modality prior
-            sim_fe = f @ e.T
-
-            hits_fe = top_k_hits_from_sim(sim_fe, top_k_values)
-            hits_ef = top_k_hits_from_sim(sim_fe.T, top_k_values)  # reuse transpose
-
-            prefix = f"{step_type}/fused/"
-            alignment = sim_fe.diag().mean()
-            self.log(f"{step_type}/alignment", alignment, on_step=True, on_epoch=False)
-            self.log(f"{step_type}/alignment/{mode}", alignment, on_step=True, on_epoch=False)
-
-            for k in top_k_values:
-                self.log(f"{prefix}top{k}_{key}", hits_fe.get(k, nan), on_epoch=True)
-                self.log(f"{prefix}top{k}_{key}/{mode}", hits_fe.get(k, nan), on_epoch=True)
-                self.log(f"{prefix}top{k}_{key}_R", hits_ef.get(k, nan), on_epoch=True)
-                v = hits_fe.get(k, None)
-                if v is not None:
-                    top_k_means[k].append(v)
-
-            if (key == self.student.pivot.code and not is_train) or True:
-                continue
-
-            # Debug only part
-            sim_pe = p @ e.T
-            hits_pe = top_k_hits_from_sim(sim_pe, top_k_values)
-            hits_ep = top_k_hits_from_sim(sim_pe.T, top_k_values)
-
-            prefix = f"{step_type}/pivot/"
-            for k in top_k_values:
-                self.log(f"{prefix}top{k}_{key}", hits_pe.get(k, nan), on_epoch=True)
-                self.log(f"{prefix}top{k}_{key}/{mode}", hits_pe.get(k, nan), on_epoch=True)
-                self.log(f"{prefix}top{k}_{key}_R", hits_ep.get(k, nan), on_epoch=True)
-                self.log(f"{step_type}/delta_{key}{k}", hits_fe.get(k, nan) - hits_pe.get(k, nan), on_epoch=True)
-
-        for k, value in top_k_means.items():
-            try:
-                mean = torch.mean(torch.stack(value, dim=0))
-                self.log(f"{step_type}/top{k}_mean", mean, on_epoch=True)
-            except Exception as e:
-                self.log(f"fusion_exceptions_{k}", 1, on_epoch=True, reduce_fx="sum")
-
     def compute_step_metrics(
             self,
             stud_outs: EegBaseModelOutputs,
             teacher_outs: MaskedContrastiveModelOutputs,
             step_type: Literal['train', 'val', 'test'],
-            mode: Literal['bidirectional', 'causal'],
             batch_idx: int
     ) -> dict[str, torch.Tensor | MaskedValue]:
         loss = torch.tensor(0., device=stud_outs.embeddings['data'].device, dtype=stud_outs.cls.dtype)
@@ -425,23 +353,12 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         if self.use_fusion:
             is_train = step_type == "train"
-            fusion_loss = self.compute_fusion_loss(stud_outs.cls, stud_outs.multimodal_outs, step_type, mode)
+            fusion_loss = self.compute_fusion_loss(stud_outs.cls, stud_outs.multimodal_outs, step_type)
             return_object["loss"] = return_object["loss"] + fusion_loss * self.hparams.fusion_loss_weight
             self.log(f"{step_type}/fusion-loss", fusion_loss, on_epoch=True, on_step=is_train, prog_bar=True)
 
-            if step_type != "train" or batch_idx % self.hparams.heavy_compute_interval == 0:
-                outputs = {}
-                for key, masked_value in stud_outs.multimodal_outs.items():
-                    outputs[key] = MaskedValue(data=masked_value["data"].detach(), mask=masked_value["mask"].detach())
-
-                pivot_key = self.student.pivot.code
-
-                pivot_z = self.y_mean(outputs[pivot_key], outputs[pivot_key]["mask"].sum(dim=1) > 0)
-                self.compute_top_k_metrics(stud_outs.cls.detach(), pivot_z, outputs, step_type, mode)
-
         is_train = step_type == "train"
         self.log(f"{step_type}/loss", return_object["loss"], prog_bar=is_train, on_step=is_train, on_epoch=True)
-        self.log(f"{step_type}/loss-{mode}", return_object["loss"], prog_bar=True, on_step=is_train, on_epoch=True)
 
         return return_object
 
