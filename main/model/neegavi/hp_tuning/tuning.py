@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import dataclasses
 from abc import ABC
@@ -40,17 +42,10 @@ class StepDefinition[T](Definition[T]):
 
 @dataclasses.dataclass
 class TuningSearchSpace:
-    # CLIP-like contrastive: 5e-5 – 5e-4
-    # Transformer encoders: 1e-5 – 3e-4
-    # Thus: [1e-5, 3e-5, 1e-4, 3e-4, 1e-3]
     lr: Definition[float]
-    # Only watch: [0.01 - 0.05]
-    weight_decay: Definition[float]
-
     batch_size: Definition[int]
-    attn_layers: Definition[int]  # Min-Max-Step
+    attn_layers: Definition[int]
     beta: Definition[float]
-    use_moco: Definition[bool] = ChoiceDefinition[bool]([True, False])
 
     def suggest(self, key: str, trial: optuna.Trial):
         if not hasattr(self, key):
@@ -69,34 +64,39 @@ class TuningSearchSpace:
 
         raise TypeError("Invalid set object type: {}".format(type(o)))
 
+    @staticmethod
+    def default() -> TuningSearchSpace:
+        return TuningSearchSpace(
+            # CLIP-like contrastive: 5e-5 – 5e-4
+            # Transformer encoders: 1e-5 – 3e-4
+            # Thus: [3e-5, 1e-4, 3e-4, 1e-3]
+            lr=ChoiceDefinition(values=[3e-5, 1e-4, 3e-4, 1e-3]),
+            batch_size=ChoiceDefinition(values=[32, 64, 128]),
+            attn_layers=ChoiceDefinition(values=[2, 4, 6]),
+            beta=ChoiceDefinition(values=[0.25, 0.5, 1, 2.0]),
+        )
 
-def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace) -> float:
+
+def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace, max_epochs: int = 5) -> float:
+    """
+
+    :param trial:
+    :param cfg:
+    :param search_space:
+    :param max_epochs: Max number of training epochs (or steps?)
+    :return:
+    """
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
-    # Tuned grid of parameters
-    # Stage 1
-    lr = search_space.suggest("lr", trial)
-    batch_size = search_space.suggest("batch_size", trial)
-    # Stage 2
-    attn_layers = search_space.suggest("attn_layers", trial)
-    use_moco = search_space.suggest("use_moco", trial)
-    # alpha = trial.suggest_float(name="alpha(fusion)", low=0.01, high=1.0, step=0.1)  # Fixed at the moment
-    beta = trial.suggest_float("beta(kd)", 1e-2, 10.0, log=True)
-
+    # Tuned grid of parameters. We run multiple configs.
     custom_config = copy.deepcopy(cfg)
-    # Stage 1: First to tune
-    custom_config.trainer.lr = lr
-    custom_config.trainer.batch_size = batch_size
-    # Stage 2:
-    custom_config.model.factory.args.attention_config = attn_layers
-    custom_config.trainer.kd_loss_weight = beta
-    custom_config.trainer.use_moco = use_moco
-    # Stage 3: (If MoCo still on)
-    # moco_queue_size
+    custom_config.trainer.lr = search_space.suggest("lr", trial)
+    custom_config.trainer.batch_size = search_space.suggest("batch_size", trial)
+    custom_config.model.factory.args.attention_config = search_space.suggest("attn_layers", trial)
+    custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
 
     # todo fai queste chiamate in una funziona sola visto che si duplica tra script
     module = build_easy_eegavi_module(custom_config)
 
-    max_epochs = 10
     monitor_key = "val_global/fused/bidirectional/mrr_mean"
     limit_train_batches = 2500  # 900 b=64 todo calculate from batch size
     trainer = lightning.Trainer(

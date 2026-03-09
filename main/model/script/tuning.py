@@ -6,7 +6,7 @@ import optuna
 from main.model.neegavi.hp_tuning.tuning import objective
 
 
-@hydra.main(config_path="../../../conf", config_name="tuning")
+@hydra.main(config_path="../../../conf", config_name="hp_tuning")
 def main(cfg):
     study = optuna.create_study(direction="maximize")
     obj = partial(objective, param1=param1, param2=param2)

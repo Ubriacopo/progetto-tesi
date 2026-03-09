@@ -8,6 +8,7 @@ from main.model.neegavi.model import EegInterAviModelConfiguration
 @dataclasses.dataclass
 class TrainerConfig:
     lr: float
+    weight_decay: float
     batch_size: int
     epochs: int
     kd_loss_weight: float

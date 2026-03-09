@@ -1,5 +1,6 @@
 # Training infos
 lr: 1.5e-4
+weight_decay: 0.01
 kd_loss_weight: 1.0
 fusion_loss_weight: 1.0
 kd_temperature: 0.2

@@ -1,0 +1,9 @@
+tuning_search_space:
+  lr:
+    values: [ 3e-5, 1e-4, 3e-4, 1e-3 ]
+  batch_size:
+    values: [ 24 ]
+  attn_layers:
+    values: [ 2, 4, 6 ]
+  beta:
+    values: [ 0.25, 0.5, 1.0, 2.0 ]

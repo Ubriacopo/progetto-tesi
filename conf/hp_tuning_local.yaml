@@ -1,12 +1,14 @@
-base_path: /mnt/turing-datasets/
+base_path: /home/jacopo/dataset/
 defaults:
   - hydra-setup
-  - dataset: ???
-  - preprocessing: ???
+  - model: default
+  - trainer: default-local
+  - teacher: default
+  - search_space: default-local
 
 hydra:
   job:
-    name: preprocessing
+    name: hp_tuning
   run:
     dir: outputs/${hydra.job.name}/${dataset.name}/${now:%Y-%m-%d_%H-%M-%S}
 
