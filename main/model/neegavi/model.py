@@ -6,11 +6,11 @@ from einops import repeat, rearrange
 from torch import nn
 
 from main.model.blocks.attention import AbstractAttentionBlock
+from main.model.blocks.dropout import ModalityDropout, DisabledModalityDropout
 from main.model.blocks.encoder import ModalContextEncoder
 from main.model.blocks.modality_stream import ModalityStream
-from main.model.blocks.time_masked import TimeMaskSwitchableProperties, TimeMaskSwitchable
-from main.model.blocks.dropout import ModalityDropout, DisabledModalityDropout
 from main.model.blocks.pooling import ClsPooling
+from main.model.blocks.time_masked import TimeMaskSwitchableProperties, TimeMaskSwitchable
 from main.model.neegavi.utils import EegBaseModelOutputs
 from main.utils.data import MaskedValue, KdMaskedValue
 from main.utils.logging import make_logger
@@ -68,7 +68,6 @@ def check_supports(supports: nn.ModuleList) -> int:
     return reference.output_size
 
 
-# todo refactorino per capire meglio
 class EegInterAviModel(nn.Module, TimeMaskSwitchable):
     KD_KEY = "kd"
 

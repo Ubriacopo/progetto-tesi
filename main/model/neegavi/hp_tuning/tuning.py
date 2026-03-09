@@ -76,6 +76,15 @@ class TuningSearchSpace:
             beta=ChoiceDefinition(values=[0.25, 0.5, 1, 2.0]),
         )
 
+    @staticmethod
+    def from_choices(lr: list, batch_size: list, attn_layers: list, beta: list):
+        return TuningSearchSpace(
+            lr=ChoiceDefinition(values=lr),
+            batch_size=ChoiceDefinition(values=batch_size),
+            attn_layers=ChoiceDefinition(values=attn_layers),
+            beta=ChoiceDefinition(values=beta),
+        )
+
 
 def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace, max_epochs: int = 5) -> float:
     """
