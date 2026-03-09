@@ -6,13 +6,11 @@ from abc import ABC
 
 import lightning
 import optuna
-import torch
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.loggers import TensorBoardLogger
 from optuna.integration import PyTorchLightningPruningCallback
 from pytorch_lightning.callbacks import RichProgressBar
 
-from main.app_config import AppConfig
 from main.model.neegavi.helpers import build_easy_eegavi_module
 from main.model.script.hydra_beans import KdConfig
 
@@ -57,9 +55,8 @@ class TuningSearchSpace:
 
         if isinstance(o, StepDefinition):
             if isinstance(o.low, int):
-                if o.step is None:
-                    o.step = 1  # Default value deriving from optuna for ints
-                return trial.suggest_int(key, low=o.low, high=o.high, step=o.step, log=o.is_log)
+                step = 1 if o.step is None else o.step
+                return trial.suggest_int(key, low=o.low, high=o.high, step=step, log=o.is_log)
             return trial.suggest_float(key, low=o.low, high=o.high, step=o.step, log=o.is_log)
 
         raise TypeError("Invalid set object type: {}".format(type(o)))
@@ -77,7 +74,12 @@ class TuningSearchSpace:
         )
 
     @staticmethod
-    def from_choices(lr: list, batch_size: list, attn_layers: list, beta: list):
+    def from_choices(
+            lr: list = (3e-5, 1e-4, 3e-4, 1e-3),
+            batch_size: list = (32, 64, 128),
+            attn_layers: list = (2, 4, 6),
+            beta: list = (0.25, 0.5, 1, 2.0)
+    ):
         return TuningSearchSpace(
             lr=ChoiceDefinition(values=lr),
             batch_size=ChoiceDefinition(values=batch_size),
@@ -95,7 +97,7 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
     :param max_epochs: Max number of training epochs (or steps?)
     :return:
     """
-    torch.manual_seed(AppConfig.SEED)  # Reproducibility
+    lightning.seed_everything(cfg.seed, workers=True)
     # Tuned grid of parameters. We run multiple configs.
     custom_config = copy.deepcopy(cfg)
     custom_config.trainer.lr = search_space.suggest("lr", trial)
@@ -103,11 +105,9 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
     custom_config.model.factory.args.attention_config = search_space.suggest("attn_layers", trial)
     custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
 
-    # todo fai queste chiamate in una funziona sola visto che si duplica tra script
     module = build_easy_eegavi_module(custom_config)
-
-    monitor_key = "val_global/fused/bidirectional/mrr_mean"
-    limit_train_batches = 2500  # 900 b=64 todo calculate from batch size
+    # monitor_key = "val_global/fused/bidirectional/mrr_mean"
+    monitor_key = "val/fused/mrr_mean"
     trainer = lightning.Trainer(
         accelerator="gpu",
         logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
@@ -118,13 +118,18 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
             EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=10, mode="max", verbose=True)
         ],
         precision="16-mixed",  # P6000 has no tensor cores
-        limit_train_batches=limit_train_batches,
         max_steps=8000,
         val_check_interval=500,  # validate every 500 train steps
-        log_every_n_steps=int(20),  # Plot every 1%
-        accumulate_grad_batches=4,  # This is to stabilize training todo pass from config
+        log_every_n_steps=20,  # Plot every 1%
+        accumulate_grad_batches=1,  # This is to stabilize training todo pass from config
     )
 
     trainer.fit(module, datamodule=module.datamodule)
+
     results = trainer.validate(module, datamodule=module.datamodule)
-    return results[0][monitor_key]
+
+    score = results[0].get(monitor_key)
+    if score is None:
+        raise KeyError(f"Metric '{monitor_key}' not found in validation results: {results[0].keys()}")
+
+    return float(score)

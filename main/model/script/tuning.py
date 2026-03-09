@@ -14,7 +14,12 @@ class TuningKdConfig(KdConfig):
 @hydra.main(config_path="../../../conf", config_name="hp_tuning")
 def main(cfg: TuningKdConfig):
     search_space = TuningSearchSpace.from_choices(**cfg.search_space)
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(
+        direction="maximize",
+        study_name="eegavi_hp",
+        storage="sqlite:///optuna.db",
+        load_if_exists=True,
+    )
     obj = partial(objective, cfg=cfg, search_space=search_space)
     # Optimize the space
     study.optimize(obj, n_trials=10)  # number of iterations
