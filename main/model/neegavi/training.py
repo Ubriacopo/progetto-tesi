@@ -68,7 +68,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         self._val_pairs_causal = {}
         self._val_pairs_bidi = {}
 
-        self.momentum_student: EegInterAviModel
+        self.momentum_student: EegInterAviModel | None = None
         self.save_hyperparameters(ignore=[
             "datamodule", "student", "teacher", "fusion_metrics", "queue_ptr", "moco_queue", "momentum_out"
         ])
@@ -92,7 +92,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         with torch.inference_mode():
             teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
-            if self.use_moco:
+            if self.use_moco and self.momentum_student is not None:
                 self.momentum_student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
                 self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
 
@@ -218,17 +218,40 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         lr = self.hparams.lr
-        optimizer = torch.optim.AdamW(
 
+        decay_parameters = []
+        no_decay_parameters = []
+        for name, param in self.student.named_parameters():
+            if not param.requires_grad:
+                continue
+            if (
+                    param.ndim == 1 or
+                    name.endswith(".bias") or
+                    name.endswith("_gate") or
+                    name.endswith(".gate") or
+                    "embedding" in name.lower() or
+                    "norm" in name.lower() or
+                    "latents" in name.lower() or
+                    "cls_token" in name.lower()
+            ):
+                no_decay_parameters.append(param)
+            else:
+                decay_parameters.append(param)
+            # Verify counts
+
+        self.inner_logger.info(f"\n=== Weight Decay Groups ===")
+        self.inner_logger.info(f"WITH decay: {len(decay_parameters)} param groups")
+        self.inner_logger.info(f"WITHOUT decay: {len(no_decay_parameters)} param groups")
+
+        optimizer = torch.optim.AdamW(
             params=
             # Parameters from the Siglip losses for the fusion
             [{"params": i.parameters(), "lr": lr, "weight_decay": 0.0} for i in self.siglip_losses.values()]
             # Parameters of the Siglip losses for the kd
             + [{"params": i.parameters(), "lr": lr, "weight_decay": 0.0} for i in self.kd_losses.values()]
             # Model parameters
-            + [{"params": self.student.parameters(), "lr": lr}],
-
-            weight_decay=self.hparams.weight_decay,  # 0.01
+            + [{"params": decay_parameters, "lr": lr, "weight_decay": self.hparams.weight_decay}]
+            + [{"params": no_decay_parameters, "lr": lr, "weight_decay": 0.0}],
             fused=True
         )
 

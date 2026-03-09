@@ -7,4 +7,4 @@ test_participants: 4 # 15% 4
 val_participants: 3 # 10% 3
 
 spec_path: ${base_path}MAHNOB/combined/spec.csv
-output_dir: ${base_path}MAHNOB/combined/
+output_dir: ${base_path}MAHNOB/combined-compressed/

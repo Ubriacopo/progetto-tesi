@@ -2,7 +2,7 @@
 code: vid
 cannot_miss: False
 
-shape: [ 8, 16, 768 ]
+shape: [ 8, 256, 768 ]
 mask_shape: [ 8, ]
 
 is_teacher_key: True

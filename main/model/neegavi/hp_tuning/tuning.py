@@ -40,7 +40,13 @@ class StepDefinition[T](Definition[T]):
 
 @dataclasses.dataclass
 class TuningSearchSpace:
+    # CLIP-like contrastive: 5e-5 – 5e-4
+    # Transformer encoders: 1e-5 – 3e-4
+    # Thus: [1e-5, 3e-5, 1e-4, 3e-4, 1e-3]
     lr: Definition[float]
+    # Only watch: [0.01 - 0.05]
+    weight_decay: Definition[float]
+
     batch_size: Definition[int]
     attn_layers: Definition[int]  # Min-Max-Step
     beta: Definition[float]
@@ -63,7 +69,7 @@ class TuningSearchSpace:
 
         raise TypeError("Invalid set object type: {}".format(type(o)))
 
- 
+
 def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace) -> float:
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     # Tuned grid of parameters

@@ -3,7 +3,7 @@ from functools import partial
 import hydra
 import optuna
 
-from main.model.neegavi.tuning import objective
+from main.model.neegavi.hp_tuning.tuning import objective
 
 
 @hydra.main(config_path="../../../conf", config_name="tuning")

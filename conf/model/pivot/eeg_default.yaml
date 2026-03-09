@@ -1,14 +1,14 @@
 code: eeg
 cannot_miss: True
 
-shape: [ 8, 32, 34, 256 ]
-mask_shape: [ 8, 32, 34 ]
+shape: [ 8, 32, 19, 256 ]
+mask_shape: [ 8, 19, 34 ]
 
 is_teacher_key: False
 
 
 config:
   in_size: 200
-  channels: 34
+  channels: 19
   out_size: ${model.pivot_out_size}
   timestep_seconds: 1

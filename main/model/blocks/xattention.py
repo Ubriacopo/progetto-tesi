@@ -38,33 +38,32 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         self.ff = SimpleFeedForward(dim=dim, mult=ff_mult)
         self.ff_gate = nn.Parameter(torch.tensor([1.]))
 
-        self.norm_q = nn.LayerNorm(dim)
-        self.norm_kv = nn.LayerNorm(dim)
-        self.norm_ff = nn.LayerNorm(dim)
+        self.q_norm = nn.LayerNorm(dim)
+        self.kv_norm = nn.LayerNorm(dim)
+        self.ff_norm = nn.LayerNorm(dim)
 
         self.self_attn: Optional[nn.MultiheadAttention] = None
         self.self_attn_gate: Optional[nn.Parameter] = None
 
         if with_self_attn:
-            self.norm_self_attn = nn.LayerNorm(dim)
+            self.self_attn_norm = nn.LayerNorm(dim)
             self.self_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=2, batch_first=True)
             self.self_attn_gate = nn.Parameter(torch.tensor([1.]))
 
     def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
         # Pre-LN + Cross modality attention
-        norm_q = self.norm_q(q)
-        norm_kv = self.norm_kv(kv)
+        norm_q = self.q_norm(q)
+        norm_kv = self.kv_norm(kv)
         q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.sigmoid() # TODO: Check if this helps. I changed from tanh to sigmoid
 
         if self.self_attn is not None:
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.
             # Also respect the convention of torch of passing mask with True where ignore.
-            norm_q = self.norm_self_attn(q)
-            # todo bug risolvere manca maschera su self attn per causal/bidi
+            norm_q = self.self_attn_norm(q)
             out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
             q = q + self.self_attn_gate.tanh() * out
 
-        norm_q = self.norm_ff(q)
+        norm_q = self.ff_norm(q)
         q = q + self.ff(norm_q) * self.ff_gate.tanh()
         return q
 

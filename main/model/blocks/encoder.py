@@ -16,17 +16,17 @@ class ModalContextEncoder(nn.Module):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         max_embedding_rows = max(modality_mappings.values()) + 1  # Indexing start at 0
-        self.modal_embeddings = nn.Embedding(max_embedding_rows, dim)
+        self.modal_embedding = nn.Embedding(max_embedding_rows, dim)
         # Suppose the weights are already trained. We keep it and load it. This is the reason to get a dictionary
         # instead of a str set as the order and indexes may vary with time.
         if weights is not None:
-            self.modal_embeddings.load_state_dict(weights)
+            self.modal_embedding.load_state_dict(weights)
         self.modality_mappings = modality_mappings
 
     def forward(self, x: torch.Tensor, modality: str):
         if x is None: return None
         idx = torch.tensor(self.modality_mappings[modality], dtype=torch.long, device=x.device)
-        return self.norm(x + self.modal_embeddings(idx).view(1, 1, 1, -1))
+        return self.norm(x + self.modal_embedding(idx).view(1, 1, 1, -1))
 
 
 class TemporalEncoder(nn.Module, TimeMaskSwitchable):
@@ -36,12 +36,12 @@ class TemporalEncoder(nn.Module, TimeMaskSwitchable):
         TimeMaskSwitchable.__init__(self)
         self.enc_layer = nn.TransformerEncoderLayer(d_model=dim, nhead=heads, dropout=dropout, batch_first=True)
         self.enc = nn.TransformerEncoder(encoder_layer=self.enc_layer, num_layers=layers)
-        self.pos = nn.Parameter(torch.randn(1, int(max_length / timestep_duration), dim))  # or sinusoidal
+        self.pos_embedding = nn.Parameter(torch.randn(1, int(max_length / timestep_duration), dim))  # or sinusoidal
         self.set_attention_modality(modality)  # Initialize the attn modality
 
     def forward(self, x, mask=None):  # x: (B,T,D), mask: (B,T) bool True=valid
         t = x.size(1)
-        x = x + self.pos[:, :t]
+        x = x + self.pos_embedding[:, :t]
 
         attn_mask = self._get_attn_mask(t, x.device)
         if mask is None:
