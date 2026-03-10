@@ -289,7 +289,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
             self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=is_train, prog_bar=False)
             self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=is_train, prog_bar=False)
-            # TODO verifica
+
             # ---- KD diagnostic: positive-pair cosine similarity ----
             # Assumes last dim is embedding dim.
             s = F.normalize(student_data.reshape(-1, student_data.shape[-1]), dim=-1)
