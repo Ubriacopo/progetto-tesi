@@ -1,15 +1,17 @@
 defaults:
   - hydra-setup
-  - model: default
-  - trainer: default
+  - model: default # TODO ANCHE QUI BEST?
+  - trainer: best_config
   - teacher: default
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
-experiment: ???
-
-base_path: /home/jfichera/PycharmProjects/progetto-tesi/
+experiment: ablation-kd-best
+base_path: /root/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
+
+trainer:
+  use_kd: False
 
 seed: 1
 
