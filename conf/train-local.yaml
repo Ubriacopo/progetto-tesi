@@ -11,9 +11,9 @@ teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.
 seed: 1
 
 dataset_descriptors:
-  #- dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"
-  #  cache_path: null
-  #  dataset_weight: 149
+  - dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"
+    cache_path: null
+    dataset_weight: 149
   - dataset_path: "/home/jacopo/dataset/EEGAVI/DEAP/combined-compressed/"
     cache_path: null
     dataset_weight: 108
