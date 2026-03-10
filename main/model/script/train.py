@@ -29,7 +29,7 @@ def main(cfg: KdConfig):
         model_name=model_name,
         profiler=profiler,
         limit_train_batches=train_batches,  # TODO Calculate from batch size
-        monitor_key="val_global/fused/bidirectional/mrr_mean",
+        monitor_key="val/fused/mrr_mean",
         accumulate_grad_batches=int(accumulate_target / cfg.trainer.batch_size)
     )
 

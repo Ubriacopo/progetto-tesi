@@ -2,7 +2,7 @@ tuning_search_space:
   lr:
     values: [ 3e-5, 1e-4, 3e-4, 1e-3 ]
   batch_size:
-    values: [ 24 ]
+    values: [ 32 ]
   attn_layers:
     values: [ 2, 4, 6 ]
   beta:
