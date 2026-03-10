@@ -25,6 +25,7 @@ def build_easy_eegavi_module(cfg: KdConfig) -> EasyEegAviKdVateMaskedModule:
         datamodule=KdTrainDataModule(
             cfg.dataset_descriptors, cfg.trainer.batch_size, cfg.seed, ["eeg", "aud", "vid", "txt", "ecg"]
         ),
+        use_kd=cfg.trainer.use_kd,
         use_moco=cfg.trainer.use_moco,
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,

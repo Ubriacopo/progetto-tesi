@@ -4,6 +4,7 @@ from typing import Tuple, Optional
 from main.core_data.dataset import CachableDatasetDescriptor
 from main.model.neegavi.model import EegInterAviModelConfiguration
 
+
 # todo remove unused fields
 @dataclasses.dataclass
 class TrainerConfig:
@@ -17,6 +18,7 @@ class TrainerConfig:
     dl_start_index: int
     ckpt_path: str
     use_moco: bool
+    use_kd: bool
 
 
 @dataclasses.dataclass

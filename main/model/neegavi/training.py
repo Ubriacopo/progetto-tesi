@@ -80,6 +80,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         for name, param in self.student.named_parameters():
             if not param.requires_grad:
                 continue
+
             if (
                     param.ndim == 1 or
                     name.endswith(".bias") or
@@ -126,17 +127,16 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             )
         }
 
-
     def on_validation_epoch_start(self):
         self._validation_pairs = {}
 
     def on_train_start(self) -> None:
+        # Generation of the time mask switching. It is just a training trick.
         self.time_mask_switch_generator = torch.Generator(device=self.device)
         self.time_mask_switch_generator.manual_seed(self.hparams.seed)
 
     def training_step(self, batch, batch_idx):
         batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
-
         # Randomly draw the modality we want to train on (For the time relations)
         causal_p = self.p_causal_schedule()
         u = torch.rand((), generator=self.time_mask_switch_generator, device=self.device)
@@ -144,32 +144,40 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         self.student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
 
         with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+            teacher_out: Optional[MaskedContrastiveModelOutputs] = None
+            if self.use_kd:
+                teacher_out = self.teacher(batch["teacher"])
+
             if self.use_moco and self.momentum_student is not None:
                 self.momentum_student.set_attention_modality(TimeMaskSwitchableProperties(mode=mode))
-                self.momentum_out = self.momentum_student(batch["student"], use_kd=False)
+                self.momentum_out = self.momentum_student(batch["student"], use_kd=self.use_kd)
 
         lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("lr", lr, on_step=True, on_epoch=False, prog_bar=False)
         self.observe_xattn_gates()  # More metrics to see if there are problems here.
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=self.use_kd)
         return self.compute_step_metrics(stud_out, teacher_out, "train", batch_idx)["loss"]
 
     def validation_step(self, batch, batch_idx):
         mode: Literal['causal', 'bidirectional']
         batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
+
         with torch.inference_mode():
-            teacher_out: MaskedContrastiveModelOutputs = self.teacher(batch["teacher"])
+            teacher_out: Optional[MaskedContrastiveModelOutputs] = None
+            if self.use_kd:
+                # Calculate teacher embeddings only if we use them of course
+                teacher_out = self.teacher(batch["teacher"])
 
         # We only evaluate on bidirectional from now on. It is just a learning trick in the architecture now.
         self.student.set_attention_modality(TimeMaskSwitchableProperties(mode="bidirectional"))
-        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=True)
+        stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=self.use_kd)
         loss_object = self.compute_step_metrics(stud_out, teacher_out, 'val', batch_idx)
 
         valid_p = stud_out.multimodal_outs[self.student.pivot.code]["mask"].sum(dim=1) > 0
         for k, mv in stud_out.multimodal_outs.items():
             valid_k = mv["mask"].sum(1) > 0
             valid_both = valid_p & valid_k
+
             if not valid_both.any():
                 continue
 
@@ -265,7 +273,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         for parameter in self.momentum_student.parameters():
             parameter.requires_grad_(False)
 
-
     def compute_kd_loss(self,
                         student_out: dict[str, MaskedValue],
                         teacher_out: MaskedContrastiveModelOutputs,
@@ -282,13 +289,29 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
             self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=is_train, prog_bar=False)
             self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=is_train, prog_bar=False)
+            # TODO verifica
+            # ---- KD diagnostic: positive-pair cosine similarity ----
+            # Assumes last dim is embedding dim.
+            s = F.normalize(student_data.reshape(-1, student_data.shape[-1]), dim=-1)
+            t = F.normalize(teacher_data.reshape(-1, teacher_data.shape[-1]), dim=-1)
+            pos_cos = (s * t).sum(dim=-1).mean()
+            self.log(f"{step_type}/kd/{key}/cos", pos_cos, on_epoch=True, on_step=is_train, prog_bar=False)
+            # Cosine gap against in-batch negatives
+            sim = s @ t.T
+            pos = sim.diag()
+            if sim.shape[0] > 1:
+                neg_mask = ~torch.eye(sim.shape[0], dtype=torch.bool, device=sim.device)
+                neg_mean = sim[neg_mask].mean()
+
+                cos_gap = pos.mean() - neg_mean
+                self.log(f"{step_type}/kd/{key}/cos_gap", cos_gap, on_epoch=True, on_step=is_train, prog_bar=False)
+
             loss = loss + modality_loss
             n += 1
 
         # Normalize so that missing modalities don't spike up the loss
         loss = loss / max(1, n)
         self.log(f"{step_type}/kd/loss", loss, on_epoch=True, on_step=is_train, prog_bar=True)
-        self.log(f"{step_type}/kd/n_modalities", float(n), on_epoch=True, on_step=is_train, prog_bar=False)
         return loss
 
     def compute_fusion_loss(self,
@@ -340,14 +363,14 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def compute_step_metrics(
             self,
             stud_outs: EegBaseModelOutputs,
-            teacher_outs: MaskedContrastiveModelOutputs,
+            teacher_outs: Optional[MaskedContrastiveModelOutputs],
             step_type: Literal['train', 'val', 'test'],
             batch_idx: int
     ) -> dict[str, torch.Tensor | MaskedValue]:
         loss = torch.tensor(0., device=stud_outs.embeddings['data'].device, dtype=stud_outs.cls.dtype)
         return_object: dict[str, torch.Tensor | MaskedValue] = dict(loss=loss)
 
-        if self.use_kd:
+        if self.use_kd and teacher_outs is not None:
             kd_loss = self.compute_kd_loss(student_out=stud_outs.kd_outs, teacher_out=teacher_outs, step_type=step_type)
             return_object["loss"] = return_object["loss"] + kd_loss * self.hparams.kd_loss_weight
 

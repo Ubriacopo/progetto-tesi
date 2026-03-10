@@ -1,0 +1,5 @@
+# Training infos
+defaults:
+  - best_config
+
+use_kd: False
