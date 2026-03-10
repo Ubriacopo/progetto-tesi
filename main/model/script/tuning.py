@@ -24,6 +24,14 @@ def main(cfg: TuningKdConfig):
     # Optimize the space
     study.optimize(obj, n_trials=10)  # number of iterations
 
+    print("Best trial:")
+    trial = study.best_trial
+    print("  Value: ", trial.value)
+
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
+
 
 if __name__ == "__main__":
     main()
