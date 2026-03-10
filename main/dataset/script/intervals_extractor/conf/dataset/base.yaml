@@ -6,6 +6,6 @@ config_classpath: main.dataset.${.dataset_name}.config.${.DatasetName}Config
 points_loader_classpath: main.dataset.${.dataset_name}.loader.${.DatasetName}PointsLoader
 
 # Subpath to where the dataset is places
-data_path: /home/jacopo/dataset/${.DATASETNAME}/
+data_path: ${..base_path}/${.DATASETNAME}/
 # Where output has to go to
-output_path: /home/jacopo/dataset/EEGAVI/${.DATASETNAME}/extraction-data/
+output_path: ${..base_path}/EEGAVI/${.DATASETNAME}/extraction-data/

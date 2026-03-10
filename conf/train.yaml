@@ -1,4 +1,5 @@
 defaults:
+  - hydra-setup
   - model: default
   - trainer: default
   - teacher: default
