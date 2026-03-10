@@ -1,3 +1,3 @@
-base_path: /mnt/turing-datasets
+base_path: /mnt/datasets
 defaults:
   - template

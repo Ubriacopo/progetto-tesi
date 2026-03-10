@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from einops import rearrange
 from moviepy import VideoFileClip
-from torch import nn, dtype
+from torch import nn
 from transformers import VivitImageProcessor, VivitForVideoClassification, VivitModel
 
 from main.core_data.media.video.video_processor import VideoResampler
@@ -115,7 +115,7 @@ class VideoSubclipTensorRead(nn.Module):
 
 
 class VideoToTensor(nn.Module):
-    def __init__(self, device="cpu", tensor_dtype: dtype = torch.float32):
+    def __init__(self, device="cpu", tensor_dtype=torch.float32):
         super().__init__()
         self.device = device
         self.tensor_dtype = tensor_dtype
@@ -411,6 +411,7 @@ class VateVideoResamplerTransform(nn.Module):
         y = torch.tensor(self.video_resampler.resample_clip(x))
         y = rearrange(y, "t h w c -> t c h w")
         return y
+
 
 # TODO passare a questo
 class ViVit2DPooling(nn.Module):
