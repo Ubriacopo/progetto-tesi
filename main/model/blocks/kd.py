@@ -46,9 +46,9 @@ class KDHead(nn.Module):
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
         # x: [B,T,P,IN], mask: [B,T,P] or None
         zTP, valid_T = self.masked_mean(x, mask, dim=2, eps=self.eps)  # [B,T,IN], [B,T,1]
-        mT = None if valid_T is None else valid_T.squeeze(-1)  # [B,T] bool
+        mT = valid_T.squeeze(-1)  # [B,T] bool
         zB, valid_B = self.masked_mean(zTP, mT, dim=1, eps=self.eps)  # [B,IN], [B,1]
         y = self.transform(zB)  # [B,OUT]
-        out_mask = valid_B.squeeze(-1) if valid_B is not None else torch.ones(y.size(0), dtype=torch.bool,
-                                                                              device=y.device)
+        out_mask = valid_B.squeeze(-1)
+
         return y if not self.return_masks else MaskedValue(data=y, mask=out_mask)
