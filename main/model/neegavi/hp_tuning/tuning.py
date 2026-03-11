@@ -6,10 +6,10 @@ from abc import ABC
 
 import lightning
 import optuna
-from lightning.pytorch.callbacks import EarlyStopping
+from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from optuna.integration import PyTorchLightningPruningCallback
-from pytorch_lightning.callbacks import RichProgressBar
+
 
 from main.model.neegavi.helpers import build_easy_eegavi_module
 from main.model.script.hydra_beans import KdConfig
@@ -118,7 +118,7 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
             EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=10, mode="max", verbose=True)
         ],
         precision="16-mixed",  # P6000 has no tensor cores
-        max_steps=8000,
+        max_steps=600,
         val_check_interval=500,  # validate every 500 train steps
         log_every_n_steps=20,  # Plot every 1%
         accumulate_grad_batches=1,  # This is to stabilize training todo pass from config
