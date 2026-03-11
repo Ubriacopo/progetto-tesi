@@ -6,6 +6,7 @@ from tensordict import TensorDict
 from torch.utils.data import DataLoader, IterableDataset, ChainDataset
 
 from main.core_data.dataset import CachableDatasetDescriptor, RoundRobinBatchMultiDataset, H5KdDataset
+from main.utils.logging import make_logger
 
 
 def collate(x):
@@ -30,6 +31,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         ... todo
         """
         super().__init__()
+        self.logger = make_logger(self.__class__.name)
         self.shards_path: list[CachableDatasetDescriptor] = dataset_paths
 
         self.train_dataset: Optional[IterableDataset] = None
@@ -72,20 +74,32 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 ds_path, prefix="train", block_size=32, buffer_size=384, batch_size=self.batch_size, iterator_id=it_id
             )
 
-            self.lengths["train"] += len(dataset)
+            train_samples = len(dataset)
+            self.lengths["train"] += train_samples
+            self.logger.debug(f"Dataset with f{shards_path} has a total of {train_samples} train samples")
+
             datasets.append(dataset)
 
             val_dataset = H5KdDataset(
                 ds_path, prefix="val", block_size=32, buffer_size=96, batch_size=self.batch_size, shuffle=False
             )
 
-            self.lengths["val"] += len(val_dataset)
+            val_samples = len(val_dataset)
+            self.lengths["val"] += val_samples
+            self.logger.debug(f"Dataset with f{shards_path} has a total of {val_samples} validation samples")
             val_datasets.append(val_dataset)
 
+            test_samples = 0
             if self.load_test:
                 test_ds = H5KdDataset(ds_path, prefix="test", block_size=32, buffer_size=96, batch_size=self.batch_size)
-                self.lengths["val"] += len(test_ds)
+                test_samples = len(test_ds)
+                self.lengths["test"] += test_samples
+                self.logger.debug(f"Dataset with f{shards_path} has a total of {test_samples} validation samples")
                 self.test_ds_collection[shards_path.dataset_path] = test_ds
+
+            self.logger.debug(
+                f"Dataset with f{shards_path} has a total of {train_samples + val_samples + test_samples} validation samples"
+            )
 
         self.train_dataset = RoundRobinBatchMultiDataset(datasets, weights, seed=self.seed, consecutive_batches=8)
         self.valid_dataset = ChainDataset(val_datasets)
