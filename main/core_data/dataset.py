@@ -155,22 +155,39 @@ class H5KdDataset(IterableDataset):
         need: int = self.batch_size
         # Fill batch from multiple blocks
         while need > 0 and block_buffer:
-            bidx = rng.randrange(len(block_buffer)) if rng is not None else 0
-            block, perm, cursor = block_buffer[bidx]
+            # Weight each block by how many samples are still available in it
+            remaining = []
 
+            for block, perm, cursor in block_buffer:
+                block_len = len(perm) if perm is not None else len(next(iter(block.values())))
+                remaining.append(max(0, block_len - cursor))
+
+            total_remaining = sum(remaining)
+            if total_remaining <= 0:
+                block_buffer.clear() # Safety guard
+                break
+
+            if rng is not None:
+                random_selection = rng.randrange(total_remaining)
+                acc, bidx = 0, 0
+                for idx, remaining_samples in enumerate(remaining):
+                    acc += remaining_samples
+                    if random_selection < acc:
+                        bidx = idx
+                        break
+            else:
+                bidx = next(i for i, w in enumerate(remaining) if w > 0)
+
+            block, perm, cursor = block_buffer[bidx]
             block_len = len(perm) if perm is not None else len(next(iter(block.values())))
+
             avail = block_len - cursor
             if avail <= 0:
                 block_buffer.pop(bidx)
                 continue
 
             take = min(need, avail)
-
-            if perm is not None:
-                # perm is a Python list; slice then convert once per chunk
-                sel = perm[cursor:cursor + take]
-            else:
-                sel = slice(cursor, cursor + take)
+            sel = perm[cursor:cursor + take] if perm is not None else slice(cursor, cursor + take)
 
             # advance cursor / retire block if done
             cursor += take
@@ -287,7 +304,7 @@ class H5KdDataset(IterableDataset):
         for shard_path, start, stop in self.data(generator=global_g):
             t0 = time.perf_counter()
             with h5py.File(str(shard_path), "r", locking=False,
-                           rdcc_nbytes=64 * 1024 * 1024, rdcc_nslots=100_003, rdcc_w0=0.75, ) as h5:
+                           rdcc_nbytes=256 * 1024 * 1024, rdcc_nslots=1_000_003, rdcc_w0=0.75, ) as h5:
                 self.timer.add("open_file", time.perf_counter() - t0)
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
                     buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)
