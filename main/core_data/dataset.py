@@ -148,40 +148,45 @@ class H5KdDataset(IterableDataset):
 
     def pop_batch(self, buffered_samples: int, block_buffer: list, rng: random.Random = None):
         """Return dict[str, Tensor[B,...]] built from multiple blocks."""
-        if not block_buffer:
+        if not block_buffer or buffered_samples <= 0:
             return None, buffered_samples
 
         parts: list[dict[str, torch.Tensor]] = []
         need: int = self.batch_size
+
         # Fill batch from multiple blocks
-        while need > 0 and block_buffer:
-            # Weight each block by how many samples are still available in it
-            remaining = []
-
-            for block, perm, cursor in block_buffer:
-                block_len = len(perm) if perm is not None else len(next(iter(block.values())))
-                remaining.append(max(0, block_len - cursor))
-
-            total_remaining = sum(remaining)
-            if total_remaining <= 0:
-                block_buffer.clear() # Safety guard
-                break
-
+        while need > 0 and block_buffer and buffered_samples > 0:
+            bidx: int | None = None
             if rng is not None:
-                random_selection = rng.randrange(total_remaining)
-                acc, bidx = 0, 0
-                for idx, remaining_samples in enumerate(remaining):
-                    acc += remaining_samples
-                    if random_selection < acc:
+                random_selection = rng.randrange(buffered_samples)
+
+                accumulator = 0
+                for idx, (block, perm, cursor) in enumerate(block_buffer):
+                    block_len = len(perm) if perm is not None else len(next(iter(block.values())))
+                    available = block_len - cursor
+
+                    if available <= 0:
+                        continue
+
+                    accumulator += available
+                    if random_selection < accumulator:
                         bidx = idx
                         break
+
             else:
-                bidx = next(i for i, w in enumerate(remaining) if w > 0)
+                for idx, (block, perm, cursor) in enumerate(block_buffer):
+                    block_len = len(perm) if perm is not None else len(next(iter(block.values())))
+                    if block_len - cursor > 0:
+                        bidx = idx
+                        break
+
+            if bidx is None:
+                break
 
             block, perm, cursor = block_buffer[bidx]
             block_len = len(perm) if perm is not None else len(next(iter(block.values())))
-
             avail = block_len - cursor
+
             if avail <= 0:
                 block_buffer.pop(bidx)
                 continue
