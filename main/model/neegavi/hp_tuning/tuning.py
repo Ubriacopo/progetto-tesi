@@ -131,7 +131,7 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
         f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
     )
 
-    monitor_key = "val/fused/mrr_mean"
+    monitor_key = "test/fused/mrr_mean"
     trainer = lightning.Trainer(
         accelerator="gpu",
         logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
@@ -146,7 +146,7 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
     )
 
     trainer.fit(module, datamodule=module.datamodule)
-    results = trainer.validate(module, datamodule=module.datamodule)
+    results = trainer.test(module, dataloaders=module.datamodule.val_dataloader())
 
     score = results[0].get(monitor_key)
     if score is None:
