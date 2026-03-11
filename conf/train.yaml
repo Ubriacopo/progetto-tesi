@@ -16,16 +16,16 @@ seed: 1
 dataset_descriptors:
   - dataset_path: "/mnt/datasets/EEGAVI/AMIGOS/combined/"
     cache_path: null
-    dataset_weight: 149 # Power Law
+    dataset_weight: 137 # Power Law
   - dataset_path: "/mnt/datasets/EEGAVI/DEAP/combined-compressed/"
     cache_path: null
-    dataset_weight: 108 # Power Law
+    dataset_weight: 101 # Power Law
   - dataset_path: "/mnt/datasets/EEGAVI/MAHNOB/combined-compressed/"
     cache_path: null
-    dataset_weight: 30 # Power Law
+    dataset_weight: 28 # Power Law
   - dataset_path: "/mnt/datasets/EEGAVI/EAV/combined-compressed/"
     cache_path: null
-    dataset_weight: 200
+    dataset_weight: 227
 
 hydra:
   job:
