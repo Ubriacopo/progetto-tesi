@@ -73,3 +73,9 @@ class KdConfig:
 
     dataset_descriptors: list[CachableDatasetDescriptor]
     teacher_weights_path: str
+
+
+class TuningKdConfig(KdConfig):
+    search_space: dict
+
+    use_trick: bool

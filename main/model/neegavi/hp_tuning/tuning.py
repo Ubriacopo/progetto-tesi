@@ -6,12 +6,11 @@ from abc import ABC
 
 import lightning
 import optuna
-from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+from lightning.pytorch.callbacks import RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
-from optuna.integration import PyTorchLightningPruningCallback
 
 from main.model.neegavi.helpers import build_easy_eegavi_module
-from main.model.script.hydra_beans import KdConfig
+from main.model.script.hydra_beans import TuningKdConfig
 from main.utils.logging import make_logger
 
 
@@ -88,7 +87,8 @@ class TuningSearchSpace:
         )
 
 
-def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace,
+# Explorative objective
+def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
               reference_bs: int = 64, max_epochs: int = 5) -> float:
     """
 
@@ -104,32 +104,45 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
     # Tuned grid of parameters. We run multiple configs.
     custom_config = copy.deepcopy(cfg)
     custom_config.trainer.lr = search_space.suggest("lr", trial)
-    custom_config.trainer.batch_size = search_space.suggest("batch_size", trial)
-    custom_config.model.factory.args.attention_config = search_space.suggest("attn_layers", trial)
+    batch_size = search_space.suggest("batch_size", trial)
+
+    accumulation = 1
+
+    # Memory trick for local
+    attention_layers = search_space.suggest("attn_layers", trial)
+    custom_config.model.factory.args.attention_config = attention_layers
+
+    if cfg.use_trick and attention_layers > 4:
+        logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
+        # For me this is enough. No need to engineer a good solution.
+        batch_size = int(batch_size / 2)
+        accumulation = 2  # We have to double the accumulation
+
+    # We store 16 with trick but actual batch is 32 thus the search_space tracks correctly.
+    custom_config.trainer.batch_size = batch_size
     custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
 
     module = build_easy_eegavi_module(custom_config, 0.3)
 
     module.datamodule.setup("")
     train_batches = module.datamodule.size("train")
-    steps = int(max_epochs * train_batches * reference_bs / custom_config.trainer.batch_size)
-    logger.info(f"Steps: {steps} from {train_batches} and reference {reference_bs} given I have {max_epochs} epochs")
-    # monitor_key = "val_global/fused/bidirectional/mrr_mean"
+    steps = int(max_epochs * train_batches * reference_bs / (batch_size * accumulation))
+    logger.info(
+        f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
+    )
 
     monitor_key = "val/fused/mrr_mean"
     trainer = lightning.Trainer(
         accelerator="gpu",
         logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
         devices=1,
-        callbacks=[
-            RichProgressBar(),
-            PyTorchLightningPruningCallback(trial, monitor=monitor_key),
-            EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=10, mode="max", verbose=True)
-        ],
+        callbacks=[RichProgressBar(), ],
         precision="16-mixed",  # P6000 has no tensor cores
         max_steps=steps,
         log_every_n_steps=20,  # Plot every 1%
-        accumulate_grad_batches=1,  # This is to stabilize training todo pass from config
+        accumulate_grad_batches=accumulation,
+        num_sanity_val_steps=0,
+        limit_val_batches=0,
     )
 
     trainer.fit(module, datamodule=module.datamodule)

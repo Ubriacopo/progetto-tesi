@@ -4,11 +4,7 @@ import hydra
 import optuna
 
 from main.model.neegavi.hp_tuning.tuning import objective, TuningSearchSpace
-from main.model.script.hydra_beans import KdConfig
-
-
-class TuningKdConfig(KdConfig):
-    search_space: dict
+from main.model.script.hydra_beans import TuningKdConfig
 
 
 @hydra.main(config_path="../../../conf", config_name="hp_tuning")

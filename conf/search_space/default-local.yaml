@@ -1,4 +1,4 @@
 lr: [ 3e-5, 1e-4, 3e-4, 1e-3 ]
-batch_size: [ 16 ]
+batch_size: [ 32 ]
 attn_layers: [ 2, 4, 6 ]
 beta: [ 0.25, 0.5, 1.0, 2.0 ]
