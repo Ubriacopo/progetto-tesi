@@ -1,4 +1,4 @@
-base_path: /mnt/turing-datasets/EEGAVI/
+base_path: /mnt/datasets/EEGAVI/
 defaults:
   - hydra-setup
   - sharding: ???
