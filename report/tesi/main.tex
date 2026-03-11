@@ -46,22 +46,18 @@
 \cdl{Corso di Laurea Triennale in\\Corso di Laurea}
 
 %   TITOLO TESI:
-\title{Un Template LaTeX per Elaborati Triennali o Tesi Magistrali}
-% Questo comando (opzionale) sovrascrive \title per quanto riguarda la copertina
-% Può essere usato per stampare caratteri speciali, tenendo i metadati puliti
-\printedtitle{Un Template \LaTeX{} per Elaborati\\Triennali o Tesi Magistrali}
+\title{A multimodal knowledge distillation model for emotive EEG characterization}
 
 %   AUTORE:
-\author{Nome E. Cognome}
-\matricola{123456}
+\author{Jacopo Fichera}
+\matricola{123456} % TODO
 % "Elaborato Finale" per i CdL triennali
 % "Tesi di Laurea" per i CdL magistrali
 \typeofthesis{Elaborato Finale}
 
 %   RELATORE E CORRELATORE:
-\relatore{Prof. Giovanni Degli Antoni}
-\correlatore{Prof. Brian W. Kernighan}
-\correlatore{Prof. Dennis M. Ritchie}
+\relatore{Prof.ssa Raffaella Lanzarotti}
+\correlatore{Dot. Jacopo Burger} % TODO Ma vero?
 
 %   LABORATORIO:
 % Questa sezione crea una pagina di chiusura della tesi con
@@ -178,7 +174,7 @@
 %			CAPITOLO 1: Introduzione o Abstract
 %
 
-        \chapter{Introduzione}
+        \chapter{Introduction}
         \label{cap:introduzione}
 
         Questo documento ha una duplice funzione: da un lato mostra un esempio completo di tesi redatto in \LaTeX\ e conforme allo standard PDF/A, e dall'altro contiene suggerimenti e risposte a domande frequenti poste dagli studenti. Se ne raccomanda, pertanto, un'attenta lettura.
@@ -589,54 +585,6 @@ def MCD(a,b):
 %
 
         \appendix
-
-        \chapter{Informazioni generali sull'attività di tirocinio}
-        Lo studente che si appresta a svolgere il lavoro di tesi generalmente incontra relatore e correlatore a inizio progetto per definire una tabella di marcia, quindi al completamento di ogni obiettivo fissato si ripresenta per un aggiornamento e un controllo. Questo è molto importante per approcciare il problema in modo organico e per evitare di illudersi di aver raggiunto un risultato sufficiente ritenendo concluso il lavoro.
-
-        Durante il lavoro è consigliato di prendere appunti su ciò che si sta facendo, in modo da avere una base per la stesura dell'elaborato.
-
-        Infine, è richiesto agli studenti di consegnare la proposta di indice prima di iniziare la stesura, per poi consegnare ogni capitolo a mano a mano che questi vengono completati. La tesi completa va consegnata per la rilettura finale a relatore e correlatore almeno una settimana prima della consegna ufficiale, per permettere un ultimo \textit{proof reading} e l'integrazione delle eventuali modifiche richieste.
-
-        Altri dettagli:
-        \begin{itemize}
-                \item E' estremamente importante che lo studente comunichi con i relatori per aggiornamenti regolari, in particolare ogni volta che ci sono sviluppi significativi o decisioni da prendere.
-                \item E' altresì fondamentale che ogni comunicazione via mail avvenga mettendo sempre tutti i relatori/correlatori tra i destinatari.
-                \item Di norma non serve venire a lavorare in laboratorio, tuttavia se lo studente lo preferisce è il benvenuto. Per ottenere il badge di accesso si acceda al portale: \url{https://badge.di.unimi.it/}
-        \end{itemize}
-
-        \section{Aspetti Burocratici (CdL Triennali)}
-        Solitamente l'attività di tirocinio interno per la triennale si articola nei seguenti passaggi formali:
-        \begin{enumerate}
-                \item Scegliere un argomento su cui lavorare: è possibile partire da una propria idea o scegliere un tema tra quelli proposti dai docenti
-                \item Scegliere relatore e correlatore: il relatore deve essere uno strutturato del Dipartimento (Ricercatore, Professore associato o Professore ordinario)
-                \item Definire insieme ai relatori: titolo (anche provvisorio), obbiettivi e tabella di marcia
-                \item Procedere con l'apertura formale del tirocinio sulla piattaforma\\ \url{https://tirocini.di.unimi.it}
-                \item Il tirocinio deve durare almeno 14 settimane. Durante questo tempo si dovrebbe svolgere il grosso del lavoro
-                \item A tirocinio ultimato, se e solo se il relatore è d'accordo, si procede con la chiusura formale del tirocinio. Questa consiste da un lato nell'iscrizione all'appello apposito sul SIFA/UniMIA a carico dello studente, e dall'altro nell'inoltro della richiesta di chiusura a carico del relatore
-                \item Iscrizione alla sessione di laurea sul sito del Corso di Laurea\\ \texttt{https://<nome\_cdl>.cdl.unimi.it/it/studiare/laurearsi}\\ (es. \url{https://informaticamusicale.cdl.unimi.it/it/studiare/laurearsi})
-                \item Consegna di elaborato e riassunto in formato PDF-A (questo template produce già il formato richiesto) non superiore a 10MB
-                \item Discussione pubblica, che in quanto tale è aperta a spettatori esterni
-                \item Festeggiamenti (si ricorda che questi devono essere svolti nel rispetto dei luoghi e delle istituzioni rappresentate)
-        \end{enumerate}
-
-        \section{Aspetti Pratici}
-        Relativamente gli aspetti pratici, ogni relatore ha un suo modus operandi per la gestione dei tesisti, quanto riportato di seguito va quindi considerato a solo titolo esemplificativo; in particolare questa è la procedura tipica seguita dagli studenti del Corso di Laurea di Informatica Musicale:
-        \begin{enumerate}
-                \item Analisi dello stato dell'arte (Cap.~\ref{chap:stato_arte}).\\E' importante annotare tutto sin da subito usando \LaTeX, perché poi andrà scritto nell'elaborato.
-                \item Definizione del problema, ``design'' del sistema, scelta degli strumenti
-                \item Implementazione
-                \item Definizione ed esecuzione della campagna di test e/o validazione (Cap.~\ref{chap:test})
-                \item Definizione dell'indice dell'elaborato
-                \item Scrittura dell'elaborato e correzione (meglio se in parallelo con gli altri passi)
-                \item Consegna dell'elaborato
-                \item Stesura della presentazione, correzione, suggerimenti
-        \end{enumerate}
-
-        \section{Gestione del Codice}
-        Nella maggior parte dei tirocini dei CdL in Informatica, lo studente si troverà a scrivere del codice. Si consiglia di concordare in fase preliminare il modo di condivisione del codice.
-        Per quanto riguarda il LIM, il codice pertinente alle tesi viene generalmente versionato su GitHub (\url{https://github.com/LIMUNIMI}).
-
-        Nel caso di utilizzo di git (con qualsiasi remoto, sia esso GitHub, GitLab, Bitbucket, \dots), si consiglia allo studente di avere una infarinatura generale prima di utilizzarlo per il proprio progetto. Un buon tutorial interattivo è \url{https://learngitbranching.js.org}, anche se include argomenti avanzati che possono essere al di là delle necessità contingenti dello studente.
 
 
         \chapter{Documenti da Produrre}
