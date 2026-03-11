@@ -71,7 +71,12 @@ class KdTrainDataModule(lightning.LightningDataModule):
 
             weights.append(shards_path.dataset_weight)
             dataset = H5KdDataset(
-                ds_path, prefix="train", block_size=32, buffer_size=384, batch_size=self.batch_size, iterator_id=it_id
+                ds_path,
+                prefix="train",
+                block_size=32,
+                buffer_size=self.batch_size * 12,
+                batch_size=self.batch_size,
+                iterator_id=it_id
             )
 
             train_samples = len(dataset)
