@@ -22,7 +22,11 @@ class KdTrainDataModule(lightning.LightningDataModule):
             seed: int,
             dequantize_keys: list[str],
             collate_fn=collate,
-            restore_iteration: int = None
+            restore_iteration: int = None,
+            # These are only here for hp tuning at the moment
+            train_fraction: float = None,
+            valid_fraction: float = None,
+            test_fraction: float = None,
     ):
         """
         :param student_keys: list of keys that appear in the student records as tensor_dicts
@@ -52,6 +56,13 @@ class KdTrainDataModule(lightning.LightningDataModule):
         self.setup_done: bool = False
         self.lengths: dict[str, int] = {"train": 0, "val": 0, "test": 0}
 
+        self.train_fraction: Optional[float] = train_fraction
+
+        self.valid_fraction: Optional[float] = valid_fraction
+        self.test_fraction: Optional[float] = test_fraction
+        if self.valid_fraction is not None or self.test_fraction is not None:
+            self.logger.warning("You have set fraction on test/validation sets. Beware of unwanted behaviours")
+
     def dequantize_keys(self) -> list[str]:
         return self._dequantize_keys
 
@@ -76,7 +87,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 block_size=32,
                 buffer_size=self.batch_size * 12,
                 batch_size=self.batch_size,
-                iterator_id=it_id
+                iterator_id=it_id,
+                limit_data=self.train_fraction
             )
 
             train_samples = len(dataset)
@@ -86,7 +98,12 @@ class KdTrainDataModule(lightning.LightningDataModule):
             datasets.append(dataset)
 
             val_dataset = H5KdDataset(
-                ds_path, prefix="val", block_size=32, buffer_size=96, batch_size=self.batch_size, shuffle=False
+                ds_path, prefix="val",
+                block_size=32,
+                buffer_size=96,
+                batch_size=self.batch_size,
+                shuffle=False,
+                limit_data=self.valid_fraction
             )
 
             val_samples = len(val_dataset)
@@ -96,7 +113,15 @@ class KdTrainDataModule(lightning.LightningDataModule):
 
             test_samples = 0
             if self.load_test:
-                test_ds = H5KdDataset(ds_path, prefix="test", block_size=32, buffer_size=96, batch_size=self.batch_size)
+                test_ds = H5KdDataset(
+                    ds_path,
+                    prefix="test",
+                    block_size=32,
+                    buffer_size=96,
+                    batch_size=self.batch_size,
+                    limit_data=self.test_fraction
+                )
+
                 test_samples = len(test_ds)
                 self.lengths["test"] += test_samples
                 self.logger.debug(f"Dataset with f{shards_path} has a total of {test_samples} validation samples")

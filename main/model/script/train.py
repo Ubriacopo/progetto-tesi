@@ -28,7 +28,7 @@ def main(cfg: KdConfig):
         epochs=40,
         model_name=model_name,
         profiler=profiler,
-        limit_train_batches=train_batches,  # TODO Calculate from batch size
+        limit_train_batches=train_batches,
         monitor_key="val/fused/mrr_mean",
         accumulate_grad_batches=int(accumulate_target / cfg.trainer.batch_size)
     )

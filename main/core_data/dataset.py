@@ -49,8 +49,20 @@ class Timer:
 
 
 class H5KdDataset(IterableDataset):
-    def __init__(self, dataset_path: str, prefix: str, batch_size: int, buffer_size: int,
-                 block_size: int = 256, seed: int = 42, shuffle: bool = True, iterator_id: int = None):
+    def __init__(self, dataset_path: str, prefix: str, batch_size: int, buffer_size: int, block_size: int = 256,
+                 seed: int = 42, shuffle: bool = True, iterator_id: int = None, limit_data: float = None):
+        """
+
+        :param dataset_path:
+        :param prefix:
+        :param batch_size:
+        :param buffer_size:
+        :param block_size:
+        :param seed:
+        :param shuffle:
+        :param iterator_id:
+        :param limit_data: Fraction of the dataset to load
+        """
         self.logger = make_logger(self.__class__.__name__)
 
         self.dataset_path: Path = Path(dataset_path)
@@ -59,6 +71,29 @@ class H5KdDataset(IterableDataset):
             raise FileNotFoundError(f"No .h5 shards found in: {dataset_path} with prefix: {prefix}")
 
         self.shard_lengths: list[int] = list(self.load_lengths())
+        # If we want we can use a subset of data, it is handled by expliciting the % of desired data
+        if limit_data is not None:
+            target_samples = sum(self.shard_lengths) * limit_data
+            shard_pairs = list(zip(self.shard_files, self.shard_lengths))
+
+            # Shuffle for better mixin
+            rng = random.Random(seed)
+            rng.shuffle(shard_pairs)
+
+            selected_files, selected_lengths = [], []
+            collected = 0
+
+            for shard_file, shard_length in shard_pairs:
+                selected_files.append(shard_file)
+                selected_lengths.append(shard_length)
+                # Increase by collected shards
+                collected += shard_length
+
+                if collected >= target_samples:
+                    break
+
+            self.shard_files = selected_files
+            self.shard_lengths = selected_lengths
 
         self.batch_size: int = batch_size
         self.block_size: int = block_size
@@ -309,7 +344,7 @@ class H5KdDataset(IterableDataset):
         for shard_path, start, stop in self.data(generator=global_g):
             t0 = time.perf_counter()
             with h5py.File(str(shard_path), "r", locking=False,
-                           rdcc_nbytes=256 * 1024 * 1024, rdcc_nslots=1_000_003, rdcc_w0=0.75, ) as h5:
+                           rdcc_nbytes=64 * 1024 * 1024, rdcc_nslots=100_003, rdcc_w0=0.75, ) as h5:
                 self.timer.add("open_file", time.perf_counter() - t0)
                 for block in self.iter_shard_blocks(h5, start=start, stop=stop):
                     buffered_samples = self.add_block(buffered_samples, block, block_buffer, rng)

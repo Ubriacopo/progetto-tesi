@@ -10,9 +10,9 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from optuna.integration import PyTorchLightningPruningCallback
 
-
 from main.model.neegavi.helpers import build_easy_eegavi_module
 from main.model.script.hydra_beans import KdConfig
+from main.utils.logging import make_logger
 
 
 @dataclasses.dataclass
@@ -88,15 +88,18 @@ class TuningSearchSpace:
         )
 
 
-def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace, max_epochs: int = 5) -> float:
+def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpace,
+              reference_bs: int = 64, max_epochs: int = 5) -> float:
     """
 
+    :param reference_bs:
     :param trial:
     :param cfg:
     :param search_space:
     :param max_epochs: Max number of training epochs (or steps?)
     :return:
     """
+    logger = make_logger("objective")
     lightning.seed_everything(cfg.seed, workers=True)
     # Tuned grid of parameters. We run multiple configs.
     custom_config = copy.deepcopy(cfg)
@@ -105,8 +108,14 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
     custom_config.model.factory.args.attention_config = search_space.suggest("attn_layers", trial)
     custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
 
-    module = build_easy_eegavi_module(custom_config)
+    module = build_easy_eegavi_module(custom_config, 0.3)
+
+    module.datamodule.setup("")
+    train_batches = module.datamodule.size("train")
+    steps = int(max_epochs * train_batches * reference_bs / custom_config.trainer.batch_size)
+    logger.info(f"Steps: {steps} from {train_batches} and reference {reference_bs} given I have {max_epochs} epochs")
     # monitor_key = "val_global/fused/bidirectional/mrr_mean"
+
     monitor_key = "val/fused/mrr_mean"
     trainer = lightning.Trainer(
         accelerator="gpu",
@@ -118,14 +127,12 @@ def objective(trial: optuna.Trial, cfg: KdConfig, search_space: TuningSearchSpac
             EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=10, mode="max", verbose=True)
         ],
         precision="16-mixed",  # P6000 has no tensor cores
-        max_steps=600,
-        val_check_interval=500,  # validate every 500 train steps
+        max_steps=steps,
         log_every_n_steps=20,  # Plot every 1%
         accumulate_grad_batches=1,  # This is to stabilize training todo pass from config
     )
 
     trainer.fit(module, datamodule=module.datamodule)
-
     results = trainer.validate(module, datamodule=module.datamodule)
 
     score = results[0].get(monitor_key)

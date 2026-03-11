@@ -12,7 +12,7 @@ from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
 from main.model.script.hydra_beans import KdConfig
 
 
-def build_easy_eegavi_module(cfg: KdConfig) -> EasyEegAviKdVateMaskedModule:
+def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> EasyEegAviKdVateMaskedModule:
     # Teacher has to be in evaluation mode (we don't need its gradients)
     teacher = MaskedContrastiveModel(hidden_channels=cfg.teacher.hidden_channels, out_channels=cfg.teacher.out_channels)
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
@@ -23,7 +23,12 @@ def build_easy_eegavi_module(cfg: KdConfig) -> EasyEegAviKdVateMaskedModule:
         student=Factory.default(**cfg.model.factory.args).build(),
         teacher=teacher,
         datamodule=KdTrainDataModule(
-            cfg.dataset_descriptors, cfg.trainer.batch_size, cfg.seed, ["eeg", "aud", "vid", "txt", "ecg"]
+            dataset_paths=cfg.dataset_descriptors,
+            batch_size=cfg.trainer.batch_size,
+            seed=cfg.seed,
+            dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
+            restore_iteration=None,
+            train_fraction=train_data_frac
         ),
         use_kd=cfg.trainer.use_kd,
         use_moco=cfg.trainer.use_moco,
@@ -55,7 +60,7 @@ def default_trainer(epochs: int, model_name: str, profiler, limit_train_batches:
         ],
         precision="16-mixed",
         max_epochs=epochs,
-        max_steps=int(limit_train_batches * epochs ),
+        max_steps=int(limit_train_batches * epochs),
 
         limit_train_batches=limit_train_batches,
         val_check_interval=1.0,

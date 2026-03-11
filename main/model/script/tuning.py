@@ -17,7 +17,7 @@ def main(cfg: TuningKdConfig):
     study = optuna.create_study(
         direction="maximize",
         study_name="eegavi_hp",
-        storage="sqlite:///optuna.db",
+        storage="sqlite:///../optuna.db",
         load_if_exists=True,
     )
     obj = partial(objective, cfg=cfg, search_space=search_space)
