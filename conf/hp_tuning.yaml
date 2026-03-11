@@ -1,4 +1,3 @@
-base_path: /mnt/datasets/
 defaults:
   - hydra-setup
   - model: default
@@ -6,12 +5,11 @@ defaults:
   - teacher: default
   - search_space: default
 
-hydra:
-  job:
-    name: hp_tuning
+experiment: ???
+base_path: /home/jfichera/PycharmProjects/progetto-tesi/
+teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
+seed: 1
 
-  run:
-    dir: outputs/${hydra.job.name}/${dataset.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 dataset_descriptors:
   - dataset_path: "/mnt/datasets/EEGAVI/AMIGOS/combined/"
@@ -28,6 +26,8 @@ dataset_descriptors:
     dataset_weight: 227
 
 
-dataset:
-  eeg_config:
-    model_weights_path: /root/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
+hydra:
+  job:
+    name: hp_tuning
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
