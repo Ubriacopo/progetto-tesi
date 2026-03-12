@@ -18,7 +18,7 @@ def main(cfg: TuningKdConfig):
     )
     obj = partial(objective, cfg=cfg, search_space=search_space)
     # Optimize the space
-    study.optimize(obj, n_trials=10)  # number of iterations
+    study.optimize(obj, n_trials=30)  # number of iterations
 
     print("Best trial:")
     trial = study.best_trial

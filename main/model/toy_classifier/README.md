@@ -12,3 +12,6 @@ This makes splitting and chunking very hard so here is a possible solution:
 - For comparison build same predictor on CBraMod as frozen backbone to see if my model with fusion helps.
 
 Check chunk size=8 only if bad performance.
+This means all other datasets have to be preprocessed from scratch also.
+(15% of them only)
+Chunking is easier as we just split every x secs (16 or 24 or 32 or at worst 8)
