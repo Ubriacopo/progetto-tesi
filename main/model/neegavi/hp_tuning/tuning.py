@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import gc
 from abc import ABC
 
 import lightning
 import optuna
+import torch
 from lightning.pytorch.callbacks import RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 
@@ -99,57 +101,68 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
     :param max_epochs: Max number of training epochs (or steps?)
     :return:
     """
+    module, trainer = None, None
+
     logger = make_logger("objective")
     lightning.seed_everything(cfg.seed, workers=True)
     # Tuned grid of parameters. We run multiple configs.
     custom_config = copy.deepcopy(cfg)
     custom_config.trainer.lr = search_space.suggest("lr", trial)
     batch_size = search_space.suggest("batch_size", trial)
+    try:
+        accumulation = 1
 
-    accumulation = 1
+        # Memory trick for local
+        attention_layers = search_space.suggest("attn_layers", trial)
+        custom_config.model.factory.args.attention_config = attention_layers
 
-    # Memory trick for local
-    attention_layers = search_space.suggest("attn_layers", trial)
-    custom_config.model.factory.args.attention_config = attention_layers
+        if cfg.use_trick and cfg.trick_batch_size == batch_size and attention_layers > 4:
+            logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
+            # For me this is enough. No need to engineer a good solution.
+            batch_size = int(batch_size / 2)
+            accumulation = 2  # We have to double the accumulation
 
-    if cfg.use_trick and attention_layers > 4:
-        logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
-        # For me this is enough. No need to engineer a good solution.
-        batch_size = int(batch_size / 2)
-        accumulation = 2  # We have to double the accumulation
+        # We store 16 with trick but actual batch is 32 thus the search_space tracks correctly.
+        custom_config.trainer.batch_size = batch_size
+        custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
 
-    # We store 16 with trick but actual batch is 32 thus the search_space tracks correctly.
-    custom_config.trainer.batch_size = batch_size
-    custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
+        module = build_easy_eegavi_module(custom_config, 0.3)
 
-    module = build_easy_eegavi_module(custom_config, 0.3)
+        module.datamodule.setup("")
+        train_batches = module.datamodule.size("train")
+        steps = int(max_epochs * train_batches * reference_bs / (batch_size * accumulation))
+        logger.info(
+            f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
+        )
 
-    module.datamodule.setup("")
-    train_batches = module.datamodule.size("train")
-    steps = int(max_epochs * train_batches * reference_bs / (batch_size * accumulation))
-    logger.info(
-        f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
-    )
+        monitor_key = "test/fused/mrr_mean"
+        trainer = lightning.Trainer(
+            accelerator="gpu",
+            logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
+            devices=1,
+            callbacks=[RichProgressBar(), ],
+            precision="16-mixed",  # P6000 has no tensor cores
+            max_steps=steps,
+            log_every_n_steps=20,  # Plot every 1%
+            accumulate_grad_batches=accumulation,
+            num_sanity_val_steps=0,
+            limit_val_batches=0,
+        )
 
-    monitor_key = "test/fused/mrr_mean"
-    trainer = lightning.Trainer(
-        accelerator="gpu",
-        logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
-        devices=1,
-        callbacks=[RichProgressBar(), ],
-        precision="16-mixed",  # P6000 has no tensor cores
-        max_steps=steps,
-        log_every_n_steps=20,  # Plot every 1%
-        accumulate_grad_batches=accumulation,
-        num_sanity_val_steps=0,
-        limit_val_batches=0,
-    )
+        trainer.fit(module, datamodule=module.datamodule)
+        results = trainer.test(module, dataloaders=module.datamodule.val_dataloader())
 
-    trainer.fit(module, datamodule=module.datamodule)
-    results = trainer.test(module, dataloaders=module.datamodule.val_dataloader())
+        score = results[0].get(monitor_key)
+        if score is None:
+            raise KeyError(f"Metric '{monitor_key}' not found in validation results: {results[0].keys()}")
+        return float(score)
 
-    score = results[0].get(monitor_key)
-    if score is None:
-        raise KeyError(f"Metric '{monitor_key}' not found in validation results: {results[0].keys()}")
+    finally:
+        if trainer is not None:
+            del trainer
 
-    return float(score)
+        if module is not None:
+            del module
+
+        gc.collect()
+        torch.cuda.empty_cache()

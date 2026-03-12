@@ -79,3 +79,4 @@ class TuningKdConfig(KdConfig):
     search_space: dict
 
     use_trick: bool
+    trick_batch_size: int
