@@ -30,6 +30,7 @@ def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> Ea
             restore_iteration=None,
             train_fraction=train_data_frac
         ),
+        batch_size=cfg.trainer.batch_size,
         use_kd=cfg.trainer.use_kd,
         use_moco=cfg.trainer.use_moco,
         kd_loss_weight=cfg.trainer.kd_loss_weight,
