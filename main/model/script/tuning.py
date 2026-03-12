@@ -24,7 +24,8 @@ def main(cfg: TuningKdConfig):
     study.optimize(
         obj,
         n_trials=30,
-        gc_after_trial=True
+        gc_after_trial=True,
+        show_progress_bar=True
     )  # number of iterations
 
     print("Best trial:")

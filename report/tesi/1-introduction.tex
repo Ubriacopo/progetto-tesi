@@ -1,0 +1,25 @@
+%! Author = jacopo
+%! Date = 3/12/26
+
+
+\chapter{Introduction}
+\label{cap:introduzione}
+Machine Learning advancements can be applied across a wide range of domains due to their ability to model complex data.
+This has also influenced the field of affective computing where electroencephalography (EEG) is used to infer emotional and cognitive states.
+In recent years many models have been developed for EEG representation learning.
+These general-purpose models, \textit{foundation models}, in the field tend to be limited by various reasons, with the low cardinality of EEG-centric datasets being one of them.
+This is especially noticeable once one considers the size of corpora of most text-based state-of-the-art (SOTA) models.
+
+While multimodal foundation models have shown success in vision and language, their application to EEG representation learning remains limited.
+With this problem in mind, the goal of the project is to leverage cross-modal knowledge to integrate information into EEG representations.
+Our approach is limited to the affective aspect of neurological data processing, but the core idea can be applied to any field.
+
+EEGAVI transfers information from multiple modalities into the EEG, aiming to enhance the representational capacity.
+It employs a principled integration of existing techniques (cross-attention + contrastive loss + knowledge distillation) applied to EEG under data scarcity.
+The model uses multiple frozen backbones to elaborate the input modalities.
+For the EEG data stream it is CBraMod\cite{wang2025cbramodcrisscrossbrainfoundation}.
+
+Beyond the need for a foundation model, the research question focuses on the impact of \textit{knowledge distillation} in the proposed context.
+In particular, it is goal of the investigation to recognize whether distillation in a context where sources and target do not belong to the same modality is of benefit to the training pipeline or not.
+To answer this question, an instance of \textit{EEGAVI} was trained and its performance analyzed using CBraMod as a reference point.
+... continua
