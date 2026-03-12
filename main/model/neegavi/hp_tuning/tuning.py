@@ -117,7 +117,7 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
         attention_layers = search_space.suggest("attn_layers", trial)
         custom_config.model.factory.args.attention_config = attention_layers
 
-        if cfg.use_trick and cfg.trick_batch_size == batch_size and attention_layers > 4:
+        if cfg.use_trick and cfg.trick_batch_size == batch_size and (attention_layers > 4 or batch_size > 64):
             logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
             # For me this is enough. No need to engineer a good solution.
             batch_size = int(batch_size / 2)
