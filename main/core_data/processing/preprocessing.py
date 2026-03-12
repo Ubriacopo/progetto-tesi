@@ -81,11 +81,13 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
                  extraction_data_folder: str,
                  # In order to work with EEG data
                  segment_pipeline: FlexibleDatasetTransformWrapper,
-                 sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None):
+                 sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
+                 ):
         super().__init__(output_path)
         self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
         self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
         self.extraction_data_folder: str = extraction_data_folder
+
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
@@ -153,7 +155,6 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
                  teacher_segment_pipeline: FlexibleDatasetTransformWrapper,
                  student_sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
                  teacher_sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
-                 quantization_keys: list[str] = (),
                  ):
         super().__init__(output_path)
         self.student_shared_pipeline: FlexibleDatasetTransformWrapper = student_sample_pipeline
@@ -162,8 +163,7 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
         self.teacher_shared_pipeline: FlexibleDatasetTransformWrapper = teacher_sample_pipeline
         self.teacher_pipeline: FlexibleDatasetTransformWrapper = teacher_segment_pipeline
         self.extraction_data_folder: str = extraction_data_folder
-        self.quantizer = Float16ToInt8Quantizer()
-        self.quantization_keys: list[str] = quantization_keys
+
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:

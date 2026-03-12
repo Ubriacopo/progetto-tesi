@@ -1,7 +1,3 @@
-from main.core_data.media.audio import Audio
-from main.core_data.media.ecg import ECG
-from main.core_data.media.eeg import EEG
-from main.core_data.media.video import Video
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
@@ -84,12 +80,5 @@ def combined_preprocessor(output_path: str, extraction_data_folder: str, config:
         teacher_sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_vate_preprocessor",
             (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
-        ),
-        quantization_keys=[
-            Video.modality_code(),
-            Audio.modality_code(),
-            Text.modality_code(),
-            EEG.modality_code(),
-            ECG.modality_code(),
-        ]
+        )
     )

@@ -1,8 +1,3 @@
-from main.core_data.media.audio import Audio
-from main.core_data.media.ecg import ECG
-from main.core_data.media.eeg import EEG
-from main.core_data.media.text import Text
-from main.core_data.media.video import Video
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
 from main.core_data.media.metadata.metadata import Metadata
@@ -67,13 +62,5 @@ def combined_preprocessor(output_path: str, extraction_data_folder: str, config:
             vid_vate_basic_transform_pipe(config),
             # Audio and text do not exist so we cannot use them :(
             (Metadata.modality_code(), MetadataToTensor())
-        ),
-
-        quantization_keys=[
-            Video.modality_code(),
-            Audio.modality_code(),
-            Text.modality_code(),
-            EEG.modality_code(),
-            ECG.modality_code(),
-        ]
+        )
     )

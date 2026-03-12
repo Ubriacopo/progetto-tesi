@@ -65,12 +65,5 @@ def combined_preprocessor(output_path: str, extraction_data_folder: str, config:
             "MANHOB-vate-processor",
             vid_vate_basic_transform_pipe(config),
             (Metadata.modality_code(), MetadataToTensor())
-        ),
-        quantization_keys=[
-            Video.modality_code(),
-            Audio.modality_code(),
-            Text.modality_code(),
-            EEG.modality_code(),
-            ECG.modality_code(),
-        ]
+        )
     )
