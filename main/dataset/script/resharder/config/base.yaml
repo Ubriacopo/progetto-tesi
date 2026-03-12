@@ -1,3 +1,0 @@
-defaults:
-  - target: ???
-shard_size_gb: 16

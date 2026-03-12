@@ -1,3 +1,0 @@
-student_spec_path: "//home/jacopo/PycharmProjects/progetto-tesi/data/EEGAVI/EAV/interleaved-quantized/spec.csv"
-teacher_spec_path: "//home/jacopo/PycharmProjects/progetto-tesi/data/EEGAVI/EAV/vate-quantized/spec.csv"
-output_path: "//home/jacopo/PycharmProjects/progetto-tesi/data/EEGAVI/EAV/"

@@ -1,9 +1,0 @@
-
-defaults:
-  dataset:
-    - amigos
-    - mahnob
-    - eav
-  target_model:
-    - eegavi
-    - vate

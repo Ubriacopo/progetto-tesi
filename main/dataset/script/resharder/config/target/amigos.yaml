@@ -1,3 +1,0 @@
-student_spec_path: "/localssd/EEGAVI/AMIGOS/interleaved_quantized/spec.csv"
-teacher_spec_path: "/localssd/EEGAVI/AMIGOS/vate_quantized/spec.csv"
-output_path: "/localssd/EEGAVI/AMIGOS/"

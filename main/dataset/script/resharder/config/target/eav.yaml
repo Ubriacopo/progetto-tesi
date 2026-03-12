@@ -1,3 +1,0 @@
-student_spec_path: "/mnt/turing-datasets/EEGAVI/EAV/interleaved_quantized/spec.csv"
-teacher_spec_path: "/mnt/turing-datasets/EEGAVI/EAV/vate_quantized/spec.csv"
-output_path: "/localssd/EEGAVI/EAV/"
