@@ -91,14 +91,14 @@ class TuningSearchSpace:
 
 # Explorative objective
 def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
-              reference_train_batches: int = 1277, max_epochs: int = 5) -> float:
+              reference_train_batches: int = 1277, reference_epochs: int = 5) -> float:
     """
 
     :param reference_train_batches:
     :param trial:
     :param cfg:
     :param search_space:
-    :param max_epochs: Max number of training epochs (or steps?)
+    :param reference_epochs: Max number of training epochs (or steps?)
     :return:
     """
     module, trainer = None, None
@@ -131,7 +131,7 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
         module.datamodule.setup("")
         train_batches = module.datamodule.size("train")
         # Refernce acc=1
-        steps = max_epochs * reference_train_batches
+        steps = reference_epochs * reference_train_batches
         logger.info(
             f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
         )
