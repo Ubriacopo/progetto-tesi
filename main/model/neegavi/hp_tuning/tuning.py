@@ -91,7 +91,8 @@ class TuningSearchSpace:
 
 # Explorative objective
 def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
-              reference_train_batches: int = 1277, reference_epochs: int = 5) -> float:
+              # Should be 1277, but we train on 30% of the data
+              reference_train_batches: int = 384, reference_epochs: int = 5) -> float:
     """
 
     :param reference_train_batches:
