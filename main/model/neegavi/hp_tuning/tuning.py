@@ -131,15 +131,17 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
         for t in trial.study.trials:
             if t.state != optuna.trial.TrialState.COMPLETE:
                 continue
-            logger.info("Found duplicate trial, we return same value")
+
             if t.params == trial.params:
+                logger.info(f"Found duplicate trial, we return same value: {t.params}")
                 return t.value
 
+        logger.info(f"Running trial on params: {trial.params}")
         module = build_easy_eegavi_module(custom_config, 0.3)
 
         module.datamodule.setup("")
         train_batches = module.datamodule.size("train")
-        # Refernce acc=1
+        # Reference acc=1
         steps = reference_epochs * reference_train_batches
         logger.info(
             f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
