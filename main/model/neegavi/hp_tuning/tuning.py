@@ -127,6 +127,14 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
         custom_config.trainer.batch_size = batch_size
         custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
 
+        # Avoid recomputing duplicates TODO verify
+        for t in trial.study.trials:
+            if t.state != optuna.trial.TrialState.COMPLETE:
+                continue
+            logger.info("Found duplicate trial, we return same value")
+            if t.params == trial.params:
+                return t.value
+
         module = build_easy_eegavi_module(custom_config, 0.3)
 
         module.datamodule.setup("")
