@@ -8,7 +8,7 @@ from abc import ABC
 import lightning
 import optuna
 import torch
-from lightning.pytorch.callbacks import RichProgressBar
+from lightning.pytorch.callbacks import RichProgressBar, EarlyStopping
 from lightning.pytorch.loggers import TensorBoardLogger
 
 from main.model.neegavi.helpers import build_easy_eegavi_module
@@ -89,12 +89,105 @@ class TuningSearchSpace:
         )
 
 
+def make_trial_config(trial: optuna.Trial, cfg: TuningKdConfig, logger, search_space: TuningSearchSpace):
+    custom_config = copy.deepcopy(cfg)
+    custom_config.trainer.lr = search_space.suggest("lr", trial)
+    batch_size = search_space.suggest("batch_size", trial)
+
+    accumulation = 1
+    # Memory trick for local
+    attention_layers = search_space.suggest("attn_layers", trial)
+    custom_config.model.factory.args.attention_config = attention_layers
+
+    if cfg.use_trick and cfg.trick_batch_size == batch_size and (attention_layers > 4 or batch_size > 64):
+        logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
+        # For me this is enough. No need to engineer a good solution.
+        batch_size = int(batch_size / 2)
+        accumulation = 2  # We have to double the accumulation
+
+    # We store 16 with trick but actual batch is 32 thus the search_space tracks correctly.
+    custom_config.trainer.batch_size = batch_size
+    custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
+
+    return custom_config, accumulation
+
+
+def find_duplicates(trial: optuna.Trial, logger=make_logger("tuning.find_duplicates")) -> float | None:
+    for t in trial.study.trials:
+        if t.state != optuna.trial.TrialState.COMPLETE:
+            continue
+
+        if t.params == trial.params:
+            logger.info(f"Found duplicate trial, we return same value: {t.params}")
+            return t.value
+
+    return None
+
+
+def refine_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
+                     avoid_duplicates: bool = True, epochs: int = 15, patience: int = 5, seed_override: int = None):
+    module, trainer = None, None
+    try:
+
+        logger = make_logger("refine_objective")
+        lightning.seed_everything(cfg.seed if seed_override is None else seed_override, workers=True)
+        custom_config, accumulation = make_trial_config(trial, cfg, logger, search_space)
+
+        if avoid_duplicates:
+            duplicate = find_duplicates(trial, logger)
+            if duplicate is not None:
+                return duplicate
+
+        logger.info(f"Running trial on params: {trial.params}")
+
+        module = build_easy_eegavi_module(custom_config, 0.3)
+        module.datamodule.setup("")
+
+        train_batches = module.datamodule.size("train")
+        monitor_key = "val/fused/mrr_mean"
+
+        early_stopping = EarlyStopping(
+            monitor=monitor_key, min_delta=0.002, patience=patience, mode="max", verbose=True
+        )
+
+        trainer = lightning.Trainer(
+            accelerator="gpu", devices=1,
+            logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
+            callbacks=[RichProgressBar(), early_stopping, ],
+            precision="16-mixed",
+            max_epochs=epochs,
+            max_steps=int(train_batches * epochs),
+            limit_train_batches=train_batches,
+            val_check_interval=1.0,
+            accumulate_grad_batches=accumulation,
+            log_every_n_steps=20
+        )
+
+        trainer.fit(module, datamodule=module.datamodule)
+        score = early_stopping.best_score
+        if score is None:
+            raise KeyError(f"Metric '{monitor_key}' was not tracked.")
+
+        return float(score.item())
+
+    finally:
+        if trainer is not None:
+            del trainer
+        if module is not None:
+            del module
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
 # Explorative objective
 def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
+              avoid_duplicates: bool = True,
               # Should be 1277, but we train on 30% of the data
               reference_train_batches: int = 384, reference_epochs: int = 5) -> float:
     """
 
+    :param avoid_duplicates:
     :param reference_train_batches:
     :param trial:
     :param cfg:
@@ -103,46 +196,24 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
     :return:
     """
     module, trainer = None, None
-
-    logger = make_logger("objective")
-    lightning.seed_everything(cfg.seed, workers=True)
-    # Tuned grid of parameters. We run multiple configs.
-    custom_config = copy.deepcopy(cfg)
-    custom_config.trainer.lr = search_space.suggest("lr", trial)
-    batch_size = search_space.suggest("batch_size", trial)
     try:
-        accumulation = 1
+        logger = make_logger("objective")
+        lightning.seed_everything(cfg.seed, workers=True)
+        custom_config, accumulation = make_trial_config(trial, cfg, logger, search_space)
 
-        # Memory trick for local
-        attention_layers = search_space.suggest("attn_layers", trial)
-        custom_config.model.factory.args.attention_config = attention_layers
-
-        if cfg.use_trick and cfg.trick_batch_size == batch_size and (attention_layers > 4 or batch_size > 64):
-            logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
-            # For me this is enough. No need to engineer a good solution.
-            batch_size = int(batch_size / 2)
-            accumulation = 2  # We have to double the accumulation
-
-        # We store 16 with trick but actual batch is 32 thus the search_space tracks correctly.
-        custom_config.trainer.batch_size = batch_size
-        custom_config.trainer.kd_loss_weight = search_space.suggest("beta", trial)
-
-        # Avoid recomputing duplicates TODO verify
-        for t in trial.study.trials:
-            if t.state != optuna.trial.TrialState.COMPLETE:
-                continue
-
-            if t.params == trial.params:
-                logger.info(f"Found duplicate trial, we return same value: {t.params}")
-                return t.value
+        if avoid_duplicates:
+            duplicate = find_duplicates(trial, logger)
+            if duplicate is not None:
+                return duplicate
 
         logger.info(f"Running trial on params: {trial.params}")
         module = build_easy_eegavi_module(custom_config, 0.3)
 
         module.datamodule.setup("")
         train_batches = module.datamodule.size("train")
-        # Reference acc=1
+        # Reference acc = 1
         steps = reference_epochs * reference_train_batches
+        batch_size = custom_config.trainer.batch_size
         logger.info(
             f"Steps: {steps}, train_batches={train_batches}, micro_bs={batch_size}, acc={accumulation}, effective_bs={batch_size * accumulation}"
         )

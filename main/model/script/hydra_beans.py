@@ -77,6 +77,8 @@ class KdConfig:
 
 class TuningKdConfig(KdConfig):
     search_space: dict
-
+    # To avoid going OOM in any way
     use_trick: bool
     trick_batch_size: int
+    # Watch configurations
+    watch_configurations: list[dict]
