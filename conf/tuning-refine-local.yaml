@@ -1,6 +1,7 @@
 defaults:
   - tuning-local
-
+  -
+study_name: hp-refine
 watch_configurations:
   # Configuration 73 with score 0.4123
   # TRIAL 0

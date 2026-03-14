@@ -1,6 +1,7 @@
 defaults:
   - tuning
-
+  -
+study_name: hp-refine
 watch_configurations:
   # Configuration 6 with score 0.4568
   - lr: 0.001

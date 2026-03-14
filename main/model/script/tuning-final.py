@@ -15,7 +15,7 @@ def main(cfg: TuningKdConfig):
         # Reproducibility
         sampler=GridSampler(seed=cfg.seed, search_space=cfg.search_space),
         direction="maximize",
-        study_name="eegavi_hp",
+        study_name="final_select",
         storage="sqlite:///../optuna.db",
         load_if_exists=True,
     )

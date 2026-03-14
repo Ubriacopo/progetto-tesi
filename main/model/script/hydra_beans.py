@@ -82,3 +82,4 @@ class TuningKdConfig(KdConfig):
     trick_batch_size: int
     # Watch configurations
     watch_configurations: list[dict]
+    study_name: str

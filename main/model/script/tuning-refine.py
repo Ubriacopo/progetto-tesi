@@ -12,10 +12,11 @@ def main(cfg: TuningKdConfig):
     search_space = TuningSearchSpace.from_choices(**cfg.search_space)
     study = optuna.create_study(
         direction="maximize",
-        study_name="eegavi-hp-refine",
+        study_name=cfg.study_name,
         storage="sqlite:///../optuna.db",
         load_if_exists=True,
     )
+
     obj = partial(refine_objective, cfg=cfg, search_space=search_space)
     if cfg.watch_configurations is None or len(cfg.watch_configurations) == 0:
         raise ValueError("You must specify at least one watch configuration")
