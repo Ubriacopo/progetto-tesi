@@ -3,21 +3,25 @@ defaults:
 
 watch_configurations:
   # Configuration 73 with score 0.4123
+  # TRIAL 0
   - lr: 0.0003
     batch_size: 32
     attn_layers: 6
     beta: 0.25
   # Configuration 18 with score 0.4035
+  # TRIAL 1
   - lr: 0.001
     batch_size: 32
     attn_layers: 6
     beta: 1.0
   # Configuration 84 with score 0.3965
+  # TRIAL 2 e 4
   - lr: 0.0003
     batch_size: 32
     attn_layers: 6
     beta: 0.5
   # Configuration 2 with score 0.3902
+  # TRIAL 3 e 5
   - lr: 0.001
     batch_size: 32
     attn_layers: 6

@@ -1,2 +1,29 @@
 defaults:
   - tuning
+
+watch_configurations:
+  # Configuration 6 with score 0.4568
+  - lr: 0.001
+    batch_size: 128
+    attn_layers: 6
+    beta: 1.0
+  # Configuration 20 with score 0.4197568893432617
+  - lr: 0.0003
+    batch_size: 128
+    attn_layers: 6
+    beta: 0.5
+  # Configuration 11 with score 0.4197568893432617
+  - lr: 0.001
+    batch_size: 128
+    attn_layers: 2
+    beta: 0.25
+  # Configuration 38 with score 0.33591601252555847
+  - lr: 0.001
+    batch_size: 64
+    attn_layers: 4
+    beta: 1.0
+  # Configuration 5 with score 0.32120081782341003
+  - lr: 0.0003
+    batch_size: 64
+    attn_layers: 4
+    beta: 0.5
