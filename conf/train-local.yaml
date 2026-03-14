@@ -8,7 +8,7 @@ experiment: ???
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
-seed: 1
+seed: 42
 
 dataset_descriptors:
   - dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"

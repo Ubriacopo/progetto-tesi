@@ -1,6 +1,5 @@
 from dataclasses import asdict
-from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 import mne
 from mne.io import RawArray
@@ -8,7 +7,7 @@ from scipy.io import loadmat
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
-from main.core_data.media.ecg import ECG
+from main.core_data.media.assessment.assessment import Dominance, Valence, Arousal
 from main.core_data.media.eeg import EEG
 from main.core_data.media.metadata.metadata import MetaObject, Metadata
 from main.dataset.dreamer.config import DreamerConfig
@@ -22,6 +21,7 @@ class DreamerPointsLoader(DataPointsLoader):
         super().__init__(dataset_uid_store)
         self.base_path = base_path
         self.config: DreamerConfig = config
+        self.length: Optional[int] = None
 
     def __len__(self) -> int:
         if self.length is not None:
@@ -31,7 +31,6 @@ class DreamerPointsLoader(DataPointsLoader):
 
     # TODO finish
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
-        processed_data = Path(self.base_path + "data_preprocessed_python/")
         dreamer = loadmat(f"{self.base_path}/DREAMER.mat")["DREAMER"][0][0]
         # Dreamer has 10 columns. Of these last is useless.
         # dreamer[0] Contains Age, Gender, EEG (index?), Score Valance, Score Arousal Score Dominance
@@ -40,26 +39,22 @@ class DreamerPointsLoader(DataPointsLoader):
         # After dreamer 6 (Compreso) useless
 
         # Count number of experiments
-        users = dreamer[0].shape[1]
+        users = dreamer[0][0].shape[0]
         for user in range(users):
-            user_experiment_data = dreamer[0][user]
+            # Thank you matlab
+            user_experiment_data = dreamer[0][0][user][0]
 
             # Experiments with index
             for experiment_index in range(len(user_experiment_data["ScoreValence"][0].squeeze())):
-                # TODO Compose
                 nei = self.dataset_uid_store.uid(str(user), str(experiment_index), "DREAMER")
                 # EEG Data: Stimuli is what matters to us. The normalization of bias is not of help? Guess not
-                eeg_np = user_experiment_data["EEG"][0][0]["stimuli"][0][experiment_index][0]  # Time x Channels
+                eeg_np = user_experiment_data["EEG"][0][0]["stimuli"][0][experiment_index][0].T  # Time x Channels
                 info = mne.create_info(
-                    # todo fill
                     ch_names=self.config.eeg_source_config.get_CH_NAMES(),
                     ch_types=self.config.eeg_source_config.get_CH_TYPES(),
                     sfreq=self.config.eeg_source_config.fs
                 )
                 raw: RawArray = mne.io.RawArray(eeg_np, info=info, verbose=False)
-
-                ecg_np = user_experiment_data["ECG"][0][0]["stimuli"][0][experiment_index][0]
-                # todo studia su tutti i dataset per decidere obiettivo
                 valence = user_experiment_data["ScoreValence"][0].squeeze()[experiment_index]
                 arousal = user_experiment_data["ScoreArousal"][0].squeeze()[experiment_index]
                 dominance = user_experiment_data["ScoreDominance"][0].squeeze()[experiment_index]
@@ -71,13 +66,9 @@ class DreamerPointsLoader(DataPointsLoader):
                 yield FlexibleDatasetPoint(
                     nei,
                     EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
-                    ECG(
-                        eid=nei,
-                        data=raw.copy().pick(["ecg"]),
-                        fs=raw.info['sfreq'],
-                        leads=self.config.ecg_source_config.LEAD_NAMES,  # todo fai anche questo
-                        patient_gender=user_experiment_data["Gender"][0].upper(),
-                        patient_age=user_experiment_data["Age"][0]
-                    ).as_mod_tuple(),
+                    # For evaluation
+                    Dominance(eid=nei, data=dominance, rating_scale=(1, 5)).as_mod_tuple(),
+                    Valence(eid=nei, data=valence, rating_scale=(1, 5)).as_mod_tuple(),
+                    Arousal(eid=nei, data=arousal, rating_scale=(1, 5)).as_mod_tuple(),
                     Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )

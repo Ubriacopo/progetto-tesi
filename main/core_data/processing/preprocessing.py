@@ -11,7 +11,7 @@ from tqdm import tqdm
 from main.core_data.data_point import FlexibleDatasetPoint, FlexibleDatasetTransformWrapper
 from main.core_data.loader import DataPointsLoader
 from main.core_data.media.metadata.metadata import Metadata
-from main.core_data.quantization import Float16ToInt8Quantizer
+from main.core_data.sampler import Segmenter
 from main.core_data.utils import sanitize_for_ast, timed
 from main.utils.logging import make_logger
 
@@ -76,22 +76,38 @@ class Preprocessor(ABC, Generic[T]):
 
 
 class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
-    def __init__(self, output_path: str,
-                 # Specs folder to give
-                 extraction_data_folder: str,
+    def __init__(self,
+                 output_path: str,
+                 # Specs folder to give todo pssare anche segmenter come opzione?
                  # In order to work with EEG data
                  segment_pipeline: FlexibleDatasetTransformWrapper,
                  sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
+                 extraction_data_folder: str = None,
+                 segmenter: Segmenter = None
                  ):
         super().__init__(output_path)
+
         self.shared_pipeline: FlexibleDatasetTransformWrapper = sample_pipeline
         self.pipeline: FlexibleDatasetTransformWrapper = segment_pipeline
-        self.extraction_data_folder: str = extraction_data_folder
+        self.extraction_data_folder: Optional[str] = extraction_data_folder
+        self.segmenter: Optional[Segmenter] = segmenter
 
+        if self.segmenter is None and self.extraction_data_folder is None:
+            raise ValueError(
+                "You have to decide the policy on segmentation. "
+                "You can't set both segmenter and segmentation source folder to None"
+            )
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
-        segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
+        if self.segmenter is not None:
+            # Segmenter wins if passed. Computed on the fly.
+            segments = self.segmenter.compute_segments(x)
+            segments = [{"start": start, "stop": stop} for start, stop in segments]
+        else:
+            # Read pre-computed segments
+            segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
+
         if self.shared_pipeline is not None:
             x = self.shared_pipeline.call(x, keep_type=True)
 
@@ -163,7 +179,6 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
         self.teacher_shared_pipeline: FlexibleDatasetTransformWrapper = teacher_sample_pipeline
         self.teacher_pipeline: FlexibleDatasetTransformWrapper = teacher_segment_pipeline
         self.extraction_data_folder: str = extraction_data_folder
-
 
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
@@ -247,3 +262,27 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
         output_path.mkdir(parents=True, exist_ok=True)
         bs = len(next(iter(x.values())))
         TensorDict(return_object, batch_size=bs).memmap(str(output_path))
+
+
+class ExperimentPreprocessor(Preprocessor[FlexibleDatasetPoint]):
+    def __init__(self, output_path: str, pipeline: FlexibleDatasetTransformWrapper):
+        super().__init__(output_path)
+        self.pipeline: FlexibleDatasetTransformWrapper = pipeline
+
+    def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
+        output_path: str = self.output_path + f'{x.eid}'
+
+        y = self.pipeline.call(x, keep_type=True)
+        self.export(y, output_path)
+
+        base_object = {"index": 0}
+        if "meta" in x:
+            # We have metaobject to pass to the csv. Better have it redundant than not enough.
+            base_object = {key: value for key, value in asdict(y.meta.data).items()}
+
+        return base_object
+
+    def export(self, x: FlexibleDatasetPoint, output_path: str) -> None:
+        td = TensorDict(x.to_dict()) if hasattr(x, "to_dict") else TensorDict(x)
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+        td.memmap(output_path)

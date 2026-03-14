@@ -6,6 +6,7 @@ from typing import Optional
 
 import numpy as np
 
+from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.media.eeg import EEG
 from main.core_data.media.eeg.saliency_extractor import EEGFeatureExtractor
 from main.utils.logging import make_logger
@@ -21,23 +22,24 @@ class Segmenter(ABC):
         self.num_segments: int = num_segments
 
     @abstractmethod
-    def compute_segments(self, sample, num_segments: int = None) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: FlexibleDatasetPoint, num_segments: int = None) -> list[tuple[int, int]]:
         pass
 
 
 class FixedIntervalsSegmenter(Segmenter):
-    def compute_segments(self, sample: EEG, num_segments: int = None) -> list[tuple[int, int]]:
+    def compute_segments(self, sample: FlexibleDatasetPoint, num_segments: int = None) -> list[tuple[int, int]]:
         # Good indicator of duration.
-        length = sample.data.duration  # Given the length of the sample in time
+        if not hasattr(sample, EEG.modality_code()):
+            raise ValueError("EEG data to infer duration is not defined")
+
+        length = sample[EEG.modality_code()].data.duration  # Given the length of the sample in time
+
         starts = np.arange(0, length, self.max_length).astype(int)
         stops = np.minimum(starts + self.max_length, length).astype(int)
 
         # Avoid overlaps (0s durations make no sense)
-        overlapping = (starts - stops) == 0
-        starts = starts[~overlapping]
-        stops = stops[~overlapping]
-
-        return list(zip(starts, stops))
+        valid = starts < stops
+        return list(zip(starts[valid], stops[valid]))
 
 
 @dataclasses.dataclass

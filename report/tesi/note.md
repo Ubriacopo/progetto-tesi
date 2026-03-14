@@ -1,0 +1,5 @@
+- Ho droppato ECG da DREAMER in downstream task solo perche il mio ECG FM si basa su Leads che non espone
+- Fine tuning process in 3 step
+    - Exploration
+    - Candidates selection (15 epoch -> best 3 seeds)
+    - Final training -> Select best  (top4) -> Test that one
