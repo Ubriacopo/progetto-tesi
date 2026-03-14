@@ -8,7 +8,7 @@ from abc import ABC
 import lightning
 import optuna
 import torch
-from lightning.pytorch.callbacks import RichProgressBar, EarlyStopping
+from lightning.pytorch.callbacks import RichProgressBar, EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 
 from main.model.neegavi.helpers import build_easy_eegavi_module
@@ -122,6 +122,72 @@ def find_duplicates(trial: optuna.Trial, logger=make_logger("tuning.find_duplica
             return t.value
 
     return None
+
+
+def final_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
+                    avoid_duplicates: bool = False, epochs: int = 50, patience: int = 8, seed_override: int = None):
+    module, trainer = None, None
+    try:
+        logger = make_logger("final_objective")
+        lightning.seed_everything(cfg.seed if seed_override is None else seed_override, workers=True)
+        custom_config, accumulation = make_trial_config(trial, cfg, logger, search_space)
+
+        if avoid_duplicates:
+            duplicate = find_duplicates(trial, logger)
+            if duplicate is not None:
+                return duplicate
+
+        logger.info(f"Running trial on params: {trial.params}")
+        module = build_easy_eegavi_module(custom_config)
+        module.datamodule.setup("")
+
+        train_batches = module.datamodule.size("train")
+        monitor_key = "val/fused/mrr_mean"
+
+        early_stopping = EarlyStopping(
+            monitor=monitor_key, min_delta=0.002, patience=patience, mode="max", verbose=True
+        )
+
+        trainer = lightning.Trainer(
+            accelerator="gpu", devices=1,
+            logger=TensorBoardLogger("tb_logs", name=trial.study.study_name, version=str(trial.number)),
+            callbacks=[
+                RichProgressBar(),
+                early_stopping,
+                ModelCheckpoint(
+                    dirpath="checkpoints",
+                    filename="epoch{epoch}-step{step}",
+                    save_top_k=1,
+                    save_last=True,
+                    monitor=monitor_key,
+                    mode="max"
+                )
+            ],
+            precision="16-mixed",
+            max_epochs=epochs,
+            max_steps=int(train_batches * epochs),
+            limit_train_batches=train_batches,
+            val_check_interval=1.0,
+            accumulate_grad_batches=accumulation,
+            log_every_n_steps=20
+        )
+
+        trainer.fit(module, datamodule=module.datamodule)
+        score = early_stopping.best_score
+
+        if score is None:
+            raise KeyError(f"Metric '{monitor_key}' was not tracked.")
+
+        return float(score.item())
+
+    finally:
+        if trainer is not None:
+            del trainer
+        if module is not None:
+            del module
+
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 def refine_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,

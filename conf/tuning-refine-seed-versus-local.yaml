@@ -1,7 +1,8 @@
 defaults:
   - tuning-local
 
-seed: 2897
+# Seeds were 2897 and 26100
+seed: 26100
 study_name: hp-refine-seed-versus-${.seed}
 
 watch_configurations:

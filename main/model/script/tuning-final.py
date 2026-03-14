@@ -2,28 +2,31 @@ from functools import partial
 
 import hydra
 import optuna
-from optuna.samplers import TPESampler, GridSampler
 
-from main.model.neegavi.hp_tuning.tuning import objective, TuningSearchSpace
+from main.model.neegavi.hp_tuning.tuning import TuningSearchSpace, final_objective
 from main.model.script.hydra_beans import TuningKdConfig
 
 
-@hydra.main(config_path="../../../conf", config_name="hp_tuning")
+@hydra.main(config_path="../../../conf", config_name="tuning-final")
 def main(cfg: TuningKdConfig):
     search_space = TuningSearchSpace.from_choices(**cfg.search_space)
     study = optuna.create_study(
-        # Reproducibility
-        sampler=GridSampler(seed=cfg.seed, search_space=cfg.search_space),
         direction="maximize",
-        study_name="final_select",
+        study_name=cfg.study_name,
         storage="sqlite:///../optuna.db",
         load_if_exists=True,
     )
-    obj = partial(objective, cfg=cfg, search_space=search_space)
+
+    obj = partial(final_objective, cfg=cfg, search_space=search_space)
+    if cfg.watch_configurations is None or len(cfg.watch_configurations) == 0:
+        raise ValueError("You must specify at least one watch configuration")
+
+    for config in cfg.watch_configurations:
+        study.enqueue_trial(dict(config))
     # Optimize the space
     study.optimize(
         obj,
-        n_trials=120,
+        n_trials=len(cfg.watch_configurations),
         gc_after_trial=True,
         show_progress_bar=True
     )  # number of iterations
