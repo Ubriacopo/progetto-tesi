@@ -29,6 +29,10 @@ class DreamerPointsLoader(DataPointsLoader):
 
         dreamer = loadmat(f"{self.base_path}/DREAMER.mat")["DREAMER"][0][0]
 
+        # 5 is index of n experiments 4 is index of participants
+        self.length = (dreamer[5] * dreamer[4]).item()
+        return self.length
+
     # TODO finish
     def scan(self) -> Iterator[FlexibleDatasetPoint]:
         dreamer = loadmat(f"{self.base_path}/DREAMER.mat")["DREAMER"][0][0]
