@@ -81,11 +81,15 @@ class KdTrainDataModule(lightning.LightningDataModule):
             ds_path = shards_path.dataset_path
 
             weights.append(shards_path.dataset_weight)
+
+            # Can't handle 12 on b=128 so we reduce it. Hacky.
+            factor = 8 if self.batch_size > 64 else 12
+
             dataset = H5KdDataset(
                 ds_path,
                 prefix="train",
                 block_size=32,
-                buffer_size=self.batch_size * 12,
+                buffer_size=self.batch_size * factor,
                 batch_size=self.batch_size,
                 iterator_id=it_id,
                 limit_data=self.train_fraction
