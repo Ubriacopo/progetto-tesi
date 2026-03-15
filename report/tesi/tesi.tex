@@ -1,0 +1,267 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                                             %
+%           TEMPLATE LATEX PER TESI                                           %
+%           ______________                                                    %
+%                                                                             %
+%           Ultima revisione: 10 Dicembre 2025                                %
+%           Revisori: G.Presti; L.A.Ludovico; F. Avanzini; M. Tiraboschi      %
+%                                                                             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Usare l'opzione twoside se volete stampare fronte-retro. Es.:
+% \documentclass[twoside,12pt]{report}
+% Si consiglia di diminuire il font per tesi di dottorato in formato 17x24. Es:
+% \documentclass[11pt]{report}
+\documentclass[12pt]{report}
+
+% --- PREAMBOLO ---------------------------------------------------------------
+% Inserire qui eventuali package da includere o
+% definizioni di comandi personalizzati...
+
+% ...ad esempio il seguente package permette di inserire note visibili nel pdf di output,
+% (il comando che lo precede serve a lasciare spazio alle note, va rimosso prima della consegna)
+% \setlength {\marginparwidth }{2cm}
+% \usepackage{todonotes}  % istruzioni sull'uso in sezione 3.2.9
+
+% Selezione lingua
+\usepackage[italian]{babel}
+
+\usepackage{tesi}
+% Puoi usare il font di default di LaTeX con la relativa opzione del package
+% \usepackage[defaultfont]{tesi}
+% Esiste anche un'opzione per il formato 17x24 per le tesi di dottorato
+% \usepackage[phd]{tesi}
+
+% In caso il copia-incolla del PDF generato perda gli spazi,
+% provare a decommentare la seguente riga
+% \pdfinterwordspaceon
+
+% !!! INFORMAZIONI SULLA TESI DA COMPILARE !!!
+\usepackage{pifont}
+\usepackage{xcolor}
+\newcommand{\cmark}{\textcolor{green!60!black}{\ding{51}}}
+\newcommand{\xmark}{\textcolor{red!70!black}{\ding{55}}}
+%   UNIVERSITA' E CORSO DI LAUREA:
+\university{Università degli Studi di Milano}
+\unilogo{immagini/loghi/unimi}
+\faculty{Facoltà di Scienze e Tecnologie}
+\department{Dipartimento di Informatica\\Giovanni Degli Antoni}
+\cdl{Corso di Laurea Triennale in\\Corso di Laurea}
+
+%   TITOLO TESI:
+\title{A multimodal knowledge distillation model for emotive EEG characterization}
+
+%   AUTORE:
+\author{Jacopo Fichera}
+\matricola{123456} % TODO
+% "Elaborato Finale" per i CdL triennali
+% "Tesi di Laurea" per i CdL magistrali
+\typeofthesis{Elaborato Finale}
+
+%   RELATORE E CORRELATORE:
+\relatore{Prof.ssa Raffaella Lanzarotti}
+\correlatore{Dot. Jacopo Burger}
+
+%   LABORATORIO:
+% Questa sezione crea una pagina di chiusura della tesi con
+% il logo dell'ente/laboratorio presso cui si è svolto il tirocinio.
+% Più afferenze/url/loghi sono supportate,
+% e la frase può essere personalizzata.
+% Qui trovate alcuni predefiniti del nostro dipartimento
+% \adaptlab
+% \aislab
+% \anacletolab
+% \bisplab
+% \connetslab
+% \everywarelab
+% \falselab
+% \iebilab
+% \islab
+% \lailalab
+% \lalalab
+% \lawlab
+% \laserlab
+% \limlab
+% \mipslab
+% \optlab
+% \phuselab
+% \ponglab
+% \sesarlab
+% \spdplab
+
+% Esempio di personalizzazione della pagina di chiusura
+% (non consegnate con questo esempio!)
+% (da commentare in caso sia sufficiente una delle macro precedenti)
+\lab{Laboratorio di Ricerca}
+\lab[in collaborazione con l']{Azienda Specifica}
+\laburl{https://di.unimi.it/it/ricerca/risorse-e-luoghi-della-ricerca/laboratori-di-ricerca}
+\lablogo{immagini/redqmark}
+
+% Con questo comando si può cambiare la dimensione (massima
+% altezza e larghezza consentite) dei loghi
+% \setlength\lablogosize{25mm}
+
+%   ANNO ACCADEMICO
+% \the\year inserisce l'anno corrente
+% per specificare manualmente un anno accademico
+% NON inserire nel formato 1970-1971, ma
+% inserire solo 1970
+\academicyear{\the\year}
+
+%   INDICI:
+% elenco delle figure (facoltativo)
+% \figurespagetrue
+% elenco delle tabelle (facoltativo)
+% \tablespagetrue
+% prefazioni nell'indice (facoltativo)
+\prefaceintoctrue
+% indice nell'indice (facoltativo)
+\tocintoctrue
+% --- FINE PREAMBOLO ----------------------------------------------------------
+
+\begin{document}
+
+% Creazione automatica della copertina
+% Centra la copertina nel foglio: usa questo comando per la copertina esterna
+% \makecenteredfrontpage
+% Copertina allineata alle altre pagine: usa questo comando per la copertina interna
+    \makefrontpage
+
+%
+%			PAGINA DI DEDICA E/O CITAZIONE
+%			facoltativa, questa è l'unica cosa che dovete formattare a mano, un po' come vi pare
+%
+
+    {\raggedleft \large \sl Questo lavoro \`{e} dedicato ai miei genitori\\
+
+    \vspace{2cm}
+
+    ``What I cannot create, I do not understand''
+
+    \bigskip
+
+    \--- Richard Feynman\\
+
+    \vspace{2cm}
+
+    ``It's not only powerful,\\but it's also inadequate''
+
+    \bigskip
+
+    \--- Miller Puckette\\}
+
+    \clearpage
+    \beforepreface
+
+%
+%			PREFAZIONE (facoltativa)
+%
+
+% \prefacesection{Prefazione}
+% Le prefazioni non sono molto comuni, tuttavia a volte capita che qualcuno voglia dire qualcosa che esuli dal lavoro in sé (come un meta-commento sull'elaborato), o voglia fornire informazioni riguardanti l'eventuale progetto entro cui la tesi si colloca (in questo caso è probabile che sia il relatore a scrivere questa parte).
+
+%
+%			RINGRAZIAMENTI (facoltativi)
+%
+
+    \prefacesection{Ringraziamenti}
+    Questa sezione, facoltativa, contiene i ringraziamenti.
+
+%
+%			Creazione automatica dell'indice
+%
+
+    \afterpreface
+    \include{1-introduction}
+    \include{2-sota}
+    \include{3-eegavi}
+    \include{4-test}
+    \include{6-conclusions}
+
+
+    \section{Sviluppi futuri}
+
+    Tra gli sviluppi futuri in genere trovano posto quelle migliorie non realizzate per mancanza di tempo, la cui necessità è emersa solo dopo i test, e che riguardano il progetto ad un livello di astrazione più alto (nel caso di tesi che si inquadrano in una linea di ricerca).
+
+
+%
+%			APENDICE: materiali aggiuntivi e dimostrazioni
+%
+
+    \appendix
+
+
+    \chapter{Documenti da Produrre}
+    I membri del LIM in generale non richiedono agli studenti di consegnare una copia cartacea del proprio lavoro. In altri casi, si invita lo studente a concordare questo punto con il proprio relatore.
+    In prossimità della discussione viene richiesto loro di condividere in formato digitale:
+    \begin{itemize}
+        \item la versione finale dell'elaborato;
+        \item il riassunto caricato in piattaforma;
+        \item il codice sviluppato;
+        \item tutti i materiali di supporto utilizzati e/o prodotti;
+        \item la presentazione predisposta per la discussione.
+    \end{itemize}
+
+    La consegna può avvenire via chiavetta USB o attraverso i sistemi di condivisione dei file (WeTransfer, Dropbox, Google Drive, ecc.).
+
+
+    \section{Riassunto}
+    In prossimità della data di laurea, viene richiesto agli studenti di caricare in piattaforma anche il riassunto. La sua funzione è permettere alla commissione di visionare rapidamente gli argomenti trattati da ciascun elaborato.
+
+    L'estensione di tale documento non dovrebbe superare le due pagine, e spesso una pagina è più che adeguata allo scopo. Riguardo i contenuti, il riassunto riprende -- in maniera molto succinta -- lo schema dell'elaborato finale, e quindi, ad esempio, la scaletta proposta in \ref{sec:organizzazione}.
+
+    Visto lo scopo del documento, è buona prassi bilanciare il testo in modo da dedicare poche righe allo stato dell'arte, in favore delle parti originali dell'elaborato.
+
+
+    \section{Presentazione}
+    Gli studenti delle lauree triennali hanno a disposizione al massimo 10 minuti per presentare il proprio elaborato, che diventano 15 per le lauree magistrali.
+
+    Si raccomanda di provare ripetutamente il discorso cronometrandosi e considerando i tempi morti per l'accensione del PC, l'avvio dei software, il passaggio da un'applicazione a un'altra, e via dicendo. Si segnala inoltre la possibilità di prenotare l'aula della discussione per provare in anticipo i collegamenti e verificare che immagini e audio vengano correttamente riprodotti.
+
+    Per via degli stringenti vincoli temporali, difficilmente una presentazione multimediale può superare la soglia di 15 slide. Questo valore è puramente indicativo, perché dipende dalla densità di informazioni della slide e dal tempo dedicato a ciascuna slide mentre si sta presentando.
+
+    La scelta tecnologica più comune è Microsoft PowerPoint, ma qualsiasi alternativa (Prezi, Acrobat PDF, \LaTeX, ecc.) è ammissibile.
+
+    Gli errori più comuni da evitare sono:
+    \begin{itemize}
+        \item slide dal contenuto testuale troppo ricco;
+        \item slide che verranno lette parola per parola in fase di presentazione.
+    \end{itemize}
+
+    Entrambi i problemi si risolvono impostando il testo in maniera estremamente schematica, tendenzialmente per elenchi puntati. Si presti attenzione, però, a usare una forma omogenea.
+    Ad esempio, sarebbe poco elegante il seguente elenco, che include aggettivi, sostantivi e frasi di senso compiuto, e non fa un uso corretto di iniziali maiuscole:
+    \begin{itemize}
+        \item applicativo esteticamente molto gradevole;
+        \item C'è la possibilità di interagire con altri utenti;
+        \item l'utente può esportare file in formato XML.
+    \end{itemize}
+
+    Una possibile revisione, basata solo sui sostantivi, è:
+    \begin{itemize}
+        \item qualità estetica;
+        \item interazione tra utenti;
+        \item supporto dell'XML.
+    \end{itemize}
+
+    Un altro consiglio per rendere la presentazione cognitivamente più gestibile da parte del pubblico è quello di aggiungere in calce ad ogni slide un indicatore dello stato di avanzamento (ad esempio ``Slide 3 di 15''). In questo modo, in caso di esaurimento del tempo concesso la commissione saprà se dare modo di concludere (``Slide 14 di 15'') o se fermare il candidato (``Slide 14 di 138''). In assenza di un indicatore la commissione tende a presupporre il secondo caso.
+
+    Per quanto riguarda gli argomenti da trattare durante la discussione, è opportuno esporre brevemente lo stato dell'arte per concentrarsi sul proprio lavoro, sui test e sui risultati. Una tecnica per capire quanto tempo dedicare a ogni argomento consiste nel dare un peso a ciascuna parte di cui si vuole parlare, quindi assegnare un numero di minuti proporzionale a detto peso in modo da raggiungere il tempo massimo a disposizione.
+
+    Video dimostrativi e \textit{live demo} sono gradite, ma è sconsigliabile dedicare troppo tempo a questi contributi, a meno che al contenuto multimediale si sovrapponga una spiegazione da parte del candidato.
+
+
+%
+%			BIBLIOGRAFIA
+%
+
+% Si può specificare a che livello della TOC deve essere la bibliografia.
+% Il default è 'chapter', per 'part' usare
+% \beforebibliography[part]
+    \beforebibliography
+    \bibliographystyle{unsrt}
+    \bibliography{bibliografia}
+
+% Pagina di chiusura
+    \closingpage
+
+\end{document}
