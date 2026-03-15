@@ -57,7 +57,7 @@
 
 %   RELATORE E CORRELATORE:
 \relatore{Prof.ssa Raffaella Lanzarotti}
-\correlatore{Dot. Jacopo Burger} % TODO Ma vero?
+\correlatore{Dot. Jacopo Burger}
 
 %   LABORATORIO:
 % Questa sezione crea una pagina di chiusura della tesi con
@@ -174,109 +174,12 @@
 %			CAPITOLO 1: Introduzione o Abstract
 %
 
-
-    \chapter{Introduction}
-    \label{cap:introduzione}
-
-    Questo documento ha una duplice funzione: da un lato mostra un esempio completo di tesi redatto in \LaTeX\ e conforme allo standard PDF/A, e dall'altro contiene suggerimenti e risposte a domande frequenti poste dagli studenti. Se ne raccomanda, pertanto, un'attenta lettura.
-
-
-    \section{Il template}
-    Se questo documento è stato ottenuto tramite condivisione diretta di file, è consigliabile accedere alla versione continuamente aggiornata e disponibile su Overleaf. \begin{center}
-                                                                                                                                                                              \url{https://www.overleaf.com/read/hmffzxzhhdqn}
-    \end{center}
-
-    Questo template è stato sviluppato, negli anni, dai membri del Laboratorio di Informatica Musicale dell'Università degli Studi di Milano, in particolare da: Giorgio Presti, Luca Andrea Ludovico, Federico Avanzini, e Marco Tiraboschi.
-
-    È stato principalmente inteso per gli elaborati finali del corso di laurea triennale in Informatica Musicale, e poi esteso anche agli altri CdL del Dipartimento di Informatica, ma può essere riadattato anche per altri corsi cambiando i metadati nel preambolo. Nel resto del documento, dove non specificato, useremo il termine \textit{tesi} nella sua accezione generica che include anche gli elaborati triennali.
-
-
-    \section{I contenuti}
-    \label{sec:contenuti}
-
-    Alcune volte, le tesi possono avere forti connotazioni interdisciplinari. \`{E} però fondamentale ricordarsi che si tratta di lavori in area informatica, e questo aspetto deve emergere con chiarezza. Anche gli elaborati di contenuto più umanistico devono mostrare rigore scientifico e uno sforzo di formalizzazione nel loro svolgimento. In concreto, sono molto apprezzati schemi, tabelle, formalismi grafici e/o matematici, presenza di parti significative di codice (ove possibile/opportuno).
-
-    Uno scritto di questa estensione parte sempre da un punto pregresso, tipicamente l'analisi dello stato dell'arte e della letteratura. \`{E} poi richiesto un contributo personale (e originale, nel caso delle tesi magistrali) per giungere a una conclusione formulata dall'autore, eventualmente anche in contrasto con il pensiero corrente o con quanto ci si prefigge all'inizio dell'opera.
-
-    Le tre fasi devono emergere con chiarezza:
-    \begin{itemize}
-        \item analisi dello stato dell'arte e/o della letteratura;
-        \item contributo personale alla ricerca;
-        \item conclusioni raggiunte, ed eventuali sviluppi futuri.
-    \end{itemize}
-
-    Nel loro complesso queste tre componenti devono rendere evidente la {\em rilevanza} del lavoro, in termini di
-    \begin{itemize}
-        \item chiarezza nella definizione del problema, delle motivazioni e degli obiettivi della tesi;
-        \item connessione con la letteratura (cos\`i da mostrare che la tematica oggetto della tesi \`e di interesse per la comunit\`a scientifica);
-        \item rilevanza della tematica nell'ambito delle discipline informatiche.
-    \end{itemize}
-
-
-    \section{Organizzazione della tesi}
-    \label{sec:organizzazione}
-
-    La scelta di come strutturare un lavoro esteso, quale un elaborato finale o una tesi, non è semplice n\`{e} univoca, pertanto quelli sotto elencati vanno presi come suggerimenti generici e attualizzati alla propria situazione personale.
-
-    \begin{figure}[t]
-        \centering
-        \includegraphics[width = \textwidth, trim={0 25mm 0 0}, clip]{immagini/ideas2text}
-        \caption{Il processo di trasformazione delle idee in testo~\cite{hamalainen2019web}.}
-        \label{fig:ideas2text}
-    \end{figure}
-
-    Prima di cominciare a scrivere testo \`e fondamentale creare un indice dei contenuti organizzato in maniera gerarchica (tesi, capitoli, sezioni, sottosezioni, ecc.). Una volta ottenuto un indice soddisfacente, questo potr\`a essere riempito dal testo della tesi.
-    Un approccio informatico alla questione \`e il seguente: scrivere una tesi significa partire da un grafo di idee~\cite{hamalainen2019web} e arrivare a creare un albero di contenuti testuali (un \textit{minimum spanning tree} del grafo delle idee!). L'albero rappresenta la struttura del testo, dove il nodo radice \`e la tesi stessa, i suoi figli sono i capitoli, ecc. Le foglie dell'albero rappresentano le sottosezioni di livello pi\`u fine.
-%
-    Idealmente l'albero dei contenuti dovrebbe avere le seguenti caratteristiche:
-    \begin{itemize}
-        \item essere bilanciato;
-        \item avere un'altezza $h=4$ o $5$;
-        \item essere un albero $n$-ario con $2\leq n \leq 7$
-    \end{itemize}
-    Anche i contenuti testuali di tutti i nodi allo stesso livello dell'albero dovrebbero essere il pi\`u possibile bilanciati (ad esempio, sarebbe sbagliato avere un capitolo di una pagina e un altro di $30$ pagine).
-%I capitoli in cui il lavoro sarà suddiviso dovrebbero tendenzialmente occupare un numero omogeneo di pagine.
-    \`{E} tollerato uno sbilanciamento a favore del capitolo che descrive il proprio lavoro specifico e i contributi innovativi. Si consideri che un elaborato triennale medio si aggira attorno alle $40$ pagine totali, anche se non esiste un numero minimo di pagine, quindi si consiglia di scrivere \textit{bene}, non di scrivere \textit{tanto}.
-
-    Limitatamente al secondo livello dell'albero (capitoli), un esempio puramente indicativo di scaletta per una tesi di natura sperimentale è quello che segue:
-    \begin{itemize}
-        \item Indice
-        \item Introduzione
-        \item Capitolo sullo stato dell'arte
-        \item Capitolo sulle tecnologie utilizzate\footnote{Questo capitolo si può omettere se le sole tecnologie utilizzate sono strumenti standard come Python, JavaScript, C++, Matlab, ecc.}
-        \item Capitolo sul caso di studio o sul software realizzato
-        \item Capitolo sui test effettuati
-        \item Breve capitolo su conclusioni e sviluppi futuri
-        \item Bibliografia ed eventuale Sitografia
-        \item Eventuali appendici (ad esempio, listati completi di codice, manuale utente, dimostrazioni, ecc.)
-    \end{itemize}
-    Sarà dunque opportuno prevedere, nel capitolo introduttivo, un esplicito richiamo alla struttura del documento. Ad esempio: ``Il presente lavoro \`{e} organizzato come segue: nel Capitolo 1 \dots''.
-
-
-    \section{Stile e forma}
-    \label{sec:forma}
-
-
-    Lo stile di una tesi scientifica deve essere esatto, chiaro, compatto, oggettivo~\cite{strunk1999style}.
-
-        {\em Esatto} vuol dire che ogni parola utilizzata significa solo ci\`o che deve esprimere. \`E opportuno cercare di evitare sinonimi per riferirsi a concetti importanti. Ove possibile si definiscano variabili (la frequenza $f$, il tempo $n$, ecc.) e le si usino in maniera sistematica. Vanno evitate il pi\`u possibile espressioni vaghe e non quantitative (``abbastanza grande'', ``praticamente tutti'', ``molto pochi'', \ldots). Si usino i pronomi con parsimonia, meglio ripetere qualche sostantivo nel testo piuttosto che lasciare delle ambiguit\`a.
-
-        {\em Chiaro} significa che la struttura e la forma devono essere funzionali a trasmettere l'informazione nel modo pi\`u immediato e comprensibile. I titoli di capitoli e sezioni devono essere illustrativi dei contenuti (\`e anche utile avere un breve testo all'inizio di un capitolo o una sezione, prima di passare alle sottosezioni). Il testo deve essere diviso logicamente in frasi, paragrafi, capoversi: sono preferibili paragrafi brevi, diretti e dichiarativi, limitando le subordinate e gli incisi, e i capoversi devono essere coerenti con la logica del discorso. L'uso di termini tecnici va limitato solo ai casi necessari. Anche gli acronimi devono essere usati con parsimonia, e vanno spiegati la prima volta che vengono usati.
-
-        {\em Compatto} significa che si deve scrivere solo ci\`o che \`e necessario scrivere. Bisogna evitare ripetizioni di concetti e osservazioni. Bisogna limitare descrizioni e dettagli che non siano necessari alla comprensione del discorso generale. In particolare vanno evitate osservazioni banali, che risultino ovvie al lettore. Tra una forma verbosa (``in considerazione del fatto che\ldots'') e una equivalente pi\`u sintetica (``perch\'e\ldots'') si preferisca la seconda.
-
-        {\em Oggettivo} significa che ci\`o che si scrive deve essere privo di elementi soggettivi e di elementi che possono influenzare la valutazione. Vanno accuratamente evitate considerazioni personali (``Questa idea mi \`e venuta per la prima volta in occasione\ldots''), nonch\'e affermazioni opinabili il cui giudizio sia lasciato al parere personale dell'autore. L'unico modo per supportare tali prese di posizione è fornire dati scientifici a riprova della propria tesi, o riferirsi in modo esplicito a un antecedente bibliografico (``ipse dixit'') citandone la provenienza in bibliografia. Infine, l'elaborato deve essere steso in forma impersonale. Frasi quali ``Durante la mia esperienza ho approfondito i temi\dots'' sono facilmente sostituibili con locuzioni quali ``Durante la fase di analisi sono stati approfonditi i temi\dots''.
-
-    Un uso appropriato di figure e tabelle \`e essenziale per supportare i punti appena discussi. Figure e tabelle devono avere delle didascalie autoesplicative (che non richiedano di leggere il testo principale per capirne il significato). Il testo principale deve per\`o sempre contenere un riferimento alla figura o alla tabella (``Come mostrato in Fig.1, \ldots''). L'uso di schemi grafici (uno schema a blocchi di algoritmo di elaborazione audio, uno schema concettuale di progetto software, ecc.) \`e particolarmente utile a supportare la chiarezza e la compattezza dell'esposizione.
-
+    \include{1-introduction}
 %
 %			CAPITOLO 2: Stato dell'arte
 %
 
-
-    \chapter{Stato dell'arte}
-    \label{chap:stato_arte}
-
+    \include{2-sota}
 
     Una delle domande più ricorrenti da parte degli studenti \`e cosa si intenda per ``stato dell'arte''. Concretamente, si tratta di individuare la situazione corrente riguardo la tematica trattata nell'elaborato. A titolo di esempio, se il lavoro di tesi si concentra su un (presunto) innovativo algoritmo per suggerire i brani di una playlist, è necessario verificare che tale approccio sia veramente innovativo e, in ogni caso, studiare gli approcci alternativi già disponibili in letteratura.
 

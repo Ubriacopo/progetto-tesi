@@ -1,15 +1,148 @@
 %! Author = jacopo
 %! Date = 3/12/26
 
-% Preamble
-\documentclass[11pt]{article}
 
-% Packages
-\usepackage{amsmath}
+\section{EEGAVI}
+\label{chap:eegavi}
 
-% Document
-\begin{document}
+\textit{EEGAVI} is a multimodal architecture built on frozen backbone encoders for each modality.
+The frozen representations are further elaborated before getting to a \textit{cross-attention} mechanism.
+\textit{EEG} is the main modality of the model acting as a \textit{pivot} while the others are \textit{supports}.
+This structure allows the model to generalize well even with limited or absent supporting modalities.
+Like many other representation models, \textit{EEGAVI} outputs a \textit{CLS} token that condenses sample information in a tighter space.
+It is used during training for contrastive alignment.
+The model's default implementation is able to process EEG, video, text, audio and ECG data.
+
+% todo expand further
+
+\subsection{Data}
+For the development of the model, we use data from different multimodal datasets.
+Most of these lack some modalities that the model can process.
+
+\begin{table}
+    \centering
+    \begin{tabular}{c | c | c| c | c| c| c | c| c}
+        Dataset & Subjects & Experiments & EEG    & Video  & Audio  & Text   & ECG    & Samples \\
+        \hline
+        AMIGOS  & 40       & 16 + 4      & \cmark & \cmark & \cmark & \cmark & \cmark & 22k     \\
+        EAV     & 42       & 200         & \cmark & \cmark & \cmark & \cmark & \xmark & 40k     \\
+        DEAP    & 32       & 40          & \cmark & \cmark & \xmark & \xmark & \xmark & 12k     \\
+        MAHNOB  & 29       & 20(1*)      & \cmark & \cmark & \xmark & \xmark & \cmark & 1k      \\
+    \end{tabular}
+    \caption{
+        Datasets used for training summary.
+        MAHNOB is missing most experiments as only few for participant are accessible.
+    }
+    \label{tab:datasets}
+\end{table}
 
 
+\begin{itemize}
+    \item \textbf{AMIGOS}: The dataset was composed for the research on affect, personality traits and mood by means of neuro-physiological signals.
+    The experiments were performed on a total of 40 participants and are divided in two different subsets.
+    For the first part, 16 short emotional videos from famous movies were shown to each participant alone.
+    For the second one, subjects watched 4 long videos, some alone and some in groups.
+    Self-assessments and external annotations on affective levels and emotions were also tracked.
 
-\end{document}
+    \item \textbf{EAV}\cite{article-eav}: \textit{EEG-Audio-Video Dataset for Emotion Recognition in Conversational Contexts (EAV)}
+    measures 30-channel EEG, audio and video from 42 participants.
+    The scenarios proposed are done in a cue-based conversation designed around five distinct emotions.
+    Each participant contributed in a total of 200 interactions.
+    Participants tracked self-assessments for the emotion of the experiment (happy, calm, angry and sad) and their level of arousal.
+    They were also evaluated by the experimenters on the same protocol.
+
+    \item \textbf{MAHNOB-HCI}\cite{5975141}: is a broad dataset recorded in response to affective stimuli.
+    Unlike other datasets \textit{MAHNOB} also tracks gaze signals, but it is too limited in size to use.
+    We did not include an explicit gaze stream due to a lack of calibrated gaze targets and potential estimation noise from frontal videos.
+    However, eye- and head-related cues could be extracted as an auxiliary modality in future work.
+
+    \item \textbf{DEAP}: \textit{Database for Emotion Analysis} is a dataset composed of data from 32 participants.
+    Each watched 40 one-minute long clips of music videos.
+    Subjects rated their valence, arousal, like/dislike, dominance and familiarity levels.
+    Audio for these is not given for copyright reasons.
+
+\end{itemize}
+
+
+\begin{table}
+    \centering
+    \begin{tabular}{c | c | c | c | c}
+        Dataset & Train (70\%) & Validation (10\%) & Test (15\%) \\
+        \hline
+        AMIGOS  & 30           & 4                 & 6           \\
+        EAV     & 32           & 4                 & 6           \\
+        DEAP    & 24           & 3                 & 5           \\
+        MAHNOB  & 22           & 3                 & 4           \\
+    \end{tabular}
+    \caption{
+        Partitioning of the subjects in the three data splits for training \textit{EEGAVI}.
+    }
+    \label{tab:datasetspartitoning}
+\end{table}
+
+All datasets are partitioned in train, validation and test set around (70-10-15)\%.
+As commonly done for EEG applications, the partitioning is not performed on the sample level but on the participants directly,
+meaning the real split proportions might be a little off if data is corrupted, missing or a participant just made fewer experiments.
+This should allow the model to force a stronger cross subject generalization.
+Partitioning of the data is reported in table \ref{tab:datasetspartitoning}.
+%todo rework with new infos
+
+\subsubsection{Sampling Strategy}
+%todo rework with new infos
+Affective responses unfold across multiple temporal scales, for this reason the model must generalize well on both short events and longer temporal dynamics.
+While short clips may capture localized affective outbursts, long ones can encode the evolution of a subject's perception over time.
+For the model to be robust across scales we sample variable-length EEG segments between 1 and 32 seconds using an EEG-centric sampling strategy.
+
+Segment durations are sampled from a log-uniform distribution, favoring shorter clips.
+A sample is either taken at random from the clip with probability $p$ or selected as a point of interest from the signal with probability $1-p$.
+In the experimental setup $p=0.6$.
+When an \textit{anchor} point is selected short segments are built by left-aligning the window at the anchor time rather than centering it.
+This design may introduce a slight potential positional bias in short clips; however, longer segments are centered on previously extracted short ones and therefore do not have this behavior.
+
+If the resulting segment respects the overlap constraints defined for that class it is stored as a sample, else discarded.
+Segments are of three different settings as reported in table \ref{tab:sample}.
+The process is iterated until it fails to present new valid segments after running out of patience.
+
+\begin{table}
+    \centering
+    \begin{tabular}{c|c|c|c|c}
+        %todo update
+        Class  & Max length (s) & Same class IoU & Cross class IoU & Jitter Frac \\ \hline
+        Short  & 4              & 0              & 0.7             & -           \\
+        Medium & 16             & 0.35           & 0.7             & 0.3         \\
+        Large  & 32             & 0.25           & 0.7             & 0.4         \\
+    \end{tabular}
+    \caption{The jitter fraction indicates the maximum relative displacement applied to a segment's center. }
+    \label{tab:sample}
+\end{table}
+
+The candidate extractor first computes STFT-based frame features per EEG channel.
+The points of interest are extracted in the STFT domain following a set of heuristics commonly used when processing EEG.
+These anchors are identified through a multi-descriptor scoring mechanism that combines the following indicators:
+\begin{itemize}
+    \item \textit{Relative band-power per frame}: Fraction of total spectral power contained in predefined frequency bands (0.5–4, 4–8, 8–13, 13–30 Hz).
+    Sudden dominance of a specific band indicates a change in oscillatory regime contributing positively to salience.
+
+    \item \textit{Spectral entropy}: Shannon entropy of the normalized power spectrum; high when the spectrum is flat (distributed energy), low when concentrated.
+    Lower entropy is favored as it indicates structured spectral content rather than broadband noise.
+
+    \item \textit{Spectral flux}: Frame-to-frame positive spectral change computed on magnitude spectra, capturing rapid spectral dynamics.
+    Rapid spectral changes are rewarded in the saliency extraction process.
+
+    \item \textit{Root-mean-square (RMS)}: Measures the average signal energy in a window, independent of frequency content.
+    Higher energy contributes positively to candidate selection as it highlights strong neural responses.
+
+    \item \textit{Line length}: It is a simple but powerful time-domain EEG feature that measures the total amount of change in the signal within a window.
+    It computes the average absolute first difference, acting as a proxy for signal complexity.
+    In EEG it is often associated with high activity as seizures/epilepsy or motion artifacts, therefore its contribution is moderated in the scoring process.
+
+    \item \textit{Teager–Kaiser Energy Operator (TKEO)}: It captures bursty, high-frequency energy.
+    Sensitive to rapid changes, it is popular in EEG analysis; adds robustness to the process as it might capture patterns not recognized by RMS alone.
+\end{itemize}
+
+Afterward, each channel's features are standardized with a rolling median/MAD estimator with a 30s window.
+This is done to prevent high-variance features from dominating the saliency score, mitigating the effect of outliers.
+A saliency score per channel as a weighted sum of z-scored features is formed.
+These scores are aggregated by taking the mean of the top $k$ channels.
+Artifact annotations are used to downweight candidate frames before anchor selection.
+Lastly, a greedy top-score selection with a minimum time gap constraint is applied to select the points.

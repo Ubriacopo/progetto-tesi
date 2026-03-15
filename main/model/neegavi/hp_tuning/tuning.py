@@ -98,12 +98,14 @@ def make_trial_config(trial: optuna.Trial, cfg: TuningKdConfig, logger, search_s
     # Memory trick for local
     attention_layers = search_space.suggest("attn_layers", trial)
     custom_config.model.factory.args.attention_config = attention_layers
-
-    if cfg.use_trick and cfg.trick_batch_size == batch_size and (attention_layers > 4 or batch_size > 64):
+    # todo piu parametri
+    if cfg.use_trick and cfg.trick_batch_size <= batch_size and (attention_layers > 4 or batch_size >= 64):
         logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
         # For me this is enough. No need to engineer a good solution.
-        batch_size = int(batch_size / 2)
-        accumulation = 2  # We have to double the accumulation
+        factor = 2 if batch_size == 64 or batch_size == 32 else 4
+        batch_size = int(batch_size / factor)
+        accumulation = factor  # We have to double the accumulation
+        logger.info("Accumulation=" + str(accumulation))
 
     # We store 16 with trick but actual batch is 32 thus the search_space tracks correctly.
     custom_config.trainer.batch_size = batch_size
@@ -125,7 +127,7 @@ def find_duplicates(trial: optuna.Trial, logger=make_logger("tuning.find_duplica
 
 
 def final_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSearchSpace,
-                    avoid_duplicates: bool = False, epochs: int = 50, patience: int = 8, seed_override: int = None):
+                    avoid_duplicates: bool = True, epochs: int = 50, patience: int = 8, seed_override: int = None):
     module, trainer = None, None
     try:
         logger = make_logger("final_objective")
