@@ -1,6 +1,6 @@
 defaults:
   - tuning
-  -
+
 study_name: hp-final
 watch_configurations:
   # 0.5277817845344543 score in val 15 epochs
