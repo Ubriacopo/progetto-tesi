@@ -25,3 +25,6 @@ class TdSegmentedExperimentDataset(Dataset):
     def __getitem__(self, idx: int):
         sample = self.df.iloc[idx].to_dict()
         return tensordict.load_memmap(self.dataset_path / sample["experiment"])
+
+    def __len__(self):
+        return self.df.shape[0]

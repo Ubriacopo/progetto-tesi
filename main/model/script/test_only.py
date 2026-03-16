@@ -1,4 +1,5 @@
 import hydra
+import lightning
 import lightning as L
 import torch
 import torchinfo
@@ -8,7 +9,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 import hydra_utils
 from main.app_config import AppConfig
 from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.training import  EasyEegAviKdVateMaskedModule
+from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
 from main.model.script.hydra_beans import KdConfig
 from main.utils.logging import make_logger
 
@@ -16,7 +17,8 @@ from main.utils.logging import make_logger
 @hydra.main(config_path="../../../conf", config_name="train")
 def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
-    logger = make_logger("hydra-main>train_eegavi")
+    lightning.seed_everything(cfg.seed, workers=True)
+    logger = make_logger("hydra-main.test")
     torch.manual_seed(AppConfig.SEED)  # Reproducibility
     init_object = hydra_utils.init_trainlike_script(cfg)
 
@@ -26,7 +28,6 @@ def main(cfg: KdConfig):
     kd_train_datamodule = KdTrainDataModule(
         dataset_paths=cfg.dataset_descriptors,
         batch_size=cfg.trainer.batch_size,
-        batches_per_epoch=cfg.trainer.batches_per_epoch,
         dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
         seed=AppConfig.SEED
     )
@@ -53,9 +54,8 @@ def main(cfg: KdConfig):
         logger.info(n, p.requires_grad, p.grad is None)
 
     torchinfo.summary(module)
-    m_key = "val/top1_mean"
-    val_check_interval = 1000
-    limit_train_batches = 2500  # 900 b=64
+    limit_train_batches = 1  # 900 b=64
+
     trainer = L.Trainer(
         accelerator="gpu",
         logger=TensorBoardLogger("tb_logs", name="my_model"),
@@ -72,6 +72,7 @@ def main(cfg: KdConfig):
         max_epochs=-1,  # or a very large number
         accumulate_grad_batches=4,  # This is to stabilize training
     )
+
     kd_train_datamodule.setup("test")
     c = kd_train_datamodule.test_for_ds()
     # Experiment on each ds independently
