@@ -5,6 +5,8 @@ defaults:
 
 dataset:
   uid_store_path: ${base_path}EEGAVI/FACED-PROBE/uid_store.csv
+  eeg_config:
+    model_weights_path: /home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
 
 preprocessing:
   output_path: ${base_path}EEGAVI/FACED-PROBE/${.out_folder_name}/
