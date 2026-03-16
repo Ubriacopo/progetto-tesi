@@ -5,21 +5,32 @@
 \chapter{Introduction}
 \label{cap:introduzione}
 Machine Learning advancements can be applied across a wide range of domains due to their ability to model complex data.
-This has also influenced the field of affective computing where electroencephalography (EEG) is used to infer emotional and cognitive states.
+This has also influenced the field of affective computing where tasks often rely on electroencephalography (EEG) to infer emotional and cognitive states.
+Measuring EEG signals is one of the most commonly used physiological measurements for such tasks, as they provide one of the most direct proxies currently available for inferring emotional states.
+
 In recent years many models have been developed for EEG representation learning.
 These general-purpose models, \textit{foundation models}, in the field tend to be limited by various reasons, with the low cardinality of EEG-centric datasets being one of them.
 This is especially noticeable once one considers the size of corpora of most text-based state-of-the-art (SOTA) models.
+The reason for this is that textual corpora can be collected at large scale using publicly available resources such as the internet.
+In contrast, EEG data gathering has more requirements.
+Most experimental setups take researchers and specific equipment.
+They also require significant time both from researchers and participants.
+Many datasets also do not follow common acquisition standards such as the 10–20 electrode placement system making them at times hard to compare or interchange in tasks.
 
 While multimodal foundation models have shown success in vision and language, their application to EEG representation learning remains limited.
 With this problem in mind, the goal of the project is to leverage cross-modal knowledge to integrate information into EEG representations.
-Our approach is limited to the affective aspect of neurological data processing, but the core idea can be applied to any field.
+This approached is based on the assumption that the same phenomena is encoded in different but complementary modalities.
+For instance, emotional states reflected in EEG signals might be correlated with facial expression, speech
+characteristics and/or body movements.
+Leveraging such cross-modal relationships may help improve EEG representations when EEG data alone is limited.
 
-EEGAVI transfers information from multiple modalities into the EEG, aiming to enhance the representational capacity.
+The approach proposed is limited to the affective aspect of neurological data processing, but the core idea can be applied to any field.
+
+The proposed EEGAVI transfers information from multiple modalities into the EEG, aiming to enhance the representational capacity.
 It employs a principled integration of existing techniques (cross-attention + contrastive loss + knowledge distillation) applied to EEG under data scarcity.
-The model uses multiple frozen backbones to elaborate the input modalities.
+The model uses multiple frozen backbone encoders to elaborate the input modalities.
 For the EEG data stream it is CBraMod\cite{wang2025cbramodcrisscrossbrainfoundation}.
 
-Beyond the need for a foundation model, the research question focuses on the impact of \textit{knowledge distillation} in the proposed context.
-In particular, it is goal of the investigation to recognize whether distillation in a context where sources and target do not belong to the same modality is of benefit to the training pipeline or not.
-To answer this question, an instance of \textit{EEGAVI} was trained and its performance analyzed using CBraMod as a reference point.
-... continua
+Beyond proposing a multimodal foundation model, the research question focuses on the impact of \textit{knowledge distillation} in the proposed context.
+In particular, the goal of the investigation is to determine whether distillation in a context where sources and target do not belong to the same modality is of benefit to the training pipeline or not.
+To answer this question, an instance of \textit{EEGAVI} was trained and its performance analyzed using CBraMod as a reference baseline.
