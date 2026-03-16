@@ -1,0 +1,49 @@
+defaults:
+  - hydra-setup
+  - model: default # TODO ANCHE QUI BEST?
+  - trainer: best_config
+  - teacher: default
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
+
+experiment: ablation-moco-best
+base_path: /root/PycharmProjects/progetto-tesi/
+teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
+
+trainer:
+  use_moco: False
+
+
+seed: 1
+
+dataset_descriptors:
+  - dataset_path: "/mnt/datasets/EEGAVI/AMIGOS/combined/"
+    cache_path: null
+    dataset_weight: 137 # Power Law
+  - dataset_path: "/mnt/datasets/EEGAVI/DEAP/combined-compressed/"
+    cache_path: null
+    dataset_weight: 101 # Power Law
+  - dataset_path: "/mnt/datasets/EEGAVI/MAHNOB/combined-compressed/"
+    cache_path: null
+    dataset_weight: 28 # Power Law
+  - dataset_path: "/mnt/datasets/EEGAVI/EAV/combined-compressed/"
+    cache_path: null
+    dataset_weight: 227
+
+
+
+hydra:
+  job:
+    name: ${experiment}
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+  job_logging:
+    root:
+      handlers: [ console, file ]   # make sure both are used
+
+    handlers:
+      file:
+        class: logging.FileHandler
+        formatter: simple         # or "colorlog" if you really want ANSI codes in file
+        filename: ${hydra.runtime.output_dir}/job.log
