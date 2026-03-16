@@ -25,8 +25,8 @@ class FacedPointsLoader(DataPointsLoader):
 
     def __len__(self) -> int:
         if self.length == 0:
-            folder = Path(self.base_path)
-            self.length = sum(1 for _ in folder.iterdir())
+            folder = Path(self.base_path / "Processed_data")
+            self.length = sum(1 for _ in folder.iterdir()) * 28  # 28 experiments per person
 
         return self.length
 
@@ -39,7 +39,7 @@ class FacedPointsLoader(DataPointsLoader):
             for experiment in range(eeg.shape[0]):
                 nei = self.dataset_uid_store.uid(subject_records.stem, str(experiment), "faced")
 
-                experiment_scores = assessments[experiment][0]["score"]
+                experiment_scores = assessments[experiment][0]["score"][0]
                 experiment_eeg = eeg[experiment]
 
                 info = mne.create_info(
@@ -54,16 +54,10 @@ class FacedPointsLoader(DataPointsLoader):
                     experiment=nei, dataset_id=self.DATASET_ID, person_id=person_id, trial=experiment,
                 )
 
-                assessments = Assessment(
-                    eid=nei,
-                    data=experiment_scores,
-                    labels=self.config.score_labels.labels,
-                    rating_scales=self.config.score_labels.rating_scales
-                )
-
                 yield FlexibleDatasetPoint(
                     nei,
                     EEG(eid=nei, data=raw, fs=raw.info['sfreq']).as_mod_tuple(),
-                    assessments.as_mod_tuple(),
+                    Assessment(eid=nei, data=experiment_scores, labels=self.config.score_labels.labels,
+                               rating_scales=self.config.score_labels.rating_scales).as_mod_tuple(),
                     Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )
