@@ -122,9 +122,9 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
         # Return file specification
         base_object = {}
-        if "meta" in x:
+        if hasattr(x, Metadata.modality_code()):
             # We have metaobject to pass to the csv. Better have it redundant than not enough.
-            base_object = {key: value for key, value in asdict(x.meta.data).items()}
+            base_object = {key: value for key, value in x.meta.data.items()}
 
         return_segments = [
             base_object | {"index": idx, x.get_identifier(): x.eid, "segment": segment}

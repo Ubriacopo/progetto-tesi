@@ -5,7 +5,7 @@ import torch
 from tensordict import TensorDict
 from torch.utils.data import DataLoader, IterableDataset, ChainDataset
 
-from main.core_data.dataset import CachableDatasetDescriptor, RoundRobinBatchMultiDataset, H5KdDataset
+from main.core_data.dataset import CacheableDatasetDescriptor, RoundRobinBatchMultiDataset, H5KdDataset
 from main.utils.logging import make_logger
 
 
@@ -16,7 +16,7 @@ def collate(x):
 class KdTrainDataModule(lightning.LightningDataModule):
     def __init__(
             self,
-            dataset_paths: list[CachableDatasetDescriptor],
+            dataset_paths: list[CacheableDatasetDescriptor],
             # Parameters for stuff less related to the data itself
             batch_size: int,
             seed: int,
@@ -36,7 +36,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         """
         super().__init__()
         self.logger = make_logger(self.__class__.name)
-        self.shards_path: list[CachableDatasetDescriptor] = dataset_paths
+        self.shards_path: list[CacheableDatasetDescriptor] = dataset_paths
 
         self.train_dataset: Optional[IterableDataset] = None
         self.valid_dataset: Optional[IterableDataset] = None

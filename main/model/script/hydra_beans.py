@@ -1,7 +1,7 @@
 import dataclasses
 from typing import Tuple, Optional
 
-from main.core_data.dataset import CachableDatasetDescriptor
+from main.core_data.dataset import CacheableDatasetDescriptor
 from main.model.neegavi.model import EegInterAviModelConfiguration
 
 
@@ -71,7 +71,7 @@ class KdConfig:
 
     seed: int
 
-    dataset_descriptors: list[CachableDatasetDescriptor]
+    dataset_descriptors: list[CacheableDatasetDescriptor]
     teacher_weights_path: str
 
 
