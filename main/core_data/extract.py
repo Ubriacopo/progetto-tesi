@@ -50,8 +50,8 @@ class SegmentBasedExtractionProcessor:
 
             length = x[EEG.modality_code()].data.duration
 
-            num_segments = min(int(self.segmenter.num_segments * length / 90), 170)
-            num_segments = max(num_segments, self.segmenter.num_segments)  # Segmenter desired segments are minimum
+            num_segments = min(int(self.segmenter.min_num_segments * length / 90), 170)
+            num_segments = max(num_segments, self.segmenter.min_num_segments)  # Segmenter desired segments are minimum
             segments: list[tuple[float, float]] = self.segmenter.compute_segments(x[EEG.modality_code()], num_segments)
 
             local_outs = [o.extract(x, self.base_path) for o in self.other_extractors]

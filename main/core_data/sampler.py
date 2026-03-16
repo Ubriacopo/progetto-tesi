@@ -17,9 +17,9 @@ class Segmenter(ABC):
     Segments input samples into timed ranges defined by predefined logic.
     """
 
-    def __init__(self, max_length: int, num_segments: int):
+    def __init__(self, max_length: int, min_num_segments: int):
         self.max_length: int = max_length
-        self.num_segments: int = num_segments
+        self.min_num_segments: int = min_num_segments
 
     @abstractmethod
     def compute_segments(self, sample: FlexibleDatasetPoint, num_segments: int = None) -> list[tuple[int, int]]:
@@ -27,6 +27,9 @@ class Segmenter(ABC):
 
 
 class FixedIntervalsSegmenter(Segmenter):
+    def __init__(self, max_length: int):
+        super().__init__(max_length, 1)
+
     def compute_segments(self, sample: FlexibleDatasetPoint, num_segments: int = None) -> list[tuple[int, int]]:
         # Good indicator of duration.
         if not hasattr(sample, EEG.modality_code()):
@@ -78,7 +81,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
     def __init__(self,
                  min_length: int,
                  max_length: int,
-                 num_segments: int,
+                 min_num_segments: int,
                  anchor_identification_hop: float,
                  *features: Feature,
                  coverage_resolution_sec: float = 0.1,
@@ -93,7 +96,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
         :param min_length:
         :param max_length:
-        :param num_segments: How many segments we aim to generate. It might not always be possible for time constraints.
+        :param min_num_segments: How many segments we aim to generate. It might not always be possible for time constraints.
         (SHORT segments are non overlapping by definition in SHORT_FEATURE).
         :param anchor_identification_hop:
         :param jitter_frac:
@@ -104,7 +107,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         :param return_seconds:
         :param extraction_jitter:
         """
-        super().__init__(max_length, num_segments)
+        super().__init__(max_length, min_num_segments)
         self.anchor_identification_hop: float = anchor_identification_hop
         default_features = [SHORT_FEATURE, MEDIUM_FEATURE, LONG_FEATURE]
 
@@ -160,7 +163,7 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
         buckets: list[Segment] = []
         t = sample.data.duration
 
-        num_segments: int = num_segments or self.num_segments
+        num_segments: int = num_segments or self.min_num_segments
         self.logger.info(f"For media with duration: {t} we try {num_segments} segments")
 
         extractor = EEGFeatureExtractor(sample.data)
@@ -396,12 +399,12 @@ class EegFeaturesAndRandLogUIntervalsSegmenter(Segmenter):
 
 class RandomizedSizeIntervalsSegmenter(Segmenter):
 
-    def __init__(self, max_length: int, num_segments: int):
-        super().__init__(max_length, num_segments)
+    def __init__(self, max_length: int, min_num_segments: int):
+        super().__init__(max_length, min_num_segments)
 
     def compute_segments(self, sample: EEG, num_segments: int = None) -> list[tuple[float, float]]:
         segments = []
-        num_segments: int = num_segments or self.num_segments
+        num_segments: int = num_segments or self.min_num_segments
         for _ in range(num_segments):
             # Random duration: 0.5–30 s, expressed in samples.
             dur = np.random.rand(1) * self.max_length
