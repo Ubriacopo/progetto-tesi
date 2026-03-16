@@ -40,11 +40,11 @@ class FacedScoreLabels:
 
     rating_scales: list[tuple[int | float, int | float]] = dataclasses.field(default_factory=lambda: [
         # They all are in the [0-7] range
-        ((0., 7.), *12)
+        ((0., 7.),) * 12
     ])
 
 
 @dataclasses.dataclass
 class FacedConfig(DatasetConfig):
     eeg_source_config: FacedEegSourceConfig = dataclasses.field(default_factory=lambda: FacedEegSourceConfig())
-    score_labels: FacedScoreLabels = dataclasses.field(default_factory=FacedScoreLabels())
+    score_labels: FacedScoreLabels = dataclasses.field(default_factory=lambda : FacedScoreLabels())

@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - override /dataset: dreamer
+  - override /preprocessing: interleaved
+
+dataset:
+  uid_store_path: ${base_path}EEGAVI/DREAMER-TOY/uid_store.csv
+
+preprocessing:
+  output_path: ${base_path}EEGAVI/DREAMER-TOY/${.out_folder_name}/
+
+base_path: /mnt/datasets/
