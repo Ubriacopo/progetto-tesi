@@ -27,7 +27,7 @@ class RequiredKey:
 
 
 @dataclasses.dataclass
-class CachableDatasetDescriptor:
+class CacheableDatasetDescriptor:
     dataset_path: str
     cache_path: Optional[str]
     dataset_weight: float
