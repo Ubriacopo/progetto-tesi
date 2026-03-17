@@ -17,7 +17,7 @@ from main.model.loss import SiglipLoss, siglip_random_baseline
 from main.model.neegavi.moco import MoCoAble
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs, top_k_hits_from_sim
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -202,25 +202,36 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             e = torch.cat(pe["e"], dim=0)
 
             similarity = f @ e.T
-            hits = top_k_hits_from_sim(similarity, top_k)
-            for top in top_k:
-                self.log(f"{step_type}/fused/top{top}_{key}", hits[top], on_epoch=True)
-                mean_acc[top].append(hits[top])
-
-            # Mean Recall@K over selected Ks
-            mean_r = torch.stack([hits[k] for k in top_k]).mean()
-            mean_r_items.append(mean_r)
-
             # MRR (Mean Reciprocal Rank)
             #
             # Mean Reciprocal Rank (MRR) is a statistic for evaluating systems that return ranked lists of answers,
-            # such as search engines or RAG models, by averaging the inverse rank (1/position) of the first relevant
+            # such as search engines or RAG models. By averaging the inverse rank (1/position) of the first relevant
             # result across multiple queries. It measures how quickly a user finds the correct answer, with a score
             # closer to 1 indicating top-tier, efficient ranking.
-            #
-            # rank_i = 1 + number of candidates with strictly higher sim than the true match
-            rank = 1 + (similarity > similarity.diag()[:, None]).sum(dim=1)  # (N,)
+            pos = similarity.diag()[:, None]
+            greater = (similarity > pos).sum(dim=1)
+
+            # Ties (including itself)
+            equal = (similarity == pos)
+            idx = torch.arange(similarity.size(1), device=similarity.device)
+
+            before = idx[None, :] < idx[:, None]  # (N, N)
+            tie_before = (equal & before).sum(dim=1)
+
+            rank = 1 + greater + tie_before
             mrr = (1.0 / rank.float()).mean()
+
+            recalls = []
+            for top in top_k:
+                top_values = (rank <= top).float().mean()
+                recalls.append(top_values)
+
+                self.log(f"{step_type}/fused/top{top}_{key}", top_values, on_epoch=True)
+                mean_acc[top].append(top_values)
+
+            # Mean Recall@K over selected Ks
+            mean_r = torch.stack(recalls).mean()
+            mean_r_items.append(mean_r)
 
             mrr_items.append(mrr)
 
@@ -254,6 +265,9 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
+
+    def on_test_epoch_start(self) -> None:
+        self._validation_pairs = {}
 
     def on_test_epoch_end(self) -> None:
         self.compute_batch_metrics("test")
