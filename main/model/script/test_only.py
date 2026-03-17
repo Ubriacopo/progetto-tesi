@@ -27,12 +27,12 @@ def main(cfg: KdConfig):
 
     kd_train_datamodule = KdTrainDataModule(
         dataset_paths=cfg.dataset_descriptors,
-        batch_size=cfg.trainer.batch_size,
+        batch_size=cfg.trainer.batch_size // 2,
         dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
         seed=AppConfig.SEED
     )
 
-    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/moco-drop-p-2attn-smol/2026-02-26_19-36-43/checkpoints/epochepoch=23-stepstep=15000.ckpt"
+    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/best/2026-03-15_00-38-44/checkpoints/epochepoch=13-stepstep=35756.ckpt"
     module = EasyEegAviKdVateMaskedModule.load_from_checkpoint(
         ckpt_path,
         student=student,
@@ -70,18 +70,21 @@ def main(cfg: KdConfig):
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
         val_check_interval=1.0,
         max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=4,  # This is to stabilize training
+        accumulate_grad_batches=2,  # This is to stabilize training
     )
 
-    kd_train_datamodule.setup("test")
-    c = kd_train_datamodule.test_for_ds()
-    # Experiment on each ds independently
-    for key, value in c.items():
-        logger.info(f"Testing for dataset {key}")
-        trainer.test(module, dataloaders=value)
+    if False:
+        trainer.validate(module, datamodule=kd_train_datamodule)
+    else:
+        kd_train_datamodule.setup("test")
+        c = kd_train_datamodule.test_for_ds()
+        # Experiment on each ds independently
+        for key, value in c.items():
+            logger.info(f"Testing for dataset {key}")
+            trainer.test(module, dataloaders=value)
 
-    # Experiment on all also
-    trainer.test(module, datamodule=kd_train_datamodule)
+        # Experiment on all also
+        trainer.test(module, datamodule=kd_train_datamodule)
 
 
 if __name__ == "__main__":
