@@ -1,11 +1,11 @@
 # Training infos
-lr: 1.5e-4
+lr: 3e-4
 weight_decay: 0.01
-kd_loss_weight: 1.0
+kd_loss_weight: 0.5
 fusion_loss_weight: 1.0
 kd_temperature: 0.2
 epochs: 1
-batch_size: 64
+batch_size: 32
 batches_per_epoch: 1000 # 0.6 of all.
 dl_start_index: 0
 ckpt_path: null

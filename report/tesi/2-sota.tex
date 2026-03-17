@@ -8,32 +8,62 @@
 \label{chap:sota}
 
 \subsection{EEG Foundation models}
+% TODO Grammar check but content OK
 Foundation models are large-scale machine learning models trained on vast datasets.
 The ones that adopt self-supervised learning techniques typically learn general latent representations.
 These models are commonly used as backbones for downstream tasks.
-There have been various proposals for EEG foundation models.
+There have been various proposed models for EEG representation learning.
 These, most times, suffer from limitations that are directly linked to the size and task specificity of their datasets.
+
+For this reason they are large-scale when relative to the domain rather than a fixed scale.
+The typical size of an EEG signals based dataset is in the order of 10²-10³ trials.
+If these are to be compared to the sizes of vision/audio where samples can be of the order of the million it is clear
+that the data is a strong limitation when designing robust EEG foundation models.
+
 EEG measurements are very experiment-dependent and subject-specific.
-Unless a novel approach is able to abstract the subject-specific encoding inside the data, most solutions will encode the identity features in the learnt representations.
-For this reason, evaluations in the field are more commonly performed subject rather than experiment-wise.
+Unless a novel approach is able to abstract the subject-specific encoding inside the data, most solutions will encode these patterns in the learnt representations.
+Most often in the field evaluations are performed either within or cross subject.
+When working within subject the tasks are often simpler and inflated as the biometric signatures of the participants is already known.
+Cross-subject are instead harder and closer to a real use of the final model.
+
 Beyond this, EEG experiments can vary much between different datasets.
 The measurement layout used for \textit{AMIGOS}\cite{8554112} with the \textit{Emotiv EPOC Neuroheadset}, for example only tracks some
 of the electrodes tracked by \textit{DEAP}\cite{5871728} and its \textit{BioSemi ActiveTwo EEG recording system}.
 It also runs at a different sampling rate.
+This all leads to severe domain shifts carros datasets.
 Thus, the cross-dataset compatibility tends to be lower than for other common tasks such as vision and audio.
+All these things considered, models trained on these datasets tend to be too correlated to the subjects and experimental setups of the data gathering process.
+
+Another non-trivial notion to consider is that EEG signals have no natural token structure.
+They derive from a continuous waveform arbitrarily segmented and this leads to limitations in their tokenization.
+Relevant patterns can be observed over different temporal scales, ranging from milliseconds, seconds to even minutes.
+This limits the way to approach the construction of natural embedding models, and while the task seems structurally closer
+to audio than other modalities EEG lacks a known discrete structure, which in audio is represented by latent discrete units (e.g., phonemes in speech).
+This leads to model-dependent and non-canonical tokenization.
+
+
+Amongst these, like \textit{Biosignal Transformer for Cross-data Learning in the Wild} (BIOT) some adopt the temporal transformer paradigm where EEG are treated as a sequence.
+It learns temporal dependencies by attending over different time steps in an attention mechanism.
+These tend to handle the electrode geometry in a very limited way.
+BIOT for example flattens the different EEG channels thus limiting the spatial correlation of the input signals.
+It is known that the spatial relations of the electrodes in many processes is relevant and non-random.
+For this reason a stronger spatial awareness is thought to lead to stronger results.
+
+With this idea in mind other models integrate the spatial awareness of the electrodes on the scalp directly via graph modeling or other
+novel approaches such as the \textit{criss-cross transformer} of the \textit{CBraMod}.
 
 % todo more on EEG Foundation models and sota
-
-\textit{CBraMod} has been designed to tackle these problems as its representations are in fact not tied to the single
-electrode position but to the relative space the nodes occupy.
+\textit{CBraMod} representations are in fact not tied to the single electrode position but to the relative space the nodes occupy.
 This way the model learns geometry-aware representations of the data reducing the bias coming from the measurement setup.
-But it is not able to overcome the data limitations on its own.
+But it is not able to overcome the data limitations on its own due to the lack of large-scale multi-dataset training.
+
 So, despite advances regarding spatial modeling, current EEG foundation models are still limited by dataset scale,
 inter-subject variability, and predominant unimodal training paradigms.
 
 \subsection{Multimodal Contrastive Models}
+% TODO parla di Biot
 Gathering more data is often a costly and difficult task.
-This motivates us to explore ways to exploit information from all available sources.
+This motivates researchers to explore ways to exploit information from all available sources.
 
 Such approaches have been widely adopted in many fields.
 \textit{Flamingo}\cite{alayrac2022flamingovisuallanguagemodel} by Google DeepMind is an application that partially inspired this work.
@@ -45,20 +75,26 @@ This is applied in an interleaved way between the layers defined inside the froz
 
 This way, the model is able to preserve the capabilities of its \textit{LM} while injecting the multimodal information progressively.
 
-A commonly adopted alternative is CLIP\cite{radford2021learningtransferablevisualmodels} style models which resemble more our approach.
-Instead of fusing the information in the whole architecture the alignment is performed only at the embedding level.
+While Flamingo represents a fusion-based approach, many multimodal systems instead rely on contrastive objectives to align representations across modalities.
 
-It is safer regarding overfitting as data limitations or noise in \textit{Flamingo} can limit the model's generalization performance.
-CLIP also solves a problem posed by \textit{Flamingo} in the domain of this application: it is completely unsupervised.
-CLIP style losses train the model on the batch level.
-Their objective is to align representations from two different modalities within a shared embedding space.
-Their effectiveness is therefore dependent on the batch composition.
+Contrastive fusion models commonly adopt loss functions inspired by the CLIP\cite{radford2021learningtransferablevisualmodels} model objective.
+While CLIP itself is not a fusion model, its loss solves a problem in the representation learning domain that transfers well over different modalities.
+\textit{InfoNCE} frames unsupervised learning as an instance discrimination problem where a model learns to separate positive pairs from a set of negatives.
+In the context of multimodal learning the pool of samples is built by the different modalities vectors.
+A similarity matrix is then constructed on these where the diagonal represents the positives and off-diagonal act as negatives.
+The CLIP formulation made the objective symmetric by applying it in both directions.
+This enforces alignment between representations from different modalities.
+% todo cita fusion models che lo usano
+Many fusion models often use contrastive losses for pretraining or alignment.
 
+% todo fare stile causa -> effetto al posto di arzigogolare cosi
 The \textit{Momentum Contrast (MoCo)}\cite{he2020momentumcontrastunsupervisedvisual} model proposed a solution to solve limitations posed by CLIP style losses and contrastive learning.
 It builds a dynamic dictionary with a queue and a moving-averaged encoder.
 It reduces the memory load of the model during training by generating a queue of computed samples to run the contrastive loss on.
 This way, when in constrained environments, the \textit{batch size} limits can be mitigated by having a representation proxy of the past processed samples.
 To avoid the representations from drifting between iterations the framework makes use of a moving average instance of the model.
+
+% TODO parla di BIOT qui
 
 While multimodal contrastive frameworks have demonstrated strong cross modal alignment, their applications on EEG
 representation learning remain limited, particularly under data scarce conditions.
