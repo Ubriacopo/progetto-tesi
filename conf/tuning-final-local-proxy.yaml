@@ -1,16 +1,20 @@
 defaults:
   - tuning-local
 
-study_name: hp-final-proxy
+study_name: hp-final-proxy-fixed
 search_space:
-  batch_size: [ 32,64,128 ]
+  batch_size: [ 32, 64, 128 ]
 
 watch_configurations:
-  -  lr: 0.0003
-     batch_size: 64
-     attn_layers: 4
-     beta: 0.5
-  -  lr: 0.0003
-     batch_size: 128
-     attn_layers: 6
-     beta: 0.5
+  - lr: 0.0003
+    batch_size: 64
+    attn_layers: 4
+    beta: 0.5
+  - lr: 0.0003
+    batch_size: 64
+    attn_layers: 4
+    beta: 0.5
+  - lr: 0.001
+    batch_size: 64
+    attn_layers: 4
+    beta: 1.0
