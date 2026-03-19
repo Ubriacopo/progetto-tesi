@@ -5,6 +5,7 @@ import torch
 from main.utils.data import MaskedValue
 
 
+# todo ridurre per inference
 @dataclasses.dataclass
 class EegBaseModelOutputs:
     cls: torch.Tensor

@@ -1,6 +1,6 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
 
+import torch
 from torch import nn
 
 from main.core_data.media.audio import Audio
@@ -9,16 +9,15 @@ from main.core_data.media.eeg import EEG
 from main.core_data.media.text import Text
 from main.core_data.media.video import Video
 from main.model.blocks.attention import AbstractAttentionBlock
-from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
-    SimpleFeedForwardAdapter
-from main.model.blocks.modality_stream import ModalityStream
-
-from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
-    ModalityConfig
 from main.model.blocks.dropout import ModalityDropout, BernoulliSupportsModalityDropout
 from main.model.blocks.kd import KDHead
-from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
+from main.model.blocks.modality_stream import ModalityStream
 from main.model.blocks.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
+from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
+    SimpleFeedForwardAdapter
+from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
+    ModalityConfig
+from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
 from main.utils.logging import make_logger
 
 
@@ -169,3 +168,61 @@ class Factory:
         for disabled_support_code in disabled_supports:
             factory.disabled(disabled_support_code)
         return factory
+
+    @staticmethod
+    def inference(
+            weights_path: str,
+            eeg_config: EegModalityConfig,
+            vid_config: KdPerceiverModalityConfig,
+            aud_config: KdPerceiverModalityConfig,
+            txt_config: KdPerceiverModalityConfig,
+            ecg_config: MaskedFeedForwardConfig,
+            attention_config: int | list[GatedXAttentionCustomArgs],
+            custom_config: EegInterAviModelConfiguration = None,
+    ):
+        model = (
+            Factory()
+            .config(custom_config)
+            .attention(
+                GatedXAttentionFactory(custom_config.pivot_dim, custom_config.support_dim).build(attention_config)
+            )
+            .pivot(
+                code=EEG.modality_code(),
+                adapter=EegAdapter(eeg_config.channels, eeg_config.in_size, eeg_config.out_size),
+                config=eeg_config
+            )
+            .support(
+                code=Video.modality_code(),
+                adapter=PerceiverResamplerAdapter(
+                    vid_config.perceiver_resampler_config, vid_config.in_size, vid_config.out_size
+                ),
+                config=vid_config,
+            )
+            .support(
+                code=Audio.modality_code(),
+                adapter=PerceiverResamplerAdapter(
+                    aud_config.perceiver_resampler_config, aud_config.in_size, aud_config.out_size
+                ),
+                config=aud_config
+            )
+            .support(
+                code=Text.modality_code(),
+                adapter=TemporalEncoderAdapter(
+                    txt_config.in_size, 32, txt_config.timestep_seconds, modality=custom_config.modality
+                ),
+                config=txt_config
+            )
+            .support(
+                code=ECG.modality_code(),
+                adapter=SimpleFeedForwardAdapter(
+                    ecg_config.in_size, ecg_config.out_size, mult=ecg_config.mult, dropout=ecg_config.dropout
+                ),
+                config=ecg_config
+            ).build()
+        )
+
+        ckpt = torch.load(weights_path, map_location="cpu")
+        model.load_state_dict(ckpt["state_dict"])
+        model.eval()
+
+        return model
