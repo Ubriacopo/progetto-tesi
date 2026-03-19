@@ -1,32 +1,31 @@
+# @package _global_
 defaults:
-  - hydra-setup
-  - model: best # TODO ANCHE QUI BEST?
-  - trainer: best
-  - teacher: default
-  - override hydra/job_logging: colorlog
-  - override hydra/hydra_logging: colorlog
+  - override /model: best
+  - override /trainer: best
+  - override /hydra/job_logging: colorlog
+  - override /hydra/hydra_logging: colorlog
 
 experiment: ablation-moco-best
-base_path: /root/PycharmProjects/progetto-tesi/
+base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
 trainer:
   use_moco: False
 
 
-seed: 1
+seed: 42
 
 dataset_descriptors:
-  - dataset_path: "/mnt/datasets/EEGAVI/AMIGOS/combined/"
+  - dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"
     cache_path: null
-    dataset_weight: 137 # Power Law
-  - dataset_path: "/mnt/datasets/EEGAVI/DEAP/combined-compressed/"
+    dataset_weight: 137
+  - dataset_path: "/home/jacopo/dataset/EEGAVI/DEAP/combined-compressed/"
     cache_path: null
-    dataset_weight: 101 # Power Law
-  - dataset_path: "/mnt/datasets/EEGAVI/MAHNOB/combined-compressed/"
+    dataset_weight: 101
+  - dataset_path: "/home/jacopo/dataset/EEGAVI/MAHNOB/combined-compressed/"
     cache_path: null
-    dataset_weight: 28 # Power Law
-  - dataset_path: "/mnt/datasets/EEGAVI/EAV/combined-compressed/"
+    dataset_weight: 30
+  - dataset_path: "/home/jacopo/dataset/EEGAVI/EAV/combined-compressed/"
     cache_path: null
     dataset_weight: 227
 
