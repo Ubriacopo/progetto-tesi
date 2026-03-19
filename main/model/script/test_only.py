@@ -32,7 +32,7 @@ def main(cfg: KdConfig):
         seed=AppConfig.SEED
     )
 
-    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/best/2026-03-15_00-38-44/checkpoints/epochepoch=13-stepstep=35756.ckpt"
+    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/epochepoch=45-stepstep=117484.ckpt"
     module = EasyEegAviKdVateMaskedModule.load_from_checkpoint(
         ckpt_path,
         student=student,

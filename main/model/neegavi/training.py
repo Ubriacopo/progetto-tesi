@@ -17,7 +17,8 @@ from main.model.loss import SiglipLoss, siglip_random_baseline
 from main.model.neegavi.moco import MoCoAble
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs,  \
+    retrieval_metrics_chunked
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -200,37 +201,19 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         for key, pe in self._validation_pairs.items():
             f = torch.cat(pe["f"], dim=0)
             e = torch.cat(pe["e"], dim=0)
-
-            similarity = f @ e.T
-            # MRR (Mean Reciprocal Rank)
-            #
-            # Mean Reciprocal Rank (MRR) is a statistic for evaluating systems that return ranked lists of answers,
-            # such as search engines or RAG models. By averaging the inverse rank (1/position) of the first relevant
-            # result across multiple queries. It measures how quickly a user finds the correct answer, with a score
-            # closer to 1 indicating top-tier, efficient ranking.
-            pos = similarity.diag()[:, None]
-            greater = (similarity > pos).sum(dim=1)
-
-            # Ties (including itself)
-            equal = (similarity == pos)
-            idx = torch.arange(similarity.size(1), device=similarity.device)
-
-            before = idx[None, :] < idx[:, None]  # (N, N)
-            tie_before = (equal & before).sum(dim=1)
-
-            rank = 1 + greater + tie_before
-            mrr = (1.0 / rank.float()).mean()
+            metrics = retrieval_metrics_chunked(f, e, chunk_size=256)
+            mrr = metrics["mrr"]
 
             recalls = []
             for top in top_k:
-                top_values = (rank <= top).float().mean()
+                top_values = metrics["recalls"][top]
                 recalls.append(top_values)
 
                 self.log(f"{step_type}/fused/top{top}_{key}", top_values, on_epoch=True)
                 mean_acc[top].append(top_values)
 
             # Mean Recall@K over selected Ks
-            mean_r = torch.stack(recalls).mean()
+            mean_r = metrics["mean_r"]
             mean_r_items.append(mean_r)
 
             mrr_items.append(mrr)
@@ -238,13 +221,11 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             self.log(f"{step_type}/fused/meanR@{combined}_{key}", mean_r, on_epoch=True)
             self.log(f"{step_type}/fused/mrr_{key}", mrr, on_epoch=True)
 
-            alignment = similarity.diag().mean()
+            alignment = metrics["alignment"]
             self.log(f"{step_type}/fused/alignment_{key}", alignment, on_epoch=True)
 
             # Margin between positives and typical negatives
-            pos = similarity.diag()
-            neg_mean = (similarity.sum(dim=1) - pos) / (similarity.size(1) - 1)
-            margin = (pos - neg_mean).mean()
+            margin = metrics["margin"]
             self.log(f"{step_type}/fused/margin_{key}", margin, on_epoch=True)
 
         for top in top_k:
