@@ -5,9 +5,10 @@ from dataclasses import asdict
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 from einops import rearrange
 from einops_exts import rearrange_many
-from torch import nn, einsum
+from torch import nn
 
 from main.model.blocks.attention import AbstractAttentionBlock
 from main.model.blocks.feed_forward import SimpleFeedForward
@@ -54,7 +55,8 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         # Pre-LN + Cross modality attention
         norm_q = self.q_norm(q)
         norm_kv = self.kv_norm(kv)
-        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask, kv_mask) * self.attn_gate.sigmoid() # TODO: Check if this helps. I changed from tanh to sigmoid
+        q = q + self.attn(norm_q, norm_kv, attn_mask, q_mask,
+                          kv_mask) * self.attn_gate.sigmoid()  # TODO: Check if this helps. I changed from tanh to sigmoid
 
         if self.self_attn is not None:
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.
@@ -92,8 +94,8 @@ class MaskedCrossAttention(nn.Module):
                 shape (B, T, D1)
             kvo (torch.Tensor): Fused features
                 shape (B, T, D2)
-            attn_mask: boolean mask identifying the media tokens in x
-            kv_mask:
+            attn_mask: boolean mask identifying the media tokens in x, True on attend steps False on ignore ones
+            kv_mask: True on attend steps False on ignore ones
                 shape (B, T)
             q_mask:
                 shape (B, T)
@@ -102,41 +104,37 @@ class MaskedCrossAttention(nn.Module):
         if kv_mask is not None and kv_mask.sum() == 0:
             return torch.zeros_like(qo, device=kvo.device)
 
-        _, Tkv, n = kvo.shape[:3]  # Time steps of kv
         q = self.q(qo)
         k, v = self.kv(kvo).chunk(2, dim=-1)
-
         q, k, v = rearrange_many((q, k, v), "b n (h d) -> b h n d", h=self.heads)
-        # Rescale the query object
         q *= self.scale
 
-        # Check similarity between key and query
-        sim = einsum("... i d, ... j d -> ... i j", q.float(), k.float())
-        # Key padding mask (per token): shape -> (B,1,1,Tkv*n)
+        full_mask = None
+        # Build combined mask (True = attend)
         if kv_mask is not None:
-            mask = ~kv_mask[:, None, None, :]  # shape [B,1,1,S], bool
-            sim.masked_fill_(mask, torch.finfo(sim.dtype).min)
+            # kv_mask: [B, Tkv], True=valid
+            full_mask = kv_mask[:, None, None, :]
+
         if attn_mask is not None:
-            # sim = sim.masked_fill(~attn_mask[:, None, :, :], neg_inf)
-            mask = ~attn_mask[:, None, :, :]  # shape [B,1,1,S], bool
-            sim.masked_fill_(mask, torch.finfo(sim.dtype).min)
+            # attn_mask expected: [B, Tq, Tkv], True=valid
+            am = attn_mask[:, None, :, :]  # [B,1,Tq,Tkv], True=valid
+            full_mask = am if full_mask is None else (full_mask & am)
 
-        # Guard rows that are fully -inf (all keys masked)
-        row_has_key = torch.isfinite(sim).any(dim=-1, keepdim=True)  # (B,H,Tq,1)
-        sim = torch.where(row_has_key, sim, torch.zeros_like(sim))
+        row_has_key = None
+        if full_mask is not None:
+            row_has_key = full_mask.any(dim=-1, keepdim=True)  # [B,1,Tq,1]
 
-        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1).to(v.dtype)
-        attn = attn * row_has_key
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
 
-        # Zero invalid query steps defensively
+        if row_has_key is not None:
+            out = out * row_has_key.to(out.dtype)
+
         if q_mask is not None:
-            attn = attn.masked_fill(~q_mask[:, None, :, None], 0.0)
+            out = out.masked_fill(~q_mask[:, None, :, None], 0.0)
 
-        out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h n d -> b n (h d)")
-
         return self.out(out)
+
 
 # todo classic style builder
 class GatedXAttentionFactory:

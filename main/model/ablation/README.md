@@ -31,3 +31,7 @@ use_kd:  False
 > An ablation on a suboptimal but consistent config is still methodologically correct.
 
 We can use this to do ablation also locally on smaller batch size (supposing optimal b!=32)
+
+> Heuristic: require the ablation delta to be at least 2× the usual seed fluctuation
+
+Seed noise I get from my first train If I do 3 seeds and fluctuation is 0.01 that is my order of reference for ablation difference

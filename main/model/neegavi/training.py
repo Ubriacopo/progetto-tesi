@@ -260,7 +260,8 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             momentum_parameter.data.mul_(m).add_(model_parameter.data, alpha=1. - m)
 
     def on_fit_start(self) -> None:
-        self.init_moco()
+        if self.use_moco:
+            self.init_moco()
 
     def init_moco(self):
         self.momentum_student = copy.deepcopy(self.student)

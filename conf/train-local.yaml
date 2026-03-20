@@ -1,7 +1,7 @@
 defaults:
   - hydra-setup
-  - model: default
-  - trainer: default-local
+  - model: best
+  - trainer: best
   - teacher: default
 
 experiment: ???
