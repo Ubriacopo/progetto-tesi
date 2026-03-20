@@ -17,7 +17,7 @@ from main.model.loss import SiglipLoss, siglip_random_baseline
 from main.model.neegavi.moco import MoCoAble
 from main.model.neegavi.model import EegInterAviModel
 from main.model.neegavi.train_utils import KdTrainDataModule
-from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs,  \
+from main.model.neegavi.utils import EegBaseModelOutputs, WeaklySupervisedEegBaseModelOutputs, \
     retrieval_metrics_chunked
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
@@ -30,6 +30,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             teacher: MaskedContrastiveModel,
             datamodule: KdTrainDataModule,
             kd_loss_weight: float,
+            attention_layers: int,
             fusion_loss_weight: float,
             lr: float,
             weight_decay: float = 0.01,

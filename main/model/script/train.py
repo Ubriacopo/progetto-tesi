@@ -14,8 +14,6 @@ def main(cfg: KdConfig):
     lightning.seed_everything(cfg.seed, workers=True)
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
-    # TODO mettere accumulation e mini batch size in config
-    # cfg.trainer.batch_size = 16
 
     module = build_easy_eegavi_module(cfg)
     torchinfo.summary(module)
@@ -23,18 +21,13 @@ def main(cfg: KdConfig):
     module.datamodule.setup("")
     train_batches = module.datamodule.size("train")
 
-    model_name = "TODO"
+    model_name = "EEGAVI"
     profiling = False
     profiler = SimpleProfiler() if profiling else None
 
-    trainer = default_trainer(
-        epochs=40,
-        model_name=model_name,
-        profiler=profiler,
-        limit_train_batches=train_batches,
-        monitor_key="val/fused/mrr_mean",
-       # accumulate_grad_batches=2
-    )
+    trainer = default_trainer(epochs=40, model_name=model_name, profiler=profiler, limit_train_batches=train_batches,
+                              # TODO mettere accumulation e mini batch size in config
+                              monitor_key="val/fused/mrr_mean", accumulate_grad_batches=1)
 
     trainer.fit(module, datamodule=module.datamodule, ckpt_path=cfg.trainer.ckpt_path)
     if profiler is not None:

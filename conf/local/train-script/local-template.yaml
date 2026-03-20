@@ -1,14 +1,5 @@
-defaults:
-  - hydra-setup
-  - model: default
-  - trainer: default-local
-  - teacher: default
-
-experiment: ???
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
-
-seed: 42
 
 dataset_descriptors:
   - dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"
@@ -24,20 +15,4 @@ dataset_descriptors:
     cache_path: null
     dataset_weight: 227
 
-
-
-hydra:
-  job:
-    name: ${experiment}
-  run:
-    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
-
-  job_logging:
-    root:
-      handlers: [ console, file ]   # make sure both are used
-
-    handlers:
-      file:
-        class: logging.FileHandler
-        formatter: simple         # or "colorlog" if you really want ANSI codes in file
-        filename: ${hydra.runtime.output_dir}/job.log
+seed: 42

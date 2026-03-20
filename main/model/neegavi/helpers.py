@@ -22,6 +22,7 @@ def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> Ea
         # Student model has args of default factory call in input from YAML
         student=Factory.default(**cfg.model.factory.args).build(),
         teacher=teacher,
+        attention_layers=cfg.model.factory.args["attention_config"],
         datamodule=KdTrainDataModule(
             dataset_paths=cfg.dataset_descriptors,
             batch_size=cfg.trainer.batch_size,
