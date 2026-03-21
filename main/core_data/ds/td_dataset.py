@@ -4,6 +4,7 @@ import pandas as pd
 import tensordict
 from torch.utils.data import Dataset
 
+from main.core_data.media.assessment.assessment import Assessment
 from main.utils.logging import make_logger
 
 
@@ -24,7 +25,8 @@ class TdSegmentedExperimentDataset(Dataset):
 
     def __getitem__(self, idx: int):
         sample = self.df.iloc[idx].to_dict()
-        return tensordict.load_memmap(self.dataset_path / sample["experiment"])
+        td = tensordict.load_memmap(self.dataset_path / str(sample["experiment"]))
+        return td
 
     def __len__(self):
         return self.df.shape[0]
