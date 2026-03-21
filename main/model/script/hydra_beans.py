@@ -14,7 +14,6 @@ class TrainerConfig:
     epochs: int
     kd_loss_weight: float
     fusion_loss_weight: float
-    batches_per_epoch: int
     dl_start_index: int
     ckpt_path: str
     use_moco: bool

@@ -40,7 +40,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             use_moco: bool = False,
             momentum: float = .995,
             queue_size: int = 1024,
-            heavy_compute_interval: int = 10,
             batch_size=None,
             use_kd: bool = True,
             use_fusion: bool = True

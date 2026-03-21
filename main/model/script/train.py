@@ -21,7 +21,7 @@ def main(cfg: KdConfig):
     module.datamodule.setup("")
     train_batches = module.datamodule.size("train")
 
-    model_name = "EEGAVI"
+    model_name = "EEGAVI-" + str(cfg.seed)
     profiling = False
     profiler = SimpleProfiler() if profiling else None
 
