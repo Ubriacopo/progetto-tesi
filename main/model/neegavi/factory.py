@@ -12,11 +12,12 @@ from main.model.blocks.attention import AbstractAttentionBlock
 from main.model.blocks.dropout import ModalityDropout, BernoulliSupportsModalityDropout
 from main.model.blocks.kd import KDHead
 from main.model.blocks.modality_stream import ModalityStream
+from main.model.blocks.time_masked import TimeMaskSwitchableProperties
 from main.model.blocks.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
-    SimpleFeedForwardAdapter
+    SimpleFeedForwardAdapter, PerceiverResamplerConfig
 from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
-    ModalityConfig
+    ModalityConfig, PerceiverModalityConfig
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
 from main.utils.logging import make_logger
 
@@ -170,17 +171,32 @@ class Factory:
         return factory
 
     @staticmethod
-    def inference(
+    def best_inference(
             weights_path: str,
-            eeg_config: EegModalityConfig,
-            vid_config: KdPerceiverModalityConfig,
-            aud_config: KdPerceiverModalityConfig,
-            txt_config: KdPerceiverModalityConfig,
-            ecg_config: MaskedFeedForwardConfig,
-            attention_config: int | list[GatedXAttentionCustomArgs],
-            custom_config: EegInterAviModelConfiguration = None,
+            eeg_config: EegModalityConfig = EegModalityConfig(
+                in_size=200, out_size=384, channels=19, timestep_seconds=1
+            ),
+            vid_config: PerceiverModalityConfig = PerceiverModalityConfig(
+                in_size=768, out_size=384, timestep_seconds=4,
+                perceiver_resampler_config=PerceiverResamplerConfig(768, 2)
+            ),
+            aud_config: PerceiverModalityConfig = PerceiverModalityConfig(
+                in_size=768, out_size=384, timestep_seconds=4,
+                perceiver_resampler_config=PerceiverResamplerConfig(768, 2)
+            ),
+            txt_config: ModalityConfig = ModalityConfig(
+                in_size=384, out_size=384, timestep_seconds=4
+            ),
+            ecg_config: MaskedFeedForwardConfig = MaskedFeedForwardConfig(
+                in_size=256, out_size=384, timestep_seconds=4, mult=6
+            ),
+            attention_config: int | list[GatedXAttentionCustomArgs] = 6,
+            custom_config: EegInterAviModelConfiguration = EegInterAviModelConfiguration(
+                pivot_dim=384, support_dim=384, output_size=384,
+                modality=TimeMaskSwitchableProperties("causal")
+            ),
     ):
-        model = (
+        return (
             Factory()
             .config(custom_config)
             .attention(
@@ -224,5 +240,7 @@ class Factory:
         ckpt = torch.load(weights_path, map_location="cpu")
         model.load_state_dict(ckpt["state_dict"])
         model.eval()
+        # TODO Creare un training e un infer model cosi ora passo troppa roba scomoda
+
 
         return model

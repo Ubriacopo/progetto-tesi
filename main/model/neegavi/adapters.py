@@ -18,7 +18,7 @@ class PerceiverResamplerConfig:
     dim: int
     depth: int
     dim_head: int = 64
-    heads: int = 8
+    heads: int = 12
     num_latents: int = 64
     ff_mult: int = 4
 

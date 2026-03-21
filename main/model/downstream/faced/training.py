@@ -1,14 +1,16 @@
 import lightning
+import tensordict
 import torch
 import torch.nn.functional as F
 from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
 from torchmetrics.regression import PearsonCorrCoef
 
+from main.core_data.media.eeg import EEG
 from main.model.downstream.faced.model import FacedLinearProbe, FacedInput
 
 
 class FacedSupervisedInput(FacedInput):
-    labels: torch.Tensor  # [b, 12] (12 labels)
+    assessment: torch.Tensor  # [b, 12] (12 labels)
 
 
 # todo data dequantiazion in loader and not in train step?
@@ -19,6 +21,7 @@ class FacedProbeTrainer(lightning.LightningModule):
 
         self.val_pearson = PearsonCorrCoef(num_outputs=12)
         self.test_pearson = PearsonCorrCoef(num_outputs=12)
+        self.dequantize_keys = [EEG.modality_code()]
         self.save_hyperparameters(ignore=["model"])
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
@@ -29,9 +32,22 @@ class FacedProbeTrainer(lightning.LightningModule):
             )
         )
 
+    def dequantize(self, x: FacedSupervisedInput, dtype=torch.float16):
+        output: FacedSupervisedInput = {}
+        for key, td in x.items():
+            if key in self.dequantize_keys:
+                data = td["data"].to(dtype=dtype, non_blocking=True)
+                data.mul_(td["scales"])  # For optimization reasons (I dislike it)
+                td = {"data": data, "mask": td["mask"]}
+            output[key] = td
+        return tensordict.from_dict(output, batch_size=[4, 3])
+
     def training_step(self, batch: FacedSupervisedInput, batch_idx):
-        y = batch["labels"]
-        pred = self.model(batch)
+        y = batch["assessment"]
+
+        x = self.dequantize(batch)
+        pred = self.model(x)
+        # pred = [self.model(x) for i in x]
 
         # 12-d loss
         loss = F.mse_loss(pred, y)
@@ -40,8 +56,9 @@ class FacedProbeTrainer(lightning.LightningModule):
         return loss
 
     def validation_step(self, batch: FacedSupervisedInput, batch_idx) -> STEP_OUTPUT:
-        y = batch["labels"]
-        pred = self.model(batch)
+        y = batch["assessment"]
+        x = self.dequantize(batch)
+        pred = self.model(x)
 
         # 12-d loss
         loss = F.mse_loss(pred, y)
@@ -60,8 +77,9 @@ class FacedProbeTrainer(lightning.LightningModule):
         return loss
 
     def test_step(self, batch: FacedSupervisedInput, batch_idx):
-        y = batch["labels"]
-        pred = self.model(batch)
+        y = batch["assessment"]
+        x = self.dequantize(batch)
+        pred = self.model(x)
 
         # 12-d loss
         loss = F.mse_loss(pred, y)

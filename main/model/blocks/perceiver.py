@@ -9,7 +9,7 @@ from main.model.blocks.feed_forward import SimpleFeedForward
 
 
 class PerceiverAttention(nn.Module):
-    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
+    def __init__(self, dim: int, dim_head: int = 64, heads: int = 12):
         super().__init__()
         self.heads = heads
         self.scale = dim_head ** -0.5

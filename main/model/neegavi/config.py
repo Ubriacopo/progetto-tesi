@@ -20,7 +20,6 @@ class KdModalityConfig(ModalityConfig):
 class EegModalityConfig(ModalityConfig):
     channels: int
 
-
 @dataclasses.dataclass(frozen=True)
 class PerceiverModalityConfig(ModalityConfig):
     perceiver_resampler_config: PerceiverResamplerConfig
@@ -29,7 +28,7 @@ class PerceiverModalityConfig(ModalityConfig):
 @dataclasses.dataclass(frozen=True)
 class MaskedFeedForwardConfig(ModalityConfig):
     mult: int
-    dropout: float
+    dropout: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True)
