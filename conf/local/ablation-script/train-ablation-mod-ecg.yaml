@@ -4,11 +4,12 @@ defaults:
   - override /model: best
   - override /trainer: best
 
-experiment: ablation-kd-best
+experiment: ablation-ecg
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
 model:
   factory:
-    disabled_supports: [ ecg ]
+    args:
+      disabled_supports: [ ecg ]
 
