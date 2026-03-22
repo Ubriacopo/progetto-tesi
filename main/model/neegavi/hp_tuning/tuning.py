@@ -102,7 +102,7 @@ def make_trial_config(trial: optuna.Trial, cfg: TuningKdConfig, logger, search_s
     if cfg.use_trick and cfg.trick_batch_size <= batch_size and (attention_layers > 4 or batch_size >= 64):
         logger.info(f"Using accumulation trick for attention layers: {attention_layers}")
         # For me this is enough. No need to engineer a good solution.
-        factor = 2 if batch_size == 64 or batch_size == 32 else 8
+        factor = batch_size // 16  # Local amount I can handle
         batch_size = int(batch_size / factor)
         accumulation = factor  # We have to double the accumulation
         logger.info("Accumulation=" + str(accumulation))

@@ -1,7 +1,6 @@
 from typing import TypedDict, Optional
 
 import torch
-from pandas import notna
 from torch import nn
 
 from main.core_data.media.audio import Audio

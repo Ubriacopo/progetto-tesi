@@ -27,6 +27,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
             train_fraction: float = None,
             valid_fraction: float = None,
             test_fraction: float = None,
+            take_keys: list[str] = (),
     ):
         """
         :param student_keys: list of keys that appear in the student records as tensor_dicts
@@ -63,6 +64,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
         if self.valid_fraction is not None or self.test_fraction is not None:
             self.logger.warning("You have set fraction on test/validation sets. Beware of unwanted behaviours")
 
+        self.take_keys = take_keys
+
     def dequantize_keys(self) -> list[str]:
         return self._dequantize_keys
 
@@ -92,7 +95,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 buffer_size=self.batch_size * factor,
                 batch_size=self.batch_size,
                 iterator_id=it_id,
-                limit_data=self.train_fraction
+                limit_data=self.train_fraction,
+                take_keys=self.take_keys
             )
 
             train_samples = len(dataset)
@@ -107,7 +111,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 buffer_size=96,
                 batch_size=self.batch_size,
                 shuffle=False,
-                limit_data=self.valid_fraction
+                limit_data=self.valid_fraction,
+                take_keys=self.take_keys
             )
 
             val_samples = len(val_dataset)
@@ -123,7 +128,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                     block_size=32,
                     buffer_size=96,
                     batch_size=self.batch_size,
-                    limit_data=self.test_fraction
+                    limit_data=self.test_fraction,
+                    take_keys=self.take_keys
                 )
 
                 test_samples = len(test_ds)

@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.nn.functional import normalize, logsigmoid
+from torch.nn.functional import logsigmoid
 
 from main.utils.logging import make_logger
 
@@ -100,63 +100,6 @@ class SiglipLoss(nn.Module):
             return per_query_loss.mean()
 
         return loss_mat.sum(dim=-1).mean()
-
-
-class InfoNCE(nn.Module):
-    """
-    Calculates the InfoNCE loss for self-supervised learning.
-    This contrastive loss enforces the embeddings of similar (positive) samples to be close
-        and those of different (negative) samples to be distant.
-    A query embedding is compared with one positive key and with one or more negative keys.
-
-    References:
-        https://arxiv.org/abs/1807.03748v2
-        https://arxiv.org/abs/2010.05113
-
-    Args:
-        temperature: Logits are divided by temperature before calculating the cross entropy.
-        reduction: Reduction method applied to the output.
-            Value must be one of ['none', 'sum', 'mean'].
-            See torch.nn.functional.cross_entropy for more details about each option.
-        negative_mode: Determines how the (optional) negative_keys are handled.
-            Value must be one of ['paired', 'unpaired'].
-            If 'paired', then each query sample is paired with a number of negative keys.
-            Comparable to a triplet loss, but with multiple negatives per sample.
-            If 'unpaired', then the set of negative keys are all unrelated to any positive key.
-
-    Input shape:
-        query: (N, D) Tensor with query samples (e.g. embeddings of the input).
-        positive_key: (N, D) Tensor with positive samples (e.g. embeddings of augmented input).
-        negative_keys (optional): Tensor with negative samples (e.g. embeddings of other inputs)
-            If negative_mode = 'paired', then negative_keys is a (N, M, D) Tensor.
-            If negative_mode = 'unpaired', then negative_keys is a (M, D) Tensor.
-            If None, then the negative keys for a sample are the positive keys for the other samples.
-
-    Returns:
-         Value of the InfoNCE Loss.
-
-     Examples:
-        >>> loss = InfoNCE()
-        >>> batch_size, num_negative, embedding_size = 32, 48, 128
-        >>> query = torch.randn(batch_size, embedding_size)
-        >>> positive_key = torch.randn(batch_size, embedding_size)
-        >>> negative_keys = torch.randn(num_negative, embedding_size)
-        >>> output = loss(query, positive_key, negative_keys)
-    """
-
-    def __init__(self, temperature=0.05, reduction='mean', negative_mode='unpaired'):
-        super().__init__()
-        self.temperature = temperature
-        self.reduction = reduction
-        self.negative_mode = negative_mode
-
-    def forward(self, query, positive_key, negative_keys=None):
-        return info_nce(query, positive_key, negative_keys, temperature=self.temperature,
-                        reduction=self.reduction, negative_mode=self.negative_mode)
-
-
-def transpose(x):
-    return x.transpose(-2, -1)
 
 
 def masked_cosine_similarity(za: Tensor, zb: Tensor, present: Tensor):

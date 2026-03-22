@@ -18,9 +18,11 @@ def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> Ea
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
 
+    student = Factory.default(**cfg.model.factory.args).build()
+
     return EasyEegAviKdVateMaskedModule(
         # Student model has args of default factory call in input from YAML
-        student=Factory.default(**cfg.model.factory.args).build(),
+        student=student,
         teacher=teacher,
         attention_layers=cfg.model.factory.args["attention_config"],
         datamodule=KdTrainDataModule(
@@ -29,7 +31,9 @@ def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> Ea
             seed=cfg.data_seed,
             dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
             restore_iteration=None,
-            train_fraction=train_data_frac
+            train_fraction=train_data_frac,
+            # todo verify
+            take_keys=[student.pivot.code] + student.fusion_keys()
         ),
         batch_size=cfg.trainer.batch_size,
         use_kd=cfg.trainer.use_kd,
