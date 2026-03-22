@@ -24,7 +24,7 @@ def main(cfg: KdConfig):
     model_name = "EEGAVI-" + str(cfg.seed)
     profiling = False
     profiler = SimpleProfiler() if profiling else None
-
+    logger.info(f"Working with seed={cfg.seed} and data_seed={cfg.data_seed}")
     trainer = default_trainer(epochs=40, model_name=model_name, profiler=profiler, limit_train_batches=train_batches,
                               # TODO mettere accumulation e mini batch size in config
                               monitor_key="val/fused/mrr_mean", accumulate_grad_batches=1)
@@ -33,6 +33,7 @@ def main(cfg: KdConfig):
     if profiler is not None:
         logger.info(profiler.summary())
 
+    logger.info("Finished training")
 
 if __name__ == "__main__":
     main()

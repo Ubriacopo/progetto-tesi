@@ -25,7 +25,7 @@ args:
   txt_config: ${...supports.txt.config}
   ecg_config: ${...supports.ecg.config}
 
-  attention_config: 2
+  attention_config: 6
   # Args for the construction of the EegInterAviModel
   custom_config: ${model.custom_config}
 

@@ -437,7 +437,12 @@ class RoundRobinBatchMultiDataset(IterableDataset):
 
     def __iter__(self):
         g = torch.Generator()
-        seed = (torch.initial_seed() + self.seed) % 2 ** 32
+
+        # Ablations consistently take same data this way (If they use a fixed data seed)
+        worker_info = torch.utils.data.get_worker_info()
+        worker_id = worker_info.id if worker_info is not None else 0
+        seed = (worker_id + self.seed) % 2 ** 32
+
         g.manual_seed(seed)
 
         iters = [iter(ds) for ds in self.datasets]
