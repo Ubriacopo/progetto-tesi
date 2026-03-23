@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import torch
 from torch import nn
 
 from main.core_data.media.audio import Audio
@@ -172,7 +171,6 @@ class Factory:
 
     @staticmethod
     def best_inference(
-            weights_path: str,
             eeg_config: EegModalityConfig = EegModalityConfig(
                 in_size=200, out_size=384, channels=19, timestep_seconds=1
             ),
@@ -195,8 +193,9 @@ class Factory:
                 pivot_dim=384, support_dim=384, output_size=384,
                 modality=TimeMaskSwitchableProperties("causal")
             ),
+            disabled_supports: set[str] = None
     ):
-        return (
+        factory = (
             Factory()
             .config(custom_config)
             .attention(
@@ -234,13 +233,10 @@ class Factory:
                     ecg_config.in_size, ecg_config.out_size, mult=ecg_config.mult, dropout=ecg_config.dropout
                 ),
                 config=ecg_config
-            ).build()
+            )
         )
 
-        ckpt = torch.load(weights_path, map_location="cpu")
-        model.load_state_dict(ckpt["state_dict"])
-        model.eval()
-        # TODO Creare un training e un infer model cosi ora passo troppa roba scomoda
+        for disabled_support_code in disabled_supports:
+            factory.disabled(disabled_support_code)
 
-
-        return model
+        return factory

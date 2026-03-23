@@ -113,10 +113,16 @@ def retrieval_metrics_chunked(
     alignment = sim_diag_sum / n
     margin = margin_sum / n
 
-    return {
-        "mrr": mrr,
-        "recalls": recalls,
-        "mean_r": mean_r,
-        "alignment": alignment,
-        "margin": margin,
-    }
+    return {"mrr": mrr, "recalls": recalls, "mean_r": mean_r, "alignment": alignment, "margin": margin, }
+
+
+def get_model_ckpt(weights_path: str, check_path: str = "student."):
+    ckpt = torch.load(weights_path, map_location="cpu")
+    my_ckpt = dict()
+
+    for key, value in ckpt["state_dict"].items():
+        if key.startswith(check_path):
+            my_ckpt[key[len(check_path):]] = value
+
+    return my_ckpt
+
