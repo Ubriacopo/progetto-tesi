@@ -193,7 +193,7 @@ class Factory:
                 pivot_dim=384, support_dim=384, output_size=384,
                 modality=TimeMaskSwitchableProperties("causal")
             ),
-            disabled_supports: set[str] = None
+            disabled_supports: set[str] = ()
     ):
         factory = (
             Factory()
