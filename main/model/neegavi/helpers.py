@@ -53,7 +53,7 @@ def default_trainer(epochs: int, model_name: str, profiler, limit_train_batches:
         logger=TensorBoardLogger("tb_logs", name=model_name, version=version),
         callbacks=[
             RichProgressBar(),
-            EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=20, mode="max", verbose=True),
+            EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=8, mode="max", verbose=True),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename="epoch{epoch}-step{step}",

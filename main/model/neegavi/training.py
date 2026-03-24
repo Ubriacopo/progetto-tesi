@@ -27,12 +27,12 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def __init__(
             self,
             student: EegInterAviModel,
-            teacher: MaskedContrastiveModel,
+            teacher: Optional[MaskedContrastiveModel],
             datamodule: KdTrainDataModule,
-            kd_loss_weight: float,
-            attention_layers: int,
-            fusion_loss_weight: float,
-            lr: float,
+            kd_loss_weight: float = 0.5,
+            attention_layers: int = 6,
+            fusion_loss_weight: float = 1.0,
+            lr: float = 3e-4,
             weight_decay: float = 0.01,
             max_warmup_steps: int = 1000,
             seed: int = 1,
@@ -55,18 +55,25 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             self.siglip_losses.add_module(fusion_metric, loss_fn)
 
         self.kd_losses: nn.ModuleDict = nn.ModuleDict()
-        for kd_key in teacher.keys:
-            loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
-            self.kd_losses.add_module(kd_key, loss_fn)
+        if teacher is not None:
+            for kd_key in teacher.keys:
+                loss_fn = SiglipLoss(init_tau=0.05, init_bias=-10, stop_grad_target=True)
+                self.kd_losses.add_module(kd_key, loss_fn)
 
         self.time_mask_switch_generator = torch.Generator()
         self.time_mask_switch_generator.manual_seed(seed)
         self.inner_logger = make_logger(self.__class__.__name__)
 
         self.student: EegInterAviModel = student
-        self.teacher: MaskedContrastiveModel = teacher
+        self.teacher: Optional[MaskedContrastiveModel] = teacher
 
         self._validation_pairs = {}
+        self.momentum_student: EegInterAviModel | None = None
+        if self.use_moco:
+            self.momentum_student = copy.deepcopy(self.student)
+            self.momentum_student.eval()
+            for parameter in self.momentum_student.parameters():
+                parameter.requires_grad_(False)
 
         self.momentum_student: EegInterAviModel | None = None
         self.save_hyperparameters(ignore=[
@@ -146,7 +153,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         with torch.inference_mode():
             teacher_out: Optional[MaskedContrastiveModelOutputs] = None
-            if self.use_kd:
+            if self.use_kd and self.teacher is not None:
                 teacher_out = self.teacher(batch["teacher"])
 
             if self.use_moco and self.momentum_student is not None:
@@ -165,7 +172,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         with torch.inference_mode():
             teacher_out: Optional[MaskedContrastiveModelOutputs] = None
-            if self.use_kd:
+            if self.use_kd and self.teacher is not None:
                 # Calculate teacher embeddings only if we use them of course
                 teacher_out = self.teacher(batch["teacher"])
 
@@ -258,16 +265,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         m = self.momentum
         for model_parameter, momentum_parameter in zip(self.student.parameters(), self.momentum_student.parameters()):
             momentum_parameter.data.mul_(m).add_(model_parameter.data, alpha=1. - m)
-
-    def on_fit_start(self) -> None:
-        if self.use_moco:
-            self.init_moco()
-
-    def init_moco(self):
-        self.momentum_student = copy.deepcopy(self.student)
-        self.momentum_student.eval()
-        for parameter in self.momentum_student.parameters():
-            parameter.requires_grad_(False)
 
     def compute_kd_loss(self,
                         student_out: dict[str, MaskedValue],

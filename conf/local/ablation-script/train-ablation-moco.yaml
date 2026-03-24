@@ -1,6 +1,6 @@
 # @package _global_
 defaults:
-  - /train-local
+  - /train-local-defaults
   - override /model: best
   - override /trainer: best
 
