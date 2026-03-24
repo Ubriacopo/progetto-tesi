@@ -1,8 +1,11 @@
 import dataclasses
 
+from main.core_data.media.assessment.assessment import AssessmentLabels
+from main.core_data.media.assessment.config import ScoreLabelsConfig
 from main.core_data.media.eeg.config import EegSourceConfig
 from main.core_data.media.video.config import VidSourceConfig
 from main.dataset.base_config import DatasetConfig
+
 
 @dataclasses.dataclass
 class DeapEegSourceConfig(EegSourceConfig):
@@ -16,6 +19,22 @@ class DeapEegSourceConfig(EegSourceConfig):
     OTHER_CHANNELS: list[str] = dataclasses.field(default_factory=lambda: [
         "hEOG", "vEOG", "zEMG", "tEMG", "GSR", "Respiration belt", "Plethysmograph", "Temperature"
     ])
+
+
+@dataclasses.dataclass
+class DeapScoreLabelsConfig(ScoreLabelsConfig):
+    labels: list[str] = dataclasses.field(default_factory=lambda: [
+        AssessmentLabels.VALENCE,
+        AssessmentLabels.AROUSAL,
+        AssessmentLabels.DOMINANCE,
+        AssessmentLabels.LIKING,
+        AssessmentLabels.FAMILIARITY
+    ])
+
+    scales: list[str] = dataclasses.field(default_factory=lambda: [
+        ((1., 9.),) * 4 + ((1., 5.),) # todo verifica
+    ])
+
 
 @dataclasses.dataclass
 class DeapConfig(DatasetConfig):

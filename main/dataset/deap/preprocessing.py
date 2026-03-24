@@ -1,4 +1,8 @@
+from torch import nn
+
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
+from main.core_data.media.assessment.assessment import Assessment, AssessmentLabels
+from main.core_data.media.assessment.transform import AssessmentToTensor, RescaleAssessmentValue
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
 from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
@@ -6,6 +10,7 @@ from main.core_data.media.video.default_transform_pipe import vid_vivit_interlea
     vid_vate_basic_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor, \
     TorchExportsKdSegmentsReadyPreprocessor
+from main.core_data.sampler import FixedIntervalsSegmenter
 from main.dataset.deap.config import DeapConfig
 
 
@@ -25,6 +30,32 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
             eeg_sample_pipeline(config)
         ),
         extraction_data_folder=extraction_data_folder
+    )
+
+
+def interleaved_downstream_preprocessor(output_path: str, extraction_data_folder: str, config: DeapConfig):
+    return TorchExportsSegmentsReadyPreprocessor(
+        output_path=output_path,
+        segment_pipeline=FlexibleDatasetTransformWrapper(
+            "segment_interleaved_downstream_preprocessor",
+            eeg_transform_pipe(config),
+            vid_vivit_interleaved_transform_pipe(config),
+            # todo familairty rescaling to 1-9, also sort so tht it is like amigos
+            (
+                Assessment.modality_code(),
+                nn.Sequential(
+                    RescaleAssessmentValue(AssessmentLabels.FAMILIARITY, (1., 9.)),
+                    AssessmentToTensor()
+                ),
+
+            ),
+            (Metadata.modality_code(), MetadataToTensor())
+        ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_downstream_preprocessor",
+            eeg_sample_pipeline(config)
+        ),
+        segmenter=FixedIntervalsSegmenter(12)
     )
 
 

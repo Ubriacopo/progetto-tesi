@@ -18,12 +18,28 @@ class AssessmentLabels:
     FEAR: Final[str] = "fear"
     SADNESS: Final[str] = "sadness"
 
+    @classmethod
+    def default_order(cls):
+        return [
+            cls.AROUSAL,
+            cls.VALENCE,
+            cls.DOMINANCE,
+            cls.LIKING,
+            cls.FAMILIARITY,
+            cls.NEUTRAL,
+            cls.DISGUST,
+            cls.HAPPINESS,
+            cls.SURPRISE,
+            cls.ANGER,
+            cls.FEAR,
+            cls.SADNESS
+        ]
 
 
 @dataclasses.dataclass
 class Assessment(Media):
-    scales: set[tuple[int | float, int | float]]
-    labels: set[str]
+    scales: list[tuple[int | float, int | float]]
+    labels: list[str]
 
     @staticmethod
     def modality_code() -> str:

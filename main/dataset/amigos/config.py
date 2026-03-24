@@ -52,7 +52,7 @@ class AmigosEcgSourceConfig(EcgSourceConfig):
 
 @dataclasses.dataclass
 class AmigosScoreLabels(ScoreLabelsConfig):
-    labels: set[str] = dataclasses.field(default_factory=lambda: [
+    labels: list[str] = dataclasses.field(default_factory=lambda: [
         # (1-9)
         AssessmentLabels.AROUSAL,
         AssessmentLabels.VALENCE,
@@ -69,7 +69,7 @@ class AmigosScoreLabels(ScoreLabelsConfig):
         AssessmentLabels.SADNESS
     ])
 
-    scales: set[tuple[int | float, int | float]] = dataclasses.field(default_factory=lambda: [
+    scales: list[tuple[int | float, int | float]] = dataclasses.field(default_factory=lambda: [
         ((0., 9.),) * 5 + ((0, 1),) * 7  # (1-9) + (0-9)
     ])
 
