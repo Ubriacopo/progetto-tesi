@@ -10,3 +10,4 @@ teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.
 
 trainer:
   use_kd: False
+  use_moco: False
