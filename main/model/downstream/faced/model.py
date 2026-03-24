@@ -17,7 +17,6 @@ class FacedLinearProbe(nn.Module):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
         super(FacedLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
-        self.pool = nn.AvgPool2d()
         self.head: nn.Module = nn.Linear(in_dim, out_dim)
 
     def forward(self, x: TensorDict) -> torch.Tensor:

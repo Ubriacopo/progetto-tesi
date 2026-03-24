@@ -10,6 +10,7 @@ from moviepy import VideoFileClip
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
+from main.core_data.media.assessment.assessment import Assessment
 from main.core_data.media.audio.audio import Audio
 from main.core_data.media.ecg.ecg import ECG
 from main.core_data.media.eeg import EEG
@@ -24,11 +25,10 @@ from main.dataset.utils import DatasetUidStore
 class AmigosPointsLoader(DataPointsLoader):
     DATASET_ID: int = 0
 
-    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore):
+    def __init__(self, base_path: str, dataset_uid_store: DatasetUidStore, config: AmigosConfig = AmigosConfig()):
         super().__init__(dataset_uid_store)
         self.base_path: str = base_path
-        self.config = AmigosConfig()
-
+        self.config = config
         self.face_video_folder: str = self.base_path + "face/"
 
     def __len__(self) -> int:
@@ -60,6 +60,8 @@ class AmigosPointsLoader(DataPointsLoader):
 
                 video_index = np.where(participant_data[person]["VideoIDs"] == video_id)[0]
                 eeg_data = participant_data[person]["joined_data"][video_index]
+                # Sorted they are A/V/D/L (1-9) + 8 emotions (1/0)
+                assessment = participant_data[person]["labels_selfassessment"][video_index][0]
 
                 media_path: str = str(v.resolve())
                 clip = VideoFileClip(media_path)
@@ -82,16 +84,28 @@ class AmigosPointsLoader(DataPointsLoader):
                 yield FlexibleDatasetPoint(
                     nei,
                     EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq'], ).as_mod_tuple(),
-                    ECG(eid=nei,
+                    ECG(
+                        eid=nei,
                         data=raw.copy().pick(["ecg"]), fs=eeg_fs,
                         leads=self.config.ecg_source_config.LEAD_NAMES,
                         patient_gender=next(iter(user_metadata["Gender"].values())).upper(),
-                        patient_age=next(iter(user_metadata["Age"].values())), ).as_mod_tuple(),
-                    Video(data=clip, fps=clip.fps, resolution=clip.size, eid=nei,
-                          filepath=media_path).as_mod_tuple(),
+                        patient_age=next(iter(user_metadata["Age"].values())),
+                    ).as_mod_tuple(),
+                    Video(
+                        eid=nei,
+                        data=clip,
+                        fps=clip.fps,
+                        resolution=clip.size,
+                        filepath=media_path
+                    ).as_mod_tuple(),
                     Audio(data=clip.audio, fs=clip.audio.fps, eid=nei, filepath=media_path).as_mod_tuple(),
                     Text(eid=nei, data=clip.audio.copy(), base_audio=clip.audio.copy()).as_mod_tuple(),
-                    # Assessment(data=assessments[0][0], eid=nei).as_mod_tuple(), no longer of use
+                    Assessment(
+                        eid=nei,
+                        data=assessment,
+                        labels=self.config.score_labels_config.labels,
+                        scales=self.config.score_labels_config.scales
+                    ).as_mod_tuple(),
                     Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )
 

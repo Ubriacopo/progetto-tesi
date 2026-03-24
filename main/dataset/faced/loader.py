@@ -58,6 +58,6 @@ class FacedPointsLoader(DataPointsLoader):
                     nei,
                     EEG(eid=nei, data=raw, fs=raw.info['sfreq']).as_mod_tuple(),
                     Assessment(eid=nei, data=experiment_scores, labels=self.config.score_labels.labels,
-                               rating_scales=self.config.score_labels.rating_scales).as_mod_tuple(),
+                               scales=self.config.score_labels.rating_scales).as_mod_tuple(),
                     Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                 )

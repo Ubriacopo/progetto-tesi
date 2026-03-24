@@ -5,8 +5,7 @@ from torchvision.transforms import v2
 
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
 from main.core_data.media.assessment.assessment import Assessment
-from main.core_data.media.assessment.transform import SliceAssessments, ToTensorData, \
-    PermuteAssessments
+from main.core_data.media.assessment.transform import AssessmentToTensor
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
 from main.core_data.media.ecg.default_transform_pipe import ecg_interleaved_transform_pipe
@@ -21,26 +20,19 @@ from main.core_data.media.video.default_transform_pipe import vid_vivit_interlea
     vid_vate_basic_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor, \
     TorchExportsKdSegmentsReadyPreprocessor
+from main.core_data.sampler import FixedIntervalsSegmenter
 from main.dataset.amigos.config import AmigosConfig
-
-
-def assessment_transform_pipe():
-    return Assessment.modality_code(), nn.Sequential(
-        SliceAssessments(max_idx=4),  # Pick first 4 dimensions that we know are correct
-        ToTensorData(),  # Go for tensor structure
-        # todo: Ho start e stop per amigos quindi assessment cambia!
-        PermuteAssessments(original_order="a v d l")  # Sort them to canonical order. Used notation like einops.
-    )
 
 
 def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: AmigosConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
+        extraction_data_folder=extraction_data_folder,
         segment_pipeline=FlexibleDatasetTransformWrapper(
             "interleaved_preprocessor",
+            eeg_transform_pipe(config),
             aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
             vid_vivit_interleaved_transform_pipe(config),
-            eeg_transform_pipe(config),
             ecg_interleaved_transform_pipe(config),
             txt_from_aud_interleaved_txt_extract_transform_pipe(config),
             (Assessment.modality_code(), nn.Sequential(v2.Lambda(lambda x: x.data))),
@@ -52,7 +44,29 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
             # assessment_transform_pipe(),
             eeg_sample_pipeline(config)
         ),
-        extraction_data_folder=extraction_data_folder
+    )
+
+
+def interleaved_downstream_preprocessor(output_path: str, extraction_data_folder: str, config: AmigosConfig):
+    return TorchExportsSegmentsReadyPreprocessor(
+        output_path=output_path,
+        # extraction_data_folder=extraction_data_folder,
+        segment_pipeline=FlexibleDatasetTransformWrapper(
+            "segment_interleaved_downstream_preprocessor",
+            eeg_transform_pipe(config),
+            aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
+            vid_vivit_interleaved_transform_pipe(config),
+            ecg_interleaved_transform_pipe(config),
+            txt_from_aud_interleaved_txt_extract_transform_pipe(config),
+            (Assessment.modality_code(), AssessmentToTensor()),
+            (Metadata.modality_code(), MetadataToTensor())
+        ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_downstream_preprocessor",
+            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
+            eeg_sample_pipeline(config)
+        ),
+        segmenter=FixedIntervalsSegmenter(12)
     )
 
 

@@ -78,8 +78,6 @@ class Preprocessor(ABC, Generic[T]):
 class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
     def __init__(self,
                  output_path: str,
-                 # Specs folder to give todo pssare anche segmenter come opzione?
-                 # In order to work with EEG data
                  segment_pipeline: FlexibleDatasetTransformWrapper,
                  sample_pipeline: Optional[FlexibleDatasetTransformWrapper] = None,
                  extraction_data_folder: str = None,

@@ -1,12 +1,29 @@
 import dataclasses
+from typing import Final
 
 from main.core_data.media import Media
 
 
+class AssessmentLabels:
+    AROUSAL: Final[str] = "arousal"
+    VALENCE: Final[str] = "valence"
+    DOMINANCE: Final[str] = "dominance"
+    LIKING: Final[str] = "liking"
+    FAMILIARITY: Final[str] = "familiarity"
+    NEUTRAL: Final[str] = "neutral"
+    DISGUST: Final[str] = "disgust"
+    HAPPINESS: Final[str] = "happiness"
+    SURPRISE: Final[str] = "surprise"
+    ANGER: Final[str] = "anger"
+    FEAR: Final[str] = "fear"
+    SADNESS: Final[str] = "sadness"
+
+
+
 @dataclasses.dataclass
 class Assessment(Media):
-    rating_scales: list[tuple[int | float, int | float]]
-    labels: list[str]
+    scales: set[tuple[int | float, int | float]]
+    labels: set[str]
 
     @staticmethod
     def modality_code() -> str:

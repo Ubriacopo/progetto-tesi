@@ -2,6 +2,8 @@ import dataclasses
 
 import numpy as np
 
+from main.core_data.media.assessment.assessment import AssessmentLabels
+from main.core_data.media.assessment.config import ScoreLabelsConfig
 from main.core_data.media.audio.config import AudSourceConfig
 from main.core_data.media.ecg.config import EcgSourceConfig
 from main.core_data.media.ecg.ecg import ECG
@@ -22,6 +24,7 @@ class AmigosEegSourceConfig(EegSourceConfig):
     OTHER_CHANNELS: list[str] = dataclasses.field(default_factory=lambda: ["GSR"])
 
 
+@dataclasses.dataclass
 class AmigosEcgSourceConfig(EcgSourceConfig):
     @staticmethod
     def prepare_ecg(ecg: ECG) -> ECG:
@@ -48,6 +51,30 @@ class AmigosEcgSourceConfig(EcgSourceConfig):
 
 
 @dataclasses.dataclass
+class AmigosScoreLabels(ScoreLabelsConfig):
+    labels: set[str] = dataclasses.field(default_factory=lambda: [
+        # (1-9)
+        AssessmentLabels.AROUSAL,
+        AssessmentLabels.VALENCE,
+        AssessmentLabels.DOMINANCE,
+        AssessmentLabels.LIKING,
+        AssessmentLabels.FAMILIARITY,
+        # (0/1)
+        AssessmentLabels.NEUTRAL,
+        AssessmentLabels.DISGUST,
+        AssessmentLabels.HAPPINESS,
+        AssessmentLabels.SURPRISE,
+        AssessmentLabels.ANGER,
+        AssessmentLabels.FEAR,
+        AssessmentLabels.SADNESS
+    ])
+
+    scales: set[tuple[int | float, int | float]] = dataclasses.field(default_factory=lambda: [
+        ((0., 9.),) * 5 + ((0, 1),) * 7  # (1-9) + (0-9)
+    ])
+
+
+@dataclasses.dataclass
 class AmigosConfig(DatasetConfig):
     eeg_source_config: AmigosEegSourceConfig = dataclasses.field(default_factory=AmigosEegSourceConfig)
     aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100))
@@ -57,3 +84,4 @@ class AmigosConfig(DatasetConfig):
         default_factory=lambda: AmigosEcgSourceConfig(LEAD_NAMES=["II", "III"])
     )
     txt_source_config: TxtSourceConfig = dataclasses.field(default_factory=TxtSourceConfig)
+    score_labels_config: AmigosScoreLabels = dataclasses.field(default_factory=lambda: AmigosScoreLabels())
