@@ -17,10 +17,6 @@ class MoCoAble(ABC, lightning.LightningModule):
         self.queue_ptr = {}  # key -> 0-dim long buffer
 
     @abstractmethod
-    def init_moco(self):
-        pass
-
-    @abstractmethod
     def moco_momentum_update(self):
         pass
 
