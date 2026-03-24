@@ -75,7 +75,6 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             for parameter in self.momentum_student.parameters():
                 parameter.requires_grad_(False)
 
-        self.momentum_student: EegInterAviModel | None = None
         self.save_hyperparameters(ignore=[
             "datamodule", "student", "teacher", "fusion_metrics", "queue_ptr", "moco_queue", "momentum_out"
         ])
