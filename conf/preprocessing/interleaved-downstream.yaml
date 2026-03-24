@@ -1,0 +1,7 @@
+out_folder_name: interleaved-downstream
+
+extraction_data_folder: ${base_path}EEGAVI/${dataset.DATASETNAME}/extraction-data/
+preprocessing_pipeline: main.dataset.${dataset.name}.preprocessing.interleaved_downstream_preprocessor
+
+output_path: ${base_path}EEGAVI/${dataset.DATASETNAME}/${.out_folder_name}/
+output_max_length: 32
