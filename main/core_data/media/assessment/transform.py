@@ -32,8 +32,7 @@ class RescaleAssessmentValue(nn.Module):
 
         x.scales[idx] = self.rescale_range
         c, d = self.rescale_range
-        # todo prova
-        # Rescale the
+
         start_x = x.data[idx]
         new_x = c + ((start_x - a) * (d - c)) / (b - a)
         if type(c) is int and type(d) is int:
