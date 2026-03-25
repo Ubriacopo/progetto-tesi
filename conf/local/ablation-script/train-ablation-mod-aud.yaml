@@ -13,3 +13,5 @@ model:
     args:
       disabled_supports: [ aud ]
 
+trainer:
+  use_moco: False

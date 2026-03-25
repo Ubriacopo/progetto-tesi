@@ -130,7 +130,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
                     num_warmup_steps=min(self.hparams.max_warmup_steps,
                                          int(self.trainer.estimated_stepping_batches * 0.05)),  # 5 %
                     num_training_steps=self.trainer.estimated_stepping_batches,
-                )
+                ),
             )
         }
 

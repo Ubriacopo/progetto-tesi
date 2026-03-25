@@ -13,3 +13,5 @@ model:
     args:
       disabled_supports: [ txt ]
 
+trainer:
+  use_moco: False

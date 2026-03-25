@@ -13,3 +13,5 @@ model:
     args:
       disabled_supports: [ ecg ]
 
+trainer:
+  use_moco: False
