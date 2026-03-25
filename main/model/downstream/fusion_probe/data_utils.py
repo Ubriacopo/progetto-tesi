@@ -5,7 +5,6 @@ import lightning
 import numpy as np
 import pandas as pd
 import tensordict
-from lightning.pytorch.utilities.types import TRAIN_DATALOADERS, EVAL_DATALOADERS
 from tensordict import TensorDict
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
 
@@ -14,9 +13,19 @@ from main.utils.logging import make_logger
 
 
 # todo probabilemnte dovro usare ancorea h5py
+#   todo ricicla in ogni caso questo tipo di struttur che è comoda (parlo di add_dataset + collates x tipo)
 class LinearProbeDataModule(lightning.LightningDataModule):
     @staticmethod
     def collate_fn(batch: list[TensorDict]):
+        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:15] for b in batch]
+        for td in batch:
+            # Only take the first 5 (V/A/D/L/F) because the train dataset (AMIGOS) has more
+            td["assessment", "scores"] = td["assessment", "scores"][:, :5]
+
+        return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
+
+    @staticmethod
+    def test_collate_fn(batch: list[TensorDict]):
         batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:15] for b in batch]
         return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
 
@@ -94,7 +103,7 @@ class LinearProbeDataModule(lightning.LightningDataModule):
         return DataLoader(
             self.test_dataset,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self.test_collate_fn,
             num_workers=1,
             prefetch_factor=1,
             persistent_workers=True,
