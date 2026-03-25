@@ -31,9 +31,9 @@ class DeapScoreLabelsConfig(ScoreLabelsConfig):
         AssessmentLabels.FAMILIARITY
     ])
 
-    scales: list[str] = dataclasses.field(default_factory=lambda: [
-        ((1., 9.),) * 4 + ((1., 5.),) # todo verifica
-    ])
+    scales: list[tuple[int | float, int | float]] = dataclasses.field(
+        default_factory=lambda: list(((1., 9.),) * 4 + ((1., 5.),))
+    )
 
 
 @dataclasses.dataclass
@@ -41,3 +41,4 @@ class DeapConfig(DatasetConfig):
     eeg_source_config: DeapEegSourceConfig = dataclasses.field(default_factory=DeapEegSourceConfig)
     # aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100)) Deap has no audio
     vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=24))
+    score_labels_config: DeapScoreLabelsConfig = dataclasses.field(default_factory=lambda: DeapScoreLabelsConfig())

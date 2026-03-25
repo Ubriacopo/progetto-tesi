@@ -8,6 +8,7 @@ from moviepy import VideoFileClip
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
+from main.core_data.media.assessment.assessment import Assessment
 from main.core_data.media.eeg import EEG
 from main.core_data.media.metadata.metadata import Metadata, MetaObject
 from main.core_data.media.video import Video
@@ -68,10 +69,21 @@ class DeapPointsLoader(DataPointsLoader):
                         experiment=nei, dataset_id=self.DATASET_ID, person_id=int(uid.split("s")[1]), trial=idx
                     )
 
+                    target_length = 5
+                    if len(labels) < target_length:
+                        # Has to match the 5D. Some people are missing Familiarity
+                        labels = np.pad(labels, (0, target_length - len(labels)), constant_values=np.nan)
+
                     yield FlexibleDatasetPoint(
                         nei,
                         EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
                         Video(eid=nei, data=clip, fps=fps, resolution=clip.size, filepath=media_path).as_mod_tuple(),
+                        Assessment(
+                            eid=nei,
+                            data=labels,
+                            labels=self.config.score_labels_config.labels,
+                            scales=self.config.score_labels_config.scales,
+                        ).as_mod_tuple(),
                         Metadata(eid=nei, data=asdict(metadata)).as_mod_tuple()
                     )
 
