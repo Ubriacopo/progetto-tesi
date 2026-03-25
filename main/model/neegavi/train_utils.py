@@ -177,7 +177,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.valid_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=1,
+            num_workers=2,
             prefetch_factor=1,
             persistent_workers=True,
             pin_memory=False
