@@ -4,7 +4,6 @@ import pandas as pd
 import tensordict
 from torch.utils.data import Dataset
 
-from main.core_data.media.assessment.assessment import Assessment
 from main.utils.logging import make_logger
 
 
