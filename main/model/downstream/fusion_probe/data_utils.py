@@ -17,7 +17,7 @@ from main.utils.logging import make_logger
 class LinearProbeDataModule(lightning.LightningDataModule):
     @staticmethod
     def collate_fn(batch: list[TensorDict]):
-        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:15] for b in batch]
+        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:10] for b in batch]
         for td in batch:
             # Only take the first 5 (V/A/D/L/F) because the train dataset (AMIGOS) has more
             td["assessment", "scores"] = td["assessment", "scores"][:, :5]
@@ -26,7 +26,7 @@ class LinearProbeDataModule(lightning.LightningDataModule):
 
     @staticmethod
     def test_collate_fn(batch: list[TensorDict]):
-        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:15] for b in batch]
+        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:10] for b in batch]
         return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
 
     def __init__(self, seed: int, batch_size: int):

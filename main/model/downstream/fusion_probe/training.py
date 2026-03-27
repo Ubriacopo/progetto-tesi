@@ -50,10 +50,10 @@ class FusionProbeTrainer(lightning.LightningModule):
                 td = {"data": data, "mask": td["mask"]}
             output[key] = td
             # todo pass
-        return tensordict.from_dict(output, batch_size=[32, 15])
+        return tensordict.from_dict(output, batch_size=[32, 10])
 
     def training_step(self, batch: FacedSupervisedInput, batch_idx):
-        y = batch["assessment"]
+        y = batch["assessment"]["scores"][:, 0].half()
 
         x = self.dequantize(batch)
         pred = self.model(x)
@@ -66,7 +66,7 @@ class FusionProbeTrainer(lightning.LightningModule):
         return loss
 
     def validation_step(self, batch: FacedSupervisedInput, batch_idx) -> STEP_OUTPUT:
-        y = batch["assessment"]
+        y = batch["assessment"]["scores"][:, 0].half()
         x = self.dequantize(batch)
         pred = self.model(x)
 
@@ -87,7 +87,7 @@ class FusionProbeTrainer(lightning.LightningModule):
         return loss
 
     def test_step(self, batch: FacedSupervisedInput, batch_idx):
-        y = batch["assessment"]
+        y = batch["assessment"]["scores"][:, 0].half()
         x = self.dequantize(batch)
         pred = self.model(x)
 
