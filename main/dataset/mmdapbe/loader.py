@@ -1,7 +1,5 @@
 from typing import Iterator
 
-from scipy.io import loadmat
-
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
 from main.dataset.dreamer.config import DreamerConfig

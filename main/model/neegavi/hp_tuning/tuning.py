@@ -201,6 +201,9 @@ def refine_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: Tun
         lightning.seed_everything(cfg.seed if seed_override is None else seed_override, workers=True)
         custom_config, accumulation = make_trial_config(trial, cfg, logger, search_space)
 
+        if custom_config.trainer.lr == 3e-5:
+            return 0 # Avoid this we see it is harmfull
+
         if avoid_duplicates:
             duplicate = find_duplicates(trial, logger)
             if duplicate is not None:
@@ -228,7 +231,8 @@ def refine_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: Tun
             limit_train_batches=train_batches,
             val_check_interval=1.0,
             accumulate_grad_batches=accumulation,
-            log_every_n_steps=20
+            log_every_n_steps=20,
+            enable_checkpointing=False
         )
 
         trainer.fit(module, datamodule=module.datamodule)
@@ -298,6 +302,7 @@ def objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: TuningSear
             accumulate_grad_batches=accumulation,
             num_sanity_val_steps=0,
             limit_val_batches=0,
+            enable_checkpointing=False
         )
 
         trainer.fit(module, datamodule=module.datamodule)

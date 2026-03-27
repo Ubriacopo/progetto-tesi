@@ -75,6 +75,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
         return self.lengths[split]
 
     def setup(self, stage: str) -> None:
+        if self.setup_done:
+            return
 
         datasets, weights = [], []
         val_datasets, test_datasets = [], []

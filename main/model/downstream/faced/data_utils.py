@@ -14,20 +14,14 @@ from main.utils.logging import make_logger
 
 # todo probabilemnte dovro usare ancorea h5py
 #   todo ricicla in ogni caso questo tipo di struttur che è comoda (parlo di add_dataset + collates x tipo)
-class LinearProbeDataModule(lightning.LightningDataModule):
+class FacedProbeDataModule(lightning.LightningDataModule):
     @staticmethod
     def collate_fn(batch: list[TensorDict]):
-        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:15] for b in batch]
-        for td in batch:
-            # Only take the first 5 (V/A/D/L/F) because the train dataset (AMIGOS) has more
-            td["assessment", "scores"] = td["assessment", "scores"][:, :5]
-
-        return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
+        return TensorDict.stack([b.exclude("meta") for b in batch], dim=0)
 
     @staticmethod
     def test_collate_fn(batch: list[TensorDict]):
-        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:15] for b in batch]
-        return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
+        return TensorDict.stack([b.exclude("meta") for b in batch], dim=0)
 
     def __init__(self, seed: int, batch_size: int):
         super().__init__()
@@ -83,27 +77,21 @@ class LinearProbeDataModule(lightning.LightningDataModule):
 
     def setup(self, stage: str) -> None:
         # TODO Custom dataset that handles weigth. For first probe this is not necessary
-        if isinstance(self.train_dataset, list):
-            self.train_dataset = ConcatDataset(self.train_dataset)
-            self.valid_dataset = ConcatDataset(self.valid_dataset)
-            self.test_dataset = ConcatDataset(self.test_dataset)
+        self.train_dataset = ConcatDataset(self.train_dataset)
+        self.valid_dataset = ConcatDataset(self.valid_dataset)
+        self.test_dataset = ConcatDataset(self.test_dataset)
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
             collate_fn=self.collate_fn,
-            num_workers=0,
+            num_workers=2,
+            prefetch_factor=1,
+            # This is required for the way we handle shuffling
+            persistent_workers=True,
+            pin_memory=False
         )
-
-    def val_dataloader(self):
-        return DataLoader(
-            self.valid_dataset,
-            batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
-            num_workers=0,
-        )
-
 
     def test_dataloader(self):
         return DataLoader(

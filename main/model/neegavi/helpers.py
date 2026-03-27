@@ -48,7 +48,8 @@ def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> Ea
 def default_trainer(epochs: int, model_name: str, profiler, limit_train_batches: int, monitor_key: str,
                     accumulate_grad_batches: int = 1, version: str = "0"):
     return lightning.Trainer(
-        accelerator="gpu", devices=1,
+        accelerator="gpu",
+        devices=1,
         profiler=profiler,
         logger=TensorBoardLogger("tb_logs", name=model_name, version=version),
         callbacks=[
