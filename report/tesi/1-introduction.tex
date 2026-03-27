@@ -1,36 +1,58 @@
 %! Author = jacopo
 %! Date = 3/12/26
 
-
+% todo add citations
 \chapter{Introduction}
 \label{cap:introduzione}
 Machine Learning advancements can be applied across a wide range of domains due to their ability to model complex data.
-This has also influenced the field of affective computing where tasks often rely on electroencephalography (EEG) to infer emotional and cognitive states.
-Measuring EEG signals is one of the most commonly used physiological measurements for such tasks, as they provide one of the most direct proxies currently available for inferring emotional states.
+This has also influenced the field of affective computing, where tasks often rely on electroencephalography (EEG) to infer emotional and cognitive states.
+These signals  are among the most commonly used physiological measurements in the domain, as they provide one of the most direct proxies currently available for capturing such states. \cite{RAHMAN2021104696}
 
-In recent years many models have been developed for EEG representation learning.
-These general-purpose models, \textit{foundation models}, in the field tend to be limited by various reasons, with the low cardinality of EEG-centric datasets being one of them.
-This is especially noticeable once one considers the size of corpora of most text-based state-of-the-art (SOTA) models.
+In recent years, many models have been developed for EEG representation learning.
+These general-purpose models, \textit{foundation models} \cite{Schneider2024}, in the field tend to be limited by various reasons, with the low cardinality of EEG-centric datasets being one of them.
+This is especially noticeable once one considers the size of corpora of most text-based state-of-the-art (SotA) models.
 The reason for this is that textual corpora can be collected at large scale using publicly available resources such as the internet.
 In contrast, EEG data gathering has more requirements.
-Most experimental setups take researchers and specific equipment.
+Most experimental setups require researchers and specific equipment.
 They also require significant time both from researchers and participants.
 Many datasets also do not follow common acquisition standards such as the 10–20 electrode placement system making them at times hard to compare or interchange in tasks.
 
-While multimodal foundation models have shown success in vision and language, their application to EEG representation learning remains limited.
-With this problem in mind, the goal of the project is to leverage cross-modal knowledge to integrate information into EEG representations.
-This approached is based on the assumption that the same phenomena is encoded in different but complementary modalities.
-For instance, emotional states reflected in EEG signals might be correlated with facial expression, speech
-characteristics and/or body movements.
-Leveraging such cross-modal relationships may help improve EEG representations when EEG data alone is limited.
+Although multimodal foundation models have shown success in vision and language, their application to EEG representation learning remains limited.
+Among EEG models in the affective field, only a small number of models manage to integrate additional modalities.
+\textit{BIOT} \cite{NEURIPS2023_f6b30f3e} is one of those, but its approach is still constrained to the physiological domain.
+Integration of modalities such as video and audio is even less common in EEG-centered models, with \textit{Hyper-MML} \cite{kang2025hypergraphmultimodallearningeegbased} being one of the few examples.
+These modalities have the advantage of receiving greater attention in the broader machine learning community as they are used for a wider range of applications.
+Consequence is that more discoveries and better-performing systems are constantly being made in these contexts.
+\FA[ok]{Qui puoi entrare un po' più nel dettaglio rispetto al gap presente in letteratura: i lavori esistenti non sfruttano la possibilità di trasferire informazione, in setting affettivi, da modalità dense di dati a modalità target più scarse - gli EEG.}
+With this problem in mind, the goal of the thesis is to leverage cross-modal knowledge to integrate information into EEG representations. \FA[ok]{e qui di conseguenza entra un po' più nel dettaglio su quale sia l'obiettivo della tesi, ovvero ottenere un backbone forte multimodale affective bla bla}
+This is achieved by a strong backbone for affective multi-modal processing that overcomes limited data and takes advantage of stronger representational models from other, richer, modality contexts.
+This is based on the assumption that the same phenomena are encoded in different but complementary modalities \cite{AHMED2023200171}.
+For example, the emotional states reflected in the EEG signals might be correlated with facial expression, speech characteristics, and/or body movements.
+Leveraging such cross-modal relationships may help improve EEG representations when EEG data alone are limited.
 
-The approach proposed is limited to the affective aspect of neurological data processing, but the core idea can be applied to any field.
-
-The proposed EEGAVI transfers information from multiple modalities into the EEG, aiming to enhance the representational capacity.
+The proposed \textit{EEGAVI} transfers information from multiple modalities into the EEG, aiming to enhance the representational capacity.
 It employs a principled integration of existing techniques (cross-attention + contrastive loss + knowledge distillation) applied to EEG under data scarcity.
-The model uses multiple frozen backbone encoders to elaborate the input modalities.
-For the EEG data stream it is CBraMod\cite{wang2025cbramodcrisscrossbrainfoundation}.
+It takes inspiration from \textit{Flamingo} \cite{alayrac2022flamingovisuallanguagemodel} that leverages video-textual relations by using frozen encoders.
+EEGAVI does not interleave the main modality's frozen layers with cross-attention like google's model but it rather
+makes these steps sequential and builds on top of the encoders a multi-modal cross-attention mechanism.
+For the EEG data stream, \textit{CBraMod} \cite{wang2025cbramodcrisscrossbrainfoundation} is the selected backbone.
+The modality acts as pivot in the architecture being always required.
+Other modalities are instead considered supports and grant additional information in the forward pass of the model.
+This way the model fuses the information into the pre-computed EEG embeddings.
+It is achived by adopting a contrastive learning paradigm on different affective datasets in pretraining: \textit{EAV} \cite{article-eav}, \textit{AMIGOS} \cite{8554112}, \textit{DEAP} \cite{5871728} and \textit{MAHNOB-HCI} \cite{5975141}. % todo citations
 
-Beyond proposing a multimodal foundation model, the research question focuses on the impact of \textit{knowledge distillation} in the proposed context.
+The model is so able to learn both to leverage additional input streams in runtime and to restructure the input sequence in order to make it more expressive based on pretraining correlations of the modalities.
+\FA[ok]{qui sarebbe meglio mettere in evidenza e separare la pipeline, aggiungendo anche un po' più nel dettaglio il tipo di dati usati e che le EEG sono la modalità pivot, da quelli che sono i contributi originali della tesi, magari partendo da flamingo aggiungendo la pipeline nostra e poi sottolineando i contributi, magari come elenco puntato (se ti piace, non è obbligatorio)}
+
+Beyond proposing a multi-modal foundation model, the research question focuses on the impact of \textit{knowledge distillation} in the proposed context.
 In particular, the goal of the investigation is to determine whether distillation in a context where sources and target do not belong to the same modality is of benefit to the training pipeline or not.
-To answer this question, an instance of \textit{EEGAVI} was trained and its performance analyzed using CBraMod as a reference baseline.
+To answer this question, an instance of \textit{EEGAVI} is trained and its performance evaluated against CBraMod as a reference baseline.
+\FA[ok]{qui si può spiegare un po' meglio come abbiamo fatto il test}
+The tests are performed as linear probes \cite{alain2018understandingintermediatelayersusing}.
+A test is conducted on the \textit{FACED} \cite{Chen2023} dataset to assess the integrity of EEG embeddings when there are no supporting modalities.
+Other linear probes are performed intra- and cross dataset to assess the gains of multi-modal fusion.
+% todo questa parte da finire quando so esattamente cosa dire
+Lastly, the model is trained on a specific task on the \textit{VR} dataset to see a possible real world application of the model. % TODO Citazioni che mancano
+
+
+The proposed approach is limited to the affective aspect of neurological data processing, but the core idea can be applied to any field. \FA[ok]{Questo meglio metterlo alla fine come conclusione}

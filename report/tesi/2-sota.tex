@@ -7,119 +7,174 @@
 \chapter{State of the art}
 \label{chap:sota}
 
-\subsection{EEG Foundation models}
-% TODO Grammar check but content OK
+\section{EEG Foundation models}
+ %TODO Add more foundation models.
+ %  but:mostly unimodal weak multi-modal integration
+ % +3–5 EEG-related citations/models
 Foundation models are large-scale machine learning models trained on vast datasets.
-The ones that adopt self-supervised learning techniques typically learn general latent representations.
-These models are commonly used as backbones for downstream tasks.
-There have been various proposed models for EEG representation learning.
-These, most times, suffer from limitations that are directly linked to the size and task specificity of their datasets.
+When trained with self-supervised objectives, these models typically learn general latent representations.
+They are commonly used as the backbone for downstream tasks.
+Various proposals have been made for EEG representation learning models.
+Most of the time, these suffer from limitations that are directly related to the size and task specificity of their datasets.
+For this reason, they are large-scale when relative to the domain rather than a fixed scale.
+The typical size of an EEG signals-based dataset is on the order of 10²-10³ trials \cite{8554112, Chen2023}.
+If these are to be compared to the sizes of vision/audio where samples can be on the order of a million \cite{5206848, 7178964} it is clear
+that the data are a strong limitation when designing robust EEG foundation models.
 
-For this reason they are large-scale when relative to the domain rather than a fixed scale.
-The typical size of an EEG signals based dataset is in the order of 10²-10³ trials.
-If these are to be compared to the sizes of vision/audio where samples can be of the order of the million it is clear
-that the data is a strong limitation when designing robust EEG foundation models.
+EEG measurements are very experiment-dependent and subject-specific \cite{10.3389/fncom.2019.00087}.
+Unless a novel approach can abstract the subject-specific encoding inside the data, most solutions will encode these patterns in the learned representations.
+Evaluations are most often performed either within-subject or cross-subject
+When working within-subject, the tasks are often simpler as the biometric signatures of the participants are already known to the model.
+Cross-subject settings are instead harder and closer to a real use of the final model.
 
-EEG measurements are very experiment-dependent and subject-specific.
-Unless a novel approach is able to abstract the subject-specific encoding inside the data, most solutions will encode these patterns in the learnt representations.
-Most often in the field evaluations are performed either within or cross subject.
-When working within subject the tasks are often simpler and inflated as the biometric signatures of the participants is already known.
-Cross-subject are instead harder and closer to a real use of the final model.
-
-Beyond this, EEG experiments can vary much between different datasets.
-The measurement layout used for \textit{AMIGOS}\cite{8554112} with the \textit{Emotiv EPOC Neuroheadset}, for example only tracks some
-of the electrodes tracked by \textit{DEAP}\cite{5871728} and its \textit{BioSemi ActiveTwo EEG recording system}.
+Beyond this, EEG experiments can vary greatly between different datasets.
+The measurement layout used for \textit{AMIGOS} \cite{8554112} with the \textit{Emotiv EPOC Neuroheadset}, for example, only tracks some
+of the electrodes tracked by \textit{DEAP} \cite{5871728} and its \textit{BioSemi ActiveTwo EEG recording system}.
 It also runs at a different sampling rate.
-This all leads to severe domain shifts carros datasets.
-Thus, the cross-dataset compatibility tends to be lower than for other common tasks such as vision and audio.
-All these things considered, models trained on these datasets tend to be too correlated to the subjects and experimental setups of the data gathering process.
+All of this leads to severe domain shifts across datasets.
+Thus, the cross-dataset compatibility tends to be lower than for other domains such as vision and audio.
+All things considered, models trained on these datasets tend to be too correlated to the subjects and experimental setups of the data gathering process.
 
-Another non-trivial notion to consider is that EEG signals have no natural token structure.
-They derive from a continuous waveform arbitrarily segmented and this leads to limitations in their tokenization.
-Relevant patterns can be observed over different temporal scales, ranging from milliseconds, seconds to even minutes.
-This limits the way to approach the construction of natural embedding models, and while the task seems structurally closer
-to audio than other modalities EEG lacks a known discrete structure, which in audio is represented by latent discrete units (e.g., phonemes in speech).
-This leads to model-dependent and non-canonical tokenization.
+Another non-trivial aspect to consider is the tokenization of EEG data.
+EEG signals are continuous signals that must be artificially segmented into windows or patches before being processed by token-based architectures.
+This leads to limitations, as tokenization design choices might limit the quality of the resulting representation.
+Moreover, relevant patterns can be observed on different temporal scales, ranging from milliseconds to seconds to even minutes \cite{Olofsson2007-oj}.
+The construction of a robust embedding model is therefore more challenging.
+Although EEG seems structurally closer to audio than other modalities, it lacks a known discrete structure.
+In contrast, audio can often be represented by latent discrete units such as phonemes.
+As a result, EEG tokenization is non-canonical and model-dependent.
 
 
-Amongst these, like \textit{Biosignal Transformer for Cross-data Learning in the Wild} (BIOT) some adopt the temporal transformer paradigm where EEG are treated as a sequence.
-It learns temporal dependencies by attending over different time steps in an attention mechanism.
-These tend to handle the electrode geometry in a very limited way.
-BIOT for example flattens the different EEG channels thus limiting the spatial correlation of the input signals.
-It is known that the spatial relations of the electrodes in many processes is relevant and non-random.
-For this reason a stronger spatial awareness is thought to lead to stronger results.
+Recent proposals have attempted to address some of these limitations.
+\textit{LaBraM} \cite{jiang2024largebrainmodellearning} adopts large-scale pretraining over heterogeneous EEG datasets with the goal of improving cross-dataset generalization and robustness to differences in montage and acquisition settings.
+\textit{EEGFormer} \cite{chen2024eegformertransferableinterpretablelargescale}, instead, focuses on transferable and interpretable EEG representation learning through a discrete latent representation scheme.
+These approaches show that EEG foundation modeling is feasible.
+They also highlight the trade-off in the field: broader pretraining improves generalization, while more structured representations may improve interpretability and control.
+Both remain constrained by the limited scale and heterogeneity of EEG data when compared with other modalities.
+The \textit{Biosignal Transformer for Cross-data Learning in the Wild} (BIOT) \cite{NEURIPS2023_f6b30f3e} learns temporal dependencies by attending over different time steps.
+Models based on similar approaches tend to handle the electrode geometry in a very limited way.
+\textit{BIOT}, for example, flattens the different EEG channels thus limiting the spatial correlation of the input signals.
 
-With this idea in mind other models integrate the spatial awareness of the electrodes on the scalp directly via graph modeling or other
-novel approaches such as the \textit{criss-cross transformer} of the \textit{CBraMod}.
+It is known that the spatial relations of the electrodes in many processes are relevant and non-random \cite{Gheorghiu2020-mn}.
+For this reason, stronger spatial awareness is generally expected to lead to stronger results.
+With this idea in mind, other models integrate the spatial awareness of the electrodes on the scalp directly via graph modeling or other
+novel approaches, such as the \textit{criss-cross transformer} of the \textit{CBraMod}.
+Its representations are, in fact, not tied to the single electrode position but to the relative space the nodes occupy.
+In this way, the model learns geometry-aware representations of the data, reducing the bias coming from the measurement setup.
+This still is not enough to overcome the data limitations on its own due to the lack of large-scale multi-dataset training.
 
-% todo more on EEG Foundation models and sota
-\textit{CBraMod} representations are in fact not tied to the single electrode position but to the relative space the nodes occupy.
-This way the model learns geometry-aware representations of the data reducing the bias coming from the measurement setup.
-But it is not able to overcome the data limitations on its own due to the lack of large-scale multi-dataset training.
-
-So, despite advances regarding spatial modeling, current EEG foundation models are still limited by dataset scale,
+So, despite advances regarding spatial modeling, current EEG foundation models are limited by dataset scale,
 inter-subject variability, and predominant unimodal training paradigms.
 
-\subsection{Multimodal Contrastive Models}
-% TODO parla di Biot
-Gathering more data is often a costly and difficult task.
+\section{Self-Supervised Learning}
+\textit{self-supervised learning (SSL)} \cite{oord2019representationlearningcontrastivepredictive, gui2024surveyselfsupervisedlearningalgorithms} is an extension of the unsupervised learning paradigm.
+It does not rely on manually annotated labels to compute the loss, but it derives supervision signals to leverage information inside the data itself.
+This way it generates pseudo-labels that enable representation learning without manually annotated labels.
+
+\textit{SSL} methods fall into different categories:
+\begin{itemize}
+    \item Reconstruction-based objectives, such as in masked modeling, aim to reconstruct the input sequence as seen in \textit{BERT} \cite{devlin2019bertpretrainingdeepbidirectional}.
+    \item Predictive approaches learn temporal or structural dependencies by predicting future, missing, or neighboring elements, as in \textit{GPT}-style ones \cite{OpenAI_GPT4_2023}.
+    \item Contrastive methods bring positive pairs closer together while negatives are pushed further apart in the embedding space as in \textit{SimCLR} \cite{chen2020simpleframeworkcontrastivelearning}, \textit{MoCo} \cite{he2020momentumcontrastunsupervisedvisual}, and \textit{CLIP} \cite{radford2021learningtransferablevisualmodels}.
+\end{itemize}
+
+These are some of the most popular approaches. Each of these enables the model to capture different aspects of the underlying data distribution.
+
+A common evaluation protocol for \textit{SSL} representation is the use of linear probes \cite{alain2018understandingintermediatelayersusing}.
+In these settings, the pretrained encoders are frozen, and
+a linear classifier is trained on top of the architecture.
+This approach allows to assess the quality of representation independently of the model's capacity to adapt during the downstream learning.
+It measures linear separability between the learned features for the given downstream task.
+
+EEG contexts are affected by the scarcity of labeled data and by the high variability of physiological signals.
+This makes \textit{SSL} particularly valuable for the domain.
+Among these paradigms, contrastive methods are particularly prominent in multi-modal representation learning.
+
+\section{Multi-Modal Contrastive Models}
+% TODO add siglip citation and explaiantion
+% +1 sentence: alignment vs fusion
+Data collection is a costly and challenging task.
 This motivates researchers to explore ways to exploit information from all available sources.
 
-Such approaches have been widely adopted in many fields.
-\textit{Flamingo}\cite{alayrac2022flamingovisuallanguagemodel} by Google DeepMind is an application that partially inspired this work.
+Such approaches have been widely studied across domains.
+
+\textit{Flamingo}\cite{alayrac2022flamingovisuallanguagemodel} by Google DeepMind is a model that partially inspired this work.
 It is a Visual-Language model that uses two frozen backbones for image and text generation.
 It leverages information given by the visual encoder to enrich the textual representations.
 The model requires the two data sources to be interleaved to encode the spatio-temporal information that derives from the visual encoder inside the corresponding segments of text.
-The visual tokens generated by the corresponding backbone are used to condition the text with a \textit{cross-attention} mechanism\cite{vaswani2023attentionneed}.
-This is applied in an interleaved way between the layers defined inside the frozen LM and the new architecture.
+The visual tokens generated by the corresponding backbone are used to condition the text with a \textit{cross-attention} mechanism \cite{vaswani2023attentionneed}.
+This is applied by interleaving layers defined inside the frozen \textit{Language Model (LM)} and the new trainable architecture.
+This design allows the model to preserve the capabilities of its \textit{LM} while injecting the multi-modal information progressively.
 
-This way, the model is able to preserve the capabilities of its \textit{LM} while injecting the multimodal information progressively.
+Multi-modal approaches can be broadly categorized into fusion-based methods, which explicitly model cross-modal interactions, and alignment-based methods, which learn a shared representation space without direct feature-level integration.
+While Flamingo represents a fusion-based approach, many multi-modal systems instead rely on contrastive objectives to align representations across-modalities.
 
-While Flamingo represents a fusion-based approach, many multimodal systems instead rely on contrastive objectives to align representations across modalities.
+Contrastive multi-modal models commonly adopt loss functions inspired by the objective of the CLIP \cite{radford2021learningtransferablevisualmodels} model.
+Although CLIP itself is not a fusion model, its loss solves a problem in the representation learning domain that transfers well over different modalities.
+The loss it is based on, \textit{InfoNCE}, frames unsupervised learning as an instance discrimination problem where a model learns to separate positive pairs from a set of negatives.
+In the context of multi-modal learning, the pool of samples is built by vectors from different modalities.
+A similarity matrix is then constructed from these where the diagonal represents the positives and the off-diagonal act as negatives.
+The CLIP formulation makes the objective symmetric by applying it in both directions.
+This enforces alignment between representations of different modalities.
+Many fusion models use contrastive losses in their training pipelines such as \textit{ALBEF} \cite{li2021alignfusevisionlanguage} and \textit{CosMo} \cite{wang2024cosmocontrastivestreamlinedmultimodal}.
 
-Contrastive fusion models commonly adopt loss functions inspired by the CLIP\cite{radford2021learningtransferablevisualmodels} model objective.
-While CLIP itself is not a fusion model, its loss solves a problem in the representation learning domain that transfers well over different modalities.
-\textit{InfoNCE} frames unsupervised learning as an instance discrimination problem where a model learns to separate positive pairs from a set of negatives.
-In the context of multimodal learning the pool of samples is built by the different modalities vectors.
-A similarity matrix is then constructed on these where the diagonal represents the positives and off-diagonal act as negatives.
-The CLIP formulation made the objective symmetric by applying it in both directions.
-This enforces alignment between representations from different modalities.
-% todo cita fusion models che lo usano
-Many fusion models often use contrastive losses for pretraining or alignment.
+CLIP style losses pose a problem: they depend on the \textit{batch size}.
+Larger batches provide more negative samples, leading to stronger alignment.
+This becomes a problem in multi-modal settings, where samples are often high-dimensional and computationally expensive.
+This restricts the feasible batch size, leading to suboptimal training settings.
+A way to solve the limitation was proposed by the \textit{SigLIP} loss \cite{zhai2023sigmoidlosslanguageimage}.
+It changes the dynamics of \textit{InfoNCE} by exchanging the softmax function with a sigmoid.
+$$l = - \frac{1}{N} \sum_{i=1}^{N} \sum_{j=1}^{N} log{\frac{1}{1 + e^{z_{ij}(-tx_i * y_j + b)}}}$$
+In this way, the loss measures independent binary logistic losses, meaning that it processes every pair independently.
+This effectively turns the learning problem into the standard binary classification on all pairwise combinations.
+It also does not require a global normalization, thus the gradients do not depend on the number of negatives that strongly.
 
-% todo fare stile causa -> effetto al posto di arzigogolare cosi
-The \textit{Momentum Contrast (MoCo)}\cite{he2020momentumcontrastunsupervisedvisual} model proposed a solution to solve limitations posed by CLIP style losses and contrastive learning.
-It builds a dynamic dictionary with a queue and a moving-averaged encoder.
-It reduces the memory load of the model during training by generating a queue of computed samples to run the contrastive loss on.
-This way, when in constrained environments, the \textit{batch size} limits can be mitigated by having a representation proxy of the past processed samples.
-To avoid the representations from drifting between iterations the framework makes use of a moving average instance of the model.
+Another approach that addresses the limitation posed by the CLIP loss is the \textit{Momentum Contrast (MoCo)} \cite{he2020momentumcontrastunsupervisedvisual}.
+It reduces the memory load of the model during training by generating a queue of computed samples to compute the contrastive loss.
+In this way, \textit{batch size} limits can be mitigated by having a representation proxy of past processed samples.
+To avoid the representations from drifting between iterations, the framework makes use of a moving average instance of the model to compute the queue rather than using the trained model itself.
+This makes the relative difference between the embeddings smoother and the training more stable.
 
-% TODO parla di BIOT qui
+There have been multi-modal EEG model proposals.
+BIOT \cite{NEURIPS2023_f6b30f3e} was defined on multiple physiological signals (EEG, ECG, EMG ...).
+Instead of being EEG-centric it adopts a unified biosignal encoding framework in which heterogeneous inputs are mapped into a shared representation space.
+This does not explicitly model cross-modal interactions and focuses more on learning  a common representation across physiological modalities.
+The \textit{Hyper-MML} \cite{kang2025hypergraphmultimodallearningeegbased} framework proposes a model that fuses multiple modalities by building a hypergraph fusion module.
+This setting is closer to the one EEGAVI explored as it used the video and audio as additional modalities.
+The model itself remains limited by being only trained on the \textit{EAV} dataset.
+This limitation is shared by the model proposed in \textit{EEG-based multi-modal Representation Learning for Emotion Recognition} \cite{yin2024eegbasedmultimodalrepresentationlearning}.
+\textit{EEG} is processed alongside video and audio and passed to a multi-head attention mechanism. All modalities are required for this model to work, and it compresses the input embeddings into a shared condensed space.
 
-While multimodal contrastive frameworks have demonstrated strong cross modal alignment, their applications on EEG
-representation learning remain limited, particularly under data scarce conditions.
-
-\subsection{Self Supervised Learning}
-a little about this and linear probes %TODO
-
-\subsection{Knowledge Distillation}
-\textit{Knowledge Distillation (KD)} is a simple and widely adopted technique.
-Its idea is to leverage a teacher in a process where its learnt representations are mimicked by a target student.
-Its most common use case is for model compression, reducing the parameter count and computational cost.
-
-Distillation as a framework can be applied at different points of a model's architecture.
-It can also happen in a recursive fashion as self-distillation.
-
-\textit{KD} introduces an auxiliary signal that guides the optimization process during training, acting as a secondary loss term.
-This way the information contained in the teacher is transferred indirectly to the student.
-The student model is trained to approximate the teacher’s representations, thereby transferring higher-level structural information into a more constrained architecture.
-For the distillation to work, it is necessary that both models process aligned data, or else alignment would be pointless.
-VATE\cite{10.1007/978-3-031-91575-8_13}, a multimodal dataset for video, audio and text in the affective computing domain, provides a suitable teacher source for cross-modal distillation into EEG representations.
-
-The technique in cross-modal applications is being explored more and more in many contexts.
-However, its application to EEG representation learning is still limited even when multimodal data are available.
-For this reason, we investigate cross-modal distillation in the EEG domain.
+While multi-modal contrastive frameworks have demonstrated strong cross-modal alignment, their applications to EEG representation learning still remain limited, especially under data scarce conditions.
 
 
-Taken together the integration of these techniques is not sufficiently explored yet.
+\section{Knowledge Distillation}
+% TODO is next
+\textit{Knowledge Distillation (KD)}
+% Kd definition
+\cite{hinton2015distillingknowledgeneuralnetwork, 10.1145/1150402.1150464} is a widely adopted framework for transferring information from one model to another.
+Its core idea is to leverage a teacher as an auxiliary source of supervision during training.
+In this way, the student learns to reproduce aspects of the teacher's behavior, such as its outputs or intermediate features.
+The student is therefore able to indirectly learn from the information contained in the teacher.
+This often allows for more constrained architectures to approximate the information at a level of granularity similar to that of the teacher.
+For distillation to be effective, it is generally necessary that both models process aligned data; otherwise, the transferred supervision may lose meaning.
 
+% MAjor KD variants
+% todo citations
+There are different variations of \textit{KD}.
+The classical formulations operate on the output level, where the student and the teacher are aligned on the teacher's predictions.
+Other approaches target intermediate representations.
+This allows the student to reproduce the internal features learned by the teacher.
+Knowledge distillation can also occur in a recursive fashion as self-distillation \cite{zhang2019teacherimproveperformanceconvolutional}, where supervision is derived from the model itself.
+In the context of multi-modal applications, related formulations also include cross-modal distillation.
+In this setting, a modality is used to guide the representation learning of another \cite{MOSLEMI2024100605}.
+
+% VATE intro
+\textit{VATE} \cite{10.1007/978-3-031-91575-8_13} is a dataset that contains clips of people having emotional conversations with the corresponding audio and  text transcripts.
+It also includes a pretrained contrastive model that produces an embedding for each input modality.
+This makes the given model a suitable teacher for multi-modal distillation in a modality-specific setting where alignment can be conducted directly on the teacher's outputs.
+
+% state the gap
+Knowledge distillation is a widely adopted technique in many domains, but its application to EEG representation learning is still limited \cite{ZHANG202399, ZHANG2022108833}.
+Although auxiliary modalities such as video, audio, and text can be encoded by strong pretrained models, it is not yet clear whether teacher signals derived from them can effectively improve learned EEG representations in the affective domain.
+This makes the question worth investigating.
