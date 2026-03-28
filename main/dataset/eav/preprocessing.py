@@ -1,4 +1,8 @@
+from torch import nn
+
 from main.core_data.data_point import FlexibleDatasetTransformWrapper
+from main.core_data.media.assessment.assessment import Assessment, AssessmentLabels
+from main.core_data.media.assessment.transform import RescaleAssessmentValue, AssessmentToTensor, CategorialToTensor
 from main.core_data.media.audio.default_transform_pipe import aud_wav2vec_interleaved_txt_extract_transform_pipe, \
     aud_vate_basic_transform_pipe
 from main.core_data.media.eeg.default_transform_pipe import eeg_transform_pipe, eeg_sample_pipeline
@@ -12,7 +16,28 @@ from main.core_data.media.video.default_transform_pipe import vid_vivit_interlea
     vid_vate_basic_transform_pipe
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor, \
     TorchExportsKdSegmentsReadyPreprocessor
+from main.core_data.sampler import FixedIntervalsSegmenter
 from main.dataset.eav.config import EavConfig
+
+
+def interleaved_downstream_preprocessor(output_path: str, extraction_data_folder: str, config: EavConfig):
+    return TorchExportsSegmentsReadyPreprocessor(
+        output_path=output_path,
+        segment_pipeline=FlexibleDatasetTransformWrapper(
+            "segment_interleaved_downstream_preprocessor",
+            vid_vivit_interleaved_transform_pipe(config),
+            aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
+            eeg_transform_pipe(config),
+            # txt_from_aud_interleaved_txt_extract_transform_pipe(config),
+            (Assessment.modality_code(), CategorialToTensor()),
+            (Metadata.modality_code(), MetadataToTensor())
+        ),
+        sample_pipeline=FlexibleDatasetTransformWrapper(
+            "shared_interleaved_downstream_preprocessor",
+            eeg_sample_pipeline(config)
+        ),
+        segmenter=FixedIntervalsSegmenter(12)
+    )
 
 
 def interleaved_preprocessor(output_path: str, extraction_data_folder: str, config: EavConfig):

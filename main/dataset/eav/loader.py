@@ -11,6 +11,8 @@ from scipy.io import loadmat
 
 from main.core_data.data_point import FlexibleDatasetPoint
 from main.core_data.loader import DataPointsLoader
+from main.core_data.media.assessment.assessment import Assessment
+from main.core_data.media.assessment.config import CategoricalLabelsConfig
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
 from main.core_data.media.metadata.metadata import MetaObject
@@ -51,6 +53,7 @@ class EavPointsLoader(DataPointsLoader):
                 # Each folder is a subject
                 subject_id = i.stem.split('subject')[1]
                 matlab_file = loadmat(f"{i}/EEG/subject{subject_id}_eeg.mat")
+                labels = loadmat(f"{i}/EEG/subject{subject_id}_eeg_label.mat", simplify_cells=True)["label"].T
 
                 if "seg" in matlab_file:
                     eeg = matlab_file["seg"]
@@ -99,6 +102,7 @@ class EavPointsLoader(DataPointsLoader):
                         )
 
                         raw: RawArray = mne.io.RawArray(eeg[index], info=info, verbose=False)
+                        experiment_label = labels[index] # Explained in config of EAV
 
                         audio_fs = audio.fps if audio is not None else 0
                         audio_copy = audio.copy() if audio is not None else None
@@ -111,6 +115,7 @@ class EavPointsLoader(DataPointsLoader):
                             Video(eid=nei, data=clip, fps=clip.fps, resolution=clip.size, filepath=vfp).as_mod_tuple(),
                             Audio(eid=nei, data=audio, fs=audio_fs, filepath=audio_filepath).as_mod_tuple(),
                             Text(eid=nei, data=audio_copy, base_audio=audio_copy).as_mod_tuple(),
+                            Assessment(eid=nei, data=experiment_label, labels=self.config.labels_config.labels, scales=[]).as_mod_tuple(),
                             Metadata(data=asdict(metadata), eid=nei).as_mod_tuple()
                         )
 

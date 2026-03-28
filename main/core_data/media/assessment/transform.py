@@ -13,6 +13,12 @@ class AssessmentToTensor(nn.Module):
         x.data = {"scores": x.data, "labels": x.labels, "scales": x.scales}
         return TensorDict(x.data)
 
+class CategorialToTensor(nn.Module):
+    # noinspection PyMethodMayBeStatic
+    def forward(self, x: Assessment) -> TensorDict:
+        x.data = {"scores": x.data, "labels": x.labels}
+        return TensorDict(x.data)
+
 
 class RescaleAssessmentValue(nn.Module):
     def __init__(self, key: str, rescale_range: Tuple[float | int, float | int] = (0, 1)):

@@ -1,0 +1,10 @@
+defaults:
+  - template
+
+name: amigos
+
+test_participants: 6 # 15%
+val_participants: 4 # 10%
+
+spec_path: ${base_path}DOWNSTREAM/interleaved-downstream/spec.csv
+output_dir: ${base_path}DOWNSTREAM/combined-amigos/
