@@ -44,7 +44,7 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
         return_dict = {}
         for key, td in x.items():
             if key in self.dequantize_keys:
-                data = td["data"].to(dtype=dtype, nonblocking=True)
+                data = td["data"].to(dtype=dtype)
                 data.mul_(td["scales"])
 
                 td = {"data": data, "mask": td["mask"]}

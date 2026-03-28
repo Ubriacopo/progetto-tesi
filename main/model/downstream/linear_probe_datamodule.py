@@ -90,18 +90,14 @@ class LinearProbeDataModule(lightning.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             collate_fn=self.train_collate_fn,
-            num_workers=2,
-            prefetch_factor=1,
-            # This is required for the way we handle shuffling
-            persistent_workers=True,
-            pin_memory=False
+            num_workers=0,
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.valid_dataset,
             batch_size=self.batch_size,
-            collate_fn=self.val_collate_fn,
+            collate_fn=self.valid_collate_fn,
             num_workers=0,
         )
 
@@ -110,8 +106,5 @@ class LinearProbeDataModule(lightning.LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             collate_fn=self.test_collate_fn,
-            num_workers=1,
-            prefetch_factor=1,
-            persistent_workers=True,
-            pin_memory=False
+            num_workers=0
         )

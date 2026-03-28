@@ -8,9 +8,9 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.model.downstream.faced.training import FacedProbeTrainer
 from main.model.downstream.linear_probe import SimpleLinearProbe
 from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
+from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
@@ -37,12 +37,13 @@ def main(cfg: SeedConfig):
 
     datamodule = LinearProbeDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
     datamodule.add_dataset(cfg.dataset_path, test_fraction=0.15, valid_fraction=0.1)
-    # Load existing model
+    # Load existing model TODO: collate
+    datamodule.set_train_collate_fn()
     backbone = Factory.best_inference_loaded(cfg.eegavi_ckpt)
 
     # EEGAVI outputs a 384 embedding vector while FACED has 12 labels
-    module = FacedProbeTrainer(
-        model=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=12) # 12 dims of FACED
+    module = SimpleLinearProbeTrainer(
+        probe=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=12)  # 12 dims of FACED
     )
     torchinfo.summary(module)
 
