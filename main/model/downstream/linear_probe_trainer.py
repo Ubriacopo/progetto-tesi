@@ -2,71 +2,69 @@ import lightning
 import tensordict
 import torch
 import torch.nn.functional as F
-from lightning.pytorch.utilities.types import OptimizerLRScheduler, STEP_OUTPUT
-from torchmetrics.regression import PearsonCorrCoef
+from jedi.inference.gradual.typing import TypedDict
+from lightning.pytorch.utilities.types import OptimizerLRScheduler
+from tensordict import TensorDict
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.video import Video
-from main.model.downstream.faced.model import FacedLinearProbe, FacedInput
-from main.model.downstream.fusion_probe.model import FusionLinearProbe
+from main.model.downstream.linear_probe import SimpleLinearProbe
 
 
-class FacedSupervisedInput(FacedInput):
-    assessment: torch.Tensor  # [b, 12] (12 labels)
+class Scores(TypedDict):
+    scores: torch.Tensor
 
 
-# todo data dequantiazion in loader and not in train step?
-class FusionProbeTrainer(lightning.LightningModule):
-    def __init__(self, model: FusionLinearProbe, lr: float = 1e-4):
+class SupervisedInput(TypedDict):
+    assessment: Scores
+
+
+class SimpleLinearProbeTrainer(lightning.LightningModule):
+    default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ECG.modality_code()]
+
+    def __init__(self, probe: SimpleLinearProbe, dequantize_keys: list[str] = None, lr: float = 1e-3,
+                 input_batch_size=(32, 10)):
         super().__init__()
-        self.model = model
+        self.model = probe
 
-        self.val_pearson = PearsonCorrCoef(num_outputs=12)
-        self.test_pearson = PearsonCorrCoef(num_outputs=12)
-        self.dequantize_keys = [
-            EEG.modality_code(),
-            Video.modality_code(),
-            Audio.modality_code(),
-            ECG.modality_code(),
-        ]
+        self.dequantize_keys: list[str] = dequantize_keys
+        if self.dequantize_keys is None:
+            self.dequantize_keys = self.default_dequantize_keys
+
         self.save_hyperparameters(ignore=["model"])
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        return dict(
-            optimizer=torch.optim.Adam(
-                params=self.model.parameters(),
-                lr=self.hparams.lr
-            )
-        )
+        return {
+            "optimizer": torch.optim.Adam(params=self.model.parameters(), lr=self.hparams.lr),
+        }
 
-    def dequantize(self, x: FacedSupervisedInput, dtype=torch.float16):
-        output: FacedSupervisedInput = {}
+    def dequantize(self, x: dict | TensorDict | SupervisedInput, dtype=torch.float16):
+        return_dict = {}
         for key, td in x.items():
             if key in self.dequantize_keys:
-                data = td["data"].to(dtype=dtype, non_blocking=True)
-                data.mul_(td["scales"])  # For optimization reasons (I dislike it)
-                td = {"data": data, "mask": td["mask"]}
-            output[key] = td
-            # todo pass
-        return tensordict.from_dict(output, batch_size=[32, 10])
+                data = td["data"].to(dtype=dtype, nonblocking=True)
+                data.mul_(td["scales"])
 
-    def training_step(self, batch: FacedSupervisedInput, batch_idx):
-        y = batch["assessment"]["scores"][:, 0].half()
+                td = {"data": data, "mask": td["mask"]}
+
+            return_dict[key] = td
+        return tensordict.from_dict(return_dict, batch_size=self.hparams.input_batch_size)
+
+    def training_step(self, batch: SupervisedInput, batch_idx):
+        y = batch["assessment", "scores"][:, 0].half()
 
         x = self.dequantize(batch)
         pred = self.model(x)
-        # pred = [self.model(x) for i in x]
 
-        # 12-d loss
         loss = F.mse_loss(pred, y)
-        self.log("train_loss", loss, prog_bar=True)
 
+        self.log("train_loss", loss, prog_bar=True)
         return loss
 
-    def validation_step(self, batch: FacedSupervisedInput, batch_idx) -> STEP_OUTPUT:
-        y = batch["assessment"]["scores"][:, 0].half()
+    def validation_step(self, batch: SupervisedInput, batch_idx):
+        y = batch["assessment", "scores"][:, 0].half()
         x = self.dequantize(batch)
         pred = self.model(x)
 
@@ -86,8 +84,8 @@ class FusionProbeTrainer(lightning.LightningModule):
 
         return loss
 
-    def test_step(self, batch: FacedSupervisedInput, batch_idx):
-        y = batch["assessment"]["scores"][:, 0].half()
+    def test_step(self, batch: SupervisedInput, batch_idx):
+        y = batch["assessment", "scores"][:, 0].half()
         x = self.dequantize(batch)
         pred = self.model(x)
 

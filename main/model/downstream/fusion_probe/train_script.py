@@ -7,13 +7,12 @@ from hydra.core.config_store import ConfigStore
 from lightning.pytorch.callbacks import RichProgressBar, EarlyStopping
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
-from omegaconf import OmegaConf, MISSING
+from omegaconf import OmegaConf
 
-from main.model.downstream.fusion_probe.data_utils import LinearProbeDataModule
-from main.model.downstream.fusion_probe.model import FusionLinearProbe
-from main.model.downstream.fusion_probe.training import FusionProbeTrainer
+from main.model.downstream.fusion_probe.data_utils import AmigosDeapFusionDataModule
+from main.model.downstream.fusion_probe.model import ValArousal5FusionLinearProbe
+from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
 from main.model.neegavi.factory import Factory
-from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
 
 
@@ -32,34 +31,30 @@ class FusionConfig:
     eegavi_ckpt: str = "/home/jfichera/PycharmProjects/progetto-tesi/main/model/script/outputs/best-seed-150/2026-03-23_12-31-47/checkpoints/epochepoch=17-stepstep=45954.ckpt"
     trainer_config: TrainerConfig = dataclasses.field(default_factory=TrainerConfig)
 
+
 cs = ConfigStore.instance()
 cs.store(name="train", node=FusionConfig)
 
-@hydra.main(version_base=None,  config_name="train")
+
+@hydra.main(version_base=None, config_name="train")
 def main(cfg: FusionConfig):
     lightning.seed_everything(cfg.seed, workers=True)
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = LinearProbeDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
+    datamodule = AmigosDeapFusionDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size, num_workers=2)
     datamodule.add_dataset(cfg.train_dataset, 1, valid_fraction=0.1)
     datamodule.add_dataset(cfg.test_dataset, 1, test_fraction=1.0)
     datamodule.setup("train")
-
     # Load existing model
-    # TODO rename factory + make method for this in factory
-    ckpt = get_model_ckpt(weights_path=cfg.eegavi_ckpt)
-    backbone = Factory.best_inference().build()
-    # Load state of the seed ckpt
-    backbone.load_state_dict(ckpt, strict=False)
-    backbone.eval()
+    backbone = Factory.best_inference_loaded(cfg.eegavi_ckpt)
 
     # EEGAVI outputs a 384 embedding vector while FACED has 12 labels
-    model = FusionLinearProbe(backbone=backbone, in_dim=384, out_dim=5)
-    module = FusionProbeTrainer(model=model)
+    model = ValArousal5FusionLinearProbe(backbone=backbone, in_dim=384, out_dim=5)
+    module = SimpleLinearProbeTrainer(probe=model)
     torchinfo.summary(module)
 
-    model_name = "EEGAVI-" + str(cfg.seed)
+    model_name = "AMIGOS-EAV-probe-" + str(cfg.seed)
     profiling = False
     profiler = SimpleProfiler() if profiling else None
     monitor_key = "val_rmse"

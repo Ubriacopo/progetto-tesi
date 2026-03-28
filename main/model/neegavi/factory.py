@@ -18,6 +18,7 @@ from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, T
 from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
     ModalityConfig, PerceiverModalityConfig
 from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
+from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
 
 
@@ -193,7 +194,7 @@ class Factory:
                 pivot_dim=384, support_dim=384, output_size=384,
                 modality=TimeMaskSwitchableProperties("causal")
             ),
-            disabled_supports: set[str] = ()
+            disabled_supports: set[str] = ("txt",)
     ):
         factory = (
             Factory()
@@ -240,3 +241,12 @@ class Factory:
             factory.disabled(disabled_support_code)
 
         return factory
+
+    @staticmethod
+    def best_inference_loaded(trainer_ckpt_path: str):
+        model = Factory.best_inference().build()
+        # Load previous state
+        model.load_state_dict(get_model_ckpt(weights_path=trainer_ckpt_path), strict=False)
+        # Model is now frozen
+        model.eval()
+        return model
