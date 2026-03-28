@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from jedi.inference.gradual.typing import TypedDict
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from tensordict import TensorDict
+from torchmetrics import PearsonCorrCoef
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
@@ -24,10 +25,17 @@ class SupervisedInput(TypedDict):
 class SimpleLinearProbeTrainer(lightning.LightningModule):
     default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ECG.modality_code()]
 
-    def __init__(self, probe: SimpleLinearProbe, dequantize_keys: list[str] = None, lr: float = 1e-3,
+    def __init__(self,
+                 probe: SimpleLinearProbe,
+                 labels: int,
+                 dequantize_keys: list[str] = None,
+                 lr: float = 1e-3,
                  input_batch_size=(32, 10)):
         super().__init__()
         self.model = probe
+
+        self.val_pearson = PearsonCorrCoef(num_outputs=labels)
+        self.test_pearson = PearsonCorrCoef(num_outputs=labels)
 
         self.dequantize_keys: list[str] = dequantize_keys
         if self.dequantize_keys is None:
