@@ -68,7 +68,7 @@ class LinearProbeDataModule(lightning.LightningDataModule, ABC):
 
         if test_fraction > 0 and len(ids) > 0:
             self.test_dataset_weight.append(weight)
-            self.test_dataset.append(self.build_dataset(dataset_path, use_ids.tolist()))
+            self.test_dataset.append(self.build_dataset(dataset_path, ids.tolist()))
 
     @abstractmethod
     def setup(self, stage: str) -> None:
