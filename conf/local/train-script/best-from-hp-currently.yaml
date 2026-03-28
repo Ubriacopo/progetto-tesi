@@ -4,18 +4,19 @@ defaults:
   - override /model: best
   - override /trainer: best
 
-experiment: best
+experiment: best-4attn-0.5beta
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 
 model:
   factory:
     args:
-      attention_config: 2
+      attention_config: 4 # From tuning
       disabled_supports: [ txt ]
 
 trainer:
-  kd_loss_weight: 1.0 # From tuning
+  kd_loss_weight: 0.5 # From tuning
+  use_moco: False
 
 dataset_descriptors:
   - dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"
