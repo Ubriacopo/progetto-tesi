@@ -1,5 +1,4 @@
 import dataclasses
-from pathlib import Path
 
 import hydra
 import lightning
@@ -9,13 +8,10 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.core_data.ds.td_dataset import TdSegmentedExperimentDataset
-from main.model.downstream.faced.data_utils import FacedProbeDataModule
-from main.model.downstream.faced.model import FacedLinearProbe
 from main.model.downstream.faced.training import FacedProbeTrainer
+from main.model.downstream.linear_probe import SimpleLinearProbe
+from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
 from main.model.neegavi.factory import Factory
-from main.model.neegavi.helpers import default_trainer, build_easy_eegavi_module
-from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
 
 
@@ -23,6 +19,7 @@ from main.utils.logging import make_logger
 class TrainerConfig:
     epochs: int = 10
     batch_size: int = 32
+
 
 @dataclasses.dataclass
 class SeedConfig:
@@ -38,20 +35,15 @@ def main(cfg: SeedConfig):
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = FacedProbeDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
+    datamodule = LinearProbeDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
     datamodule.add_dataset(cfg.dataset_path, test_fraction=0.15, valid_fraction=0.1)
-
     # Load existing model
-    # TODO rename factory
-    ckpt = get_model_ckpt(weights_path=cfg.eegavi_ckpt)
-    backbone = Factory.best_inference().build()
-    # Load state of the seed ckpt
-    backbone.load_state_dict(ckpt, strict=False)
-    backbone.eval()
+    backbone = Factory.best_inference_loaded(cfg.eegavi_ckpt)
 
     # EEGAVI outputs a 384 embedding vector while FACED has 12 labels
-    model = FacedLinearProbe(backbone=backbone, in_dim=384, out_dim=12)
-    module = FacedProbeTrainer(model=model)
+    module = FacedProbeTrainer(
+        model=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=12) # 12 dims of FACED
+    )
     torchinfo.summary(module)
 
     model_name = "EEGAVI-" + str(cfg.seed)

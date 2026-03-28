@@ -70,7 +70,7 @@ class DreamerPointsLoader(DataPointsLoader):
                 yield FlexibleDatasetPoint(
                     nei,
                     EEG(eid=nei, data=raw.copy().pick(["eeg"]), fs=raw.info['sfreq']).as_mod_tuple(),
-                    # For evaluation
+                    # For evaluation todo rifai in stile altri
                     Dominance(eid=nei, data=dominance, rating_scale=(1, 5)).as_mod_tuple(),
                     Valence(eid=nei, data=valence, rating_scale=(1, 5)).as_mod_tuple(),
                     Arousal(eid=nei, data=arousal, rating_scale=(1, 5)).as_mod_tuple(),

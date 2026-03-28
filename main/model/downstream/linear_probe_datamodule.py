@@ -1,19 +1,16 @@
-# Base abstract class
-from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable, Any
 
 import lightning
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 
 from main.core_data.ds.td_dataset import TdSegmentedExperimentDataset
 from main.utils.logging import make_logger
 
-
-class LinearProbeDataModule(lightning.LightningDataModule, ABC):
-    def __init__(self, seed: int, batch_size: int, num_workers: int):
+class LinearProbeDataModule(lightning.LightningDataModule):
+    def __init__(self, seed: int, batch_size: int):
         super().__init__()
         self.logger = make_logger(self.__class__.name)
 
@@ -22,12 +19,15 @@ class LinearProbeDataModule(lightning.LightningDataModule, ABC):
 
         # Where dataset references are stored
         self.train_dataset: Optional[Dataset] | list[Dataset] = []
+        self.train_collate_fn: Optional[Callable[[Any], Any]] = None
         self.train_dataset_weight: list[int] = []
 
         self.valid_dataset: Optional[Dataset] | list[Dataset] = []
+        self.valid_collate_fn: Optional[Callable[[Any], Any]] = None
         self.valid_dataset_weight: list[int] = []
 
         self.test_dataset: Optional[Dataset] | list[Dataset] = []
+        self.test_collate_fn: Optional[Callable[[Any], Any]] = None
         self.test_dataset_weight: list[int] = []
 
     def build_dataset(self, path: str, use_ids: list[int], *args, **kwargs) -> Dataset:
@@ -68,26 +68,22 @@ class LinearProbeDataModule(lightning.LightningDataModule, ABC):
 
         if test_fraction > 0 and len(ids) > 0:
             self.test_dataset_weight.append(weight)
-            self.test_dataset.append(self.build_dataset(dataset_path, use_ids.tolist()))
+            self.test_dataset.append(self.build_dataset(dataset_path, ids.tolist()))
 
-    @abstractmethod
     def setup(self, stage: str) -> None:
-        pass
+        if isinstance(self.train_dataset, list):
+            self.train_dataset = ConcatDataset(self.train_dataset)
+            self.valid_dataset = ConcatDataset(self.valid_dataset)
+            self.test_dataset = ConcatDataset(self.test_dataset)
 
-    @classmethod
-    @abstractmethod
-    def train_collate_fn(cls, batch):
-        pass
+    def set_train_collate_fn(self, collate_fn: Callable[[Any], Any]):
+        self.train_collate_fn = collate_fn
 
-    @classmethod
-    @abstractmethod
-    def val_collate_fn(cls, batch):
-        pass
+    def set_val_collate_fn(self, collate_fn: Callable[[Any], Any]):
+        self.valid_collate_fn = collate_fn
 
-    @classmethod
-    @abstractmethod
-    def test_collate_fn(cls, batch):
-        pass
+    def set_test_collate_fn(self, collate_fn: Callable[[Any], Any]):
+        self.test_collate_fn = collate_fn
 
     def train_dataloader(self):
         return DataLoader(
@@ -119,4 +115,3 @@ class LinearProbeDataModule(lightning.LightningDataModule, ABC):
             persistent_workers=True,
             pin_memory=False
         )
-
