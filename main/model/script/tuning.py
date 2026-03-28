@@ -2,25 +2,25 @@ from functools import partial
 
 import hydra
 import optuna
-from optuna.samplers import TPESampler
+from optuna.samplers import TPESampler, GridSampler
 
-from main.model.neegavi.hp_tuning.tuning import TuningSearchSpace, refine_objective
+from main.model.neegavi.hp_tuning.tuning import objective, TuningSearchSpace
 from main.model.script.hydra_beans import TuningKdConfig
 
 
-@hydra.main(config_path="../../../conf", config_name="tuning")
+@hydra.main(config_path="../../../conf", config_name="hp_tuning")
 def main(cfg: TuningKdConfig):
     search_space = TuningSearchSpace.from_choices(**cfg.search_space)
     study = optuna.create_study(
         # Reproducibility
-        sampler=TPESampler(seed=cfg.seed),
+        sampler=GridSampler(seed=cfg.seed, search_space=cfg.search_space),
         direction="maximize",
-        study_name="eegavi_hp_mocoless_notxt",
+        study_name="eegavi_hp",
         storage="sqlite:///../optuna.db",
         load_if_exists=True,
     )
 
-    obj = partial(refine_objective, cfg=cfg, search_space=search_space, epochs=4)
+    obj = partial(objective, cfg=cfg, search_space=search_space)
     # Optimize the space
     study.optimize(
         obj,

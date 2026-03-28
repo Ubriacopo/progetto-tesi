@@ -244,7 +244,7 @@ class Factory:
 
     @staticmethod
     def best_inference_loaded(trainer_ckpt_path: str):
-        model = Factory.best_inference(disabled_supports=set()).build()
+        model = Factory.best_inference().build()
         # Load previous state
         model.load_state_dict(get_model_ckpt(weights_path=trainer_ckpt_path), strict=False)
         # Model is now frozen

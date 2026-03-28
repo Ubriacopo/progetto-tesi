@@ -1,18 +1,19 @@
 from pathlib import Path
-from typing import Optional, Callable, Any
+from typing import Optional
 
 import lightning
 import numpy as np
 import pandas as pd
 import tensordict
-import torch
 from tensordict import TensorDict
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
+from torch.utils.data import Dataset, ConcatDataset, DataLoader
 
 from main.core_data.ds.td_dataset import TdSegmentedExperimentDataset
 from main.utils.logging import make_logger
 
 
+# todo probabilemnte dovro usare ancorea h5py
+#   todo ricicla in ogni caso questo tipo di struttur che è comoda (parlo di add_dataset + collates x tipo)
 class LinearProbeDataModule(lightning.LightningDataModule):
     @staticmethod
     def collate_fn(batch: list[TensorDict]):
@@ -31,26 +32,18 @@ class LinearProbeDataModule(lightning.LightningDataModule):
     def __init__(self, seed: int, batch_size: int):
         super().__init__()
         self.logger = make_logger(self.__class__.name)
-
-        self.seed: int = seed
-        self.batch_size: int = batch_size
-
-        # Where dataset references are stored
         self.train_dataset: Optional[Dataset] | list[Dataset] = []
-        self.train_collate_fn: Optional[Callable[[Any], Any]] = None
         self.train_dataset_weight: list[int] = []
 
         self.valid_dataset: Optional[Dataset] | list[Dataset] = []
-        self.valid_collate_fn: Optional[Callable[[Any], Any]] = None
         self.valid_dataset_weight: list[int] = []
 
         self.test_dataset: Optional[Dataset] | list[Dataset] = []
-        self.test_collate_fn: Optional[Callable[[Any], Any]] = None
         self.test_dataset_weight: list[int] = []
 
-    def build_dataset(self, path: str, use_ids: list[int], *args, **kwargs) -> Dataset:
-        # So one can override the dataset creation
-        return TdSegmentedExperimentDataset(path, str(Path(path) / "spec.csv"), use_ids)
+        self.seed = seed
+        self.dataset_paths: list[str] = []
+        self.batch_size = batch_size
 
     def add_dataset(self, dataset_path: str, weight: int = 1, valid_fraction: float = 0., test_fraction: float = 0.):
         if not isinstance(self.train_dataset, list):
@@ -89,32 +82,11 @@ class LinearProbeDataModule(lightning.LightningDataModule):
             self.test_dataset.append(TdSegmentedExperimentDataset(dataset_path, str(spec_path), ids.tolist()))
 
     def setup(self, stage: str) -> None:
+        # TODO Custom dataset that handles weigth. For first probe this is not necessary
         if isinstance(self.train_dataset, list):
             self.train_dataset = ConcatDataset(self.train_dataset)
             self.valid_dataset = ConcatDataset(self.valid_dataset)
             self.test_dataset = ConcatDataset(self.test_dataset)
-
-    def set_train_collate_fn(self, collate_fn: Callable[[Any], Any]):
-        self.train_collate_fn = collate_fn
-
-    def set_val_collate_fn(self, collate_fn: Callable[[Any], Any]):
-        self.valid_collate_fn = collate_fn
-
-    def set_test_collate_fn(self, collate_fn: Callable[[Any], Any]):
-        self.test_collate_fn = collate_fn
-
-    def _move(self, x, device):
-        if isinstance(x, torch.Tensor) or isinstance(x, TensorDict):
-            return x.to(device, non_blocking=True)
-        if isinstance(x, dict):
-            return {k: self._move(v, device) for k, v in x.items()}
-        if isinstance(x, (list, tuple)):
-            t = [self._move(v, device) for v in x]
-            return type(x)(t)
-        return x  # leave non-tensors alone
-
-    def transfer_batch_to_device(self, batch, device, dataloader_idx=0):
-        return self._move(batch, device)
 
     def train_dataloader(self):
         return DataLoader(
@@ -124,7 +96,6 @@ class LinearProbeDataModule(lightning.LightningDataModule):
             num_workers=0,
         )
 
-
     def val_dataloader(self):
         return DataLoader(
             self.valid_dataset,
@@ -132,6 +103,7 @@ class LinearProbeDataModule(lightning.LightningDataModule):
             collate_fn=self.collate_fn,
             num_workers=0,
         )
+
 
     def test_dataloader(self):
         return DataLoader(
