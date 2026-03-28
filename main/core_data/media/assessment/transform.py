@@ -39,3 +39,27 @@ class RescaleAssessmentValue(nn.Module):
             x.data[idx] = np.rint(new_x).astype(x.data.dtype)
 
         return x
+
+
+class TrackNanAssessment(nn.Module):
+    def __init__(self, key: str, rescale_range: Tuple[float | int, float | int] = (0, 1)):
+        super().__init__()
+        self.key: str = key
+        self.rescale_range: Tuple[float | int, float | int] = rescale_range
+
+    def forward(self, x: Assessment):
+        if self.key in x.labels:
+            return x
+        labels = x.labels.copy()
+        labels.append(self.key)
+
+        scales = x.scales.copy()
+        scales.append(self.rescale_range)
+
+        # Add NaN value
+        x.data = np.append(x.data, np.nan)
+        # Update scales and labels
+        x.labels = labels
+        x.scales = scales
+
+        return x

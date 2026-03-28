@@ -1,5 +1,7 @@
 import dataclasses
 
+from main.core_data.media.assessment.assessment import AssessmentLabels
+from main.core_data.media.assessment.config import ScoreLabelsConfig
 from main.core_data.media.eeg.config import EegSourceConfig
 from main.dataset.base_config import DatasetConfig
 
@@ -16,5 +18,19 @@ class DreamerEegSourceConfig(EegSourceConfig):
 
 
 @dataclasses.dataclass
+class DreamerScoreLabelsConfig(ScoreLabelsConfig):
+    labels: list[str] = dataclasses.field(default_factory=lambda: [
+        AssessmentLabels.AROUSAL,
+        AssessmentLabels.VALENCE,
+        AssessmentLabels.DOMINANCE,
+    ])
+
+    scales: list[tuple[int | float, int | float]] = dataclasses.field(
+        default_factory=lambda: list(((1, 5),) * 3)  # (1-9) + (0-9)
+    )
+
+
+@dataclasses.dataclass
 class DreamerConfig(DatasetConfig):
     eeg_source_config: DreamerEegSourceConfig = dataclasses.field(default_factory=DreamerEegSourceConfig)
+    score_labels_config: DreamerScoreLabelsConfig = dataclasses.field(default_factory=lambda: DreamerScoreLabelsConfig())

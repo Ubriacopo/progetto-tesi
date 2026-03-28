@@ -70,7 +70,7 @@ class AmigosScoreLabels(ScoreLabelsConfig):
     ])
 
     scales: list[tuple[int | float, int | float]] = dataclasses.field(
-        default_factory=lambda: list(((0., 9.),) * 5 + ((0, 1),) * 7)  # (1-9) + (0-9)
+        default_factory=lambda: list(((1., 9.),) * 5 + ((0, 1),) * 7)  # (1-9) + (0-9)
     )
 
 
