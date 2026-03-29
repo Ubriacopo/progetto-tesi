@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 
 from main.model.downstream.faced.datamodule import FacedDataModule
-from main.model.downstream.linear_probe import SimpleLinearProbe
+from main.model.downstream.probe_model import SimpleLinearProbe
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger

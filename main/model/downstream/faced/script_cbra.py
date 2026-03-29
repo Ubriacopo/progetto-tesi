@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 
 from main.model.downstream.faced.datamodule import FacedDataModule
-from main.model.downstream.linear_probe import SimpleLinearProbe, SimpleCbraLinearProbe
+from main.model.downstream.probe_model import SimpleLinearProbe, SimpleCbraLinearProbe
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
@@ -18,8 +18,8 @@ from main.utils.logging import make_logger
 
 @dataclasses.dataclass
 class TrainerConfig:
-    epochs: int = 10
-    batch_size: int = 16
+    epochs: int = 50
+    batch_size: int = 32
 
 
 @dataclasses.dataclass

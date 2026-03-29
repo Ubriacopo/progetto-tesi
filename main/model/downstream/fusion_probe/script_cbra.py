@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.model.downstream.linear_probe import SimpleLinearProbe
+from main.model.downstream.probe_model import SimpleLinearProbe, SimpleNonLinearProbe
 from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
 from main.model.neegavi.factory import Factory
@@ -19,8 +19,8 @@ from main.utils.logging import make_logger
 
 @dataclasses.dataclass
 class TrainerConfig:
-    epochs: int = 10
-    batch_size: int = 16
+    epochs: int = 20
+    batch_size: int = 8
 
 
 @dataclasses.dataclass
@@ -32,7 +32,8 @@ class FusionConfig:
     test_dataset: str = "/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-deap"
 
     seed: int = 1
-    eegavi_ckpt: str = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-2-attn-1-beta/2026-03-27_22-46-58/checkpoints/epochepoch=39-stepstep=102120.ckpt"
+    eegavi_ckpt: str = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-4attn-0.5beta/2026-03-28_12-24-24/checkpoints/epochepoch=38-stepstep=99567.ckpt"
+    # eegavi_ckpt: str = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-2-attn-1-beta/2026-03-27_22-46-58/checkpoints/epochepoch=39-stepstep=102120.ckpt"
     trainer_config: TrainerConfig = dataclasses.field(default_factory=TrainerConfig)
 
 
@@ -58,7 +59,7 @@ def main(cfg: FusionConfig):
 
     # EEGAVI outputs a 384 embedding
     module = SimpleLinearProbeTrainer(
-        probe=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=5), labels=5
+        probe=SimpleNonLinearProbe(backbone=backbone, in_dim=384, out_dim=5), labels=5
     )
 
     torchinfo.summary(module)
@@ -79,7 +80,7 @@ def main(cfg: FusionConfig):
             EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=8, mode="min", verbose=True),
         ],
         num_sanity_val_steps=0,
-        precision="16-mixed",
+        #  precision="16-mixed",
         max_epochs=cfg.trainer_config.epochs,
         val_check_interval=1.0,
     )

@@ -24,11 +24,7 @@ class SupervisedInput(TypedDict):
 class SimpleLinearProbeTrainer(lightning.LightningModule):
     default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ECG.modality_code()]
 
-    def __init__(self,
-                 probe: nn.Module,
-                 labels: int,
-                 dequantize_keys: list[str] = None,
-                 lr: float = 3e-4):
+    def __init__(self, probe: nn.Module, labels: int, dequantize_keys: list[str] = None, lr: float = 1e-4):
         super().__init__()
         self.model = probe
 
@@ -40,7 +36,7 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
             self.dequantize_keys = self.default_dequantize_keys
 
         # Mean predictor baseline, computed from train set in on_fit_start
-        self.register_buffer("train_target_mean", torch.zeros(12), persistent=True)
+        self.register_buffer("train_target_mean", torch.zeros(labels), persistent=True)
         self.save_hyperparameters(ignore=["probe", "train_target_mean"])
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
@@ -48,7 +44,7 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
             "optimizer": torch.optim.Adam(params=self.model.parameters(), lr=self.hparams.lr),
         }
 
-    def dequantize(self, x: dict | TensorDict | SupervisedInput, dtype=torch.float16):
+    def dequantize(self, x: dict | TensorDict | SupervisedInput, dtype=torch.float32):
         return_dict: dict = {}
         for key, td in x.items():
             if key in self.dequantize_keys:
@@ -67,12 +63,13 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
         loss = F.mse_loss(pred, y)
 
         self.log("train_loss", loss, prog_bar=True)
+        self.log("train_rmse", torch.sqrt(loss), prog_bar=True)
         return loss
 
     @staticmethod
     def extract_target(batch: SupervisedInput) -> torch.Tensor:
         y = batch["assessment", "scores"][:, 0].float()
-        y = y / 7.0
+        y = (y - 1) / 8.0
         return y
 
     @torch.no_grad()
@@ -86,7 +83,6 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
         self.eval()
         for batch in train_loader:
             y = self.extract_target(batch).to(self.device)  # [B, 12]
-
             batch_sum = y.sum(dim=0)  # [12]
             if total_sum is None:
                 total_sum = batch_sum
@@ -98,11 +94,11 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
         mean_y = total_sum / max(total_count, 1)  # [12]
 
         self.train_target_mean.copy_(mean_y)
+        nn.init.zeros_(self.model.project.weight)
         self.model.project.bias.copy_(mean_y)
 
         if was_training:
             self.train()
-
         self.print(f"Computed train mean baseline target: {mean_y}")
 
     def validation_step(self, batch: SupervisedInput, batch_idx):
@@ -136,6 +132,8 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
         for i, rmse_i in enumerate(rmse_per_dim):
             self.log(f"val_rmse_dim_{i}", rmse_i, prog_bar=False)
 
+        r2 = 1 - loss / base_loss
+        self.log("val_r2", r2, prog_bar=True)
         return loss
 
     def test_step(self, batch: SupervisedInput, batch_idx):
