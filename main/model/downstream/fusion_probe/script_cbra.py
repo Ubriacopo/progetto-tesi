@@ -64,7 +64,7 @@ def main(cfg: FusionConfig):
 
     torchinfo.summary(module)
 
-    model_name = "AMIGOS-EAV-probe-" + str(cfg.seed)
+    model_name = "AMIGOS-EAV-CBRA-probe-" + str(cfg.seed)
     profiling = False
     profiler = SimpleProfiler() if profiling else None
     monitor_key = "val_rmse"
