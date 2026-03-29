@@ -9,7 +9,6 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.model.downstream.fusion_probe.data_utils import train_collate, test_collate_fn
 from main.model.downstream.linear_probe import SimpleLinearProbe
 from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
@@ -26,8 +25,8 @@ class TrainerConfig:
 
 @dataclasses.dataclass
 class FusionConfig:
-    #train_dataset: str = "/mnt/datasets/EEGAVI/DOWNSTREAM/interleaved-downstream"
-    #test_dataset: str = "/mnt/datasets/EEGAVI/DOWNSTREAM/interleaved-downstream-deap"
+    # train_dataset: str = "/mnt/datasets/EEGAVI/DOWNSTREAM/interleaved-downstream"
+    # test_dataset: str = "/mnt/datasets/EEGAVI/DOWNSTREAM/interleaved-downstream-deap"
 
     train_dataset: str = "/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream"
     test_dataset: str = "/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-deap"

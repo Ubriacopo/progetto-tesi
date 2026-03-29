@@ -9,7 +9,7 @@ from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.video import Video
-from main.model.downstream.mioamicogesu.model import FusionLinearProbe
+from main.model.downstream.mioamicogessu.model import FusionLinearProbe
 
 
 class FacedSupervisedInput:
@@ -41,7 +41,7 @@ class FusionProbeTrainer(lightning.LightningModule):
         )
 
     def dequantize(self, x: FacedSupervisedInput, dtype=torch.float16):
-        output: FacedSupervisedInput = {}
+        output: dict = {}
         for key, td in x.items():
             if key in self.dequantize_keys:
                 data = td["data"].to(dtype=dtype, non_blocking=True)

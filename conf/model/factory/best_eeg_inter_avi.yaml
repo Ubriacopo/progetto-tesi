@@ -16,7 +16,7 @@ supports: [ vid, aud, txt, ecg ]
 
 factory_path: main.model.neegavi.factory.Factory.default
 args:
-  disabled_supports: [ ]
+  disabled_supports: [ txt ]
   # Pivot
   eeg_config: ${...pivot.config}
   # Supports
@@ -25,7 +25,7 @@ args:
   txt_config: ${...supports.txt.config}
   ecg_config: ${...supports.ecg.config}
 
-  attention_config: 6
+  attention_config: 2 # From tuning it looses against both 4 and 6 by only so little that it doesn't seem worth keeping
   # Args for the construction of the EegInterAviModel
   custom_config: ${model.custom_config}
 

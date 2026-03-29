@@ -2,11 +2,12 @@ from pathlib import Path
 
 import pandas as pd
 import tensordict
+import torch
 from torch.utils.data import Dataset
 
 from main.utils.logging import make_logger
 
-
+# todo transforms? non servono per ora
 class TdSegmentedExperimentDataset(Dataset):
     def __init__(self, dataset_path: str, dataset_spec_file: str, accessible_user_ids: list[int]):
         """
@@ -29,3 +30,4 @@ class TdSegmentedExperimentDataset(Dataset):
 
     def __len__(self):
         return self.df.shape[0]
+

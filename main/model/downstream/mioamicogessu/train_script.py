@@ -9,9 +9,9 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf, MISSING
 
-from main.model.downstream.mioamicogesu.data_utils import LinearProbeDataModule
-from main.model.downstream.mioamicogesu.model import FusionLinearProbe
-from main.model.downstream.mioamicogesu.training import FusionProbeTrainer
+from main.model.downstream.mioamicogessu.data_utils import LinearProbeDataModule
+from main.model.downstream.mioamicogessu.model import FusionLinearProbe
+from main.model.downstream.mioamicogessu.training import FusionProbeTrainer
 from main.model.neegavi.factory import Factory
 from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
