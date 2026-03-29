@@ -9,9 +9,9 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.model.downstream.probe_model import SimpleLinearProbe, SimpleNonLinearProbe
 from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
+from main.model.downstream.probe_model import SimpleNonLinearProbe, SimpleLinearProbe
 from main.model.neegavi.factory import Factory
 from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
@@ -49,6 +49,7 @@ def main(cfg: FusionConfig):
 
     datamodule = LinearProbeDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
     datamodule.add_dataset(cfg.train_dataset, 1, valid_fraction=0.1)
+    # datamodule.add_dataset("/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-dreamer", 1, valid_fraction=0.1) # Add dreamer TODO
     datamodule.add_dataset(cfg.test_dataset, 1, test_fraction=1.0)
     # Load existing model
     ckpt = get_model_ckpt(weights_path=cfg.eegavi_ckpt)
@@ -59,7 +60,7 @@ def main(cfg: FusionConfig):
 
     # EEGAVI outputs a 384 embedding
     module = SimpleLinearProbeTrainer(
-        probe=SimpleNonLinearProbe(backbone=backbone, in_dim=384, out_dim=5), labels=5
+        probe=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=5), labels=5, seed=cfg.seed
     )
 
     torchinfo.summary(module)

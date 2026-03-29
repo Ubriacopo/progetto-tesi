@@ -24,7 +24,7 @@ class SupervisedInput(TypedDict):
 class SimpleLinearProbeTrainer(lightning.LightningModule):
     default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ECG.modality_code()]
 
-    def __init__(self, probe: nn.Module, labels: int, dequantize_keys: list[str] = None, lr: float = 1e-4):
+    def __init__(self, probe: nn.Module, labels: int, seed: int, dequantize_keys: list[str] = None, lr: float = 1e-4):
         super().__init__()
         self.model = probe
 
@@ -47,7 +47,7 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
     def dequantize(self, x: dict | TensorDict | SupervisedInput, dtype=torch.float32):
         return_dict: dict = {}
         for key, td in x.items():
-            if key in self.dequantize_keys:
+            if key in self.dequantize_keys and "data" in td:
                 data = td["data"].to(dtype=dtype)
                 data.mul_(td["scales"])
                 td = {"data": data, "mask": td["mask"]}
@@ -60,16 +60,22 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
         x = self.dequantize(batch)
         pred = self.model(x)
 
+        mask = torch.isfinite(y) & torch.isfinite(pred)
+        #loss = ((pred - y) ** 2)[mask].mean()
         loss = F.mse_loss(pred, y)
 
         self.log("train_loss", loss, prog_bar=True)
+        # Easier to understand how it works
         self.log("train_rmse", torch.sqrt(loss), prog_bar=True)
+
         return loss
 
     @staticmethod
     def extract_target(batch: SupervisedInput) -> torch.Tensor:
+        # TODO In base ad applicazione
         y = batch["assessment", "scores"][:, 0].float()
         y = (y - 1) / 8.0
+
         return y
 
     @torch.no_grad()
@@ -93,6 +99,7 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
 
         mean_y = total_sum / max(total_count, 1)  # [12]
 
+        # We center on mean for better initialization
         self.train_target_mean.copy_(mean_y)
         nn.init.zeros_(self.model.project.weight)
         self.model.project.bias.copy_(mean_y)

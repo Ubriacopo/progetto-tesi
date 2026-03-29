@@ -48,7 +48,7 @@ def main(cfg: SeedConfig):
 
     datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=32)
     model = SimpleCbraLinearProbe(in_dim=200, out_dim=12)
-    module = SimpleLinearProbeTrainer(model, labels=12)
+    module = SimpleLinearProbeTrainer(model, labels=12, seed=cfg.seed)
     torchinfo.summary(module)
 
     monitor_key = "val_rmse"

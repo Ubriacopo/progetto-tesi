@@ -9,9 +9,9 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.model.downstream.probe_model import SimpleLinearProbe, SimpleNonLinearProbe
 from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
+from main.model.downstream.probe_model import SimpleCbraLinearProbe
 from main.model.neegavi.factory import Factory
 from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
@@ -59,7 +59,7 @@ def main(cfg: FusionConfig):
 
     # EEGAVI outputs a 384 embedding
     module = SimpleLinearProbeTrainer(
-        probe=SimpleNonLinearProbe(backbone=backbone, in_dim=384, out_dim=5), labels=5
+        probe=SimpleCbraLinearProbe(in_dim=384, out_dim=5), labels=5, seed=cfg.seed
     )
 
     torchinfo.summary(module)
