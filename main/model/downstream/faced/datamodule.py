@@ -17,6 +17,7 @@ class FacedDataModule(BaseDatamodule):
     @staticmethod
     def train_collate_fn(batch: list[TensorDict]) -> Callable[[list[TensorDict]], TensorDict]:
         batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:10] for b in batch]
+        # todo read assessment from meta.
         return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
 
     @staticmethod

@@ -1,13 +1,12 @@
 import hydra
 import lightning
 import lightning as L
-import torch
 import torchinfo
 from lightning.pytorch.callbacks import RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 
 import hydra_utils
-from main.app_config import AppConfig
+from main.model.neegavi.factory import Factory
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
 from main.model.script.hydra_beans import KdConfig
@@ -19,26 +18,27 @@ def main(cfg: KdConfig):
     # cfg = OmegaConf.to_container(cfg, resolve=True)
     lightning.seed_everything(cfg.seed, workers=True)
     logger = make_logger("hydra-main.test")
-    torch.manual_seed(AppConfig.SEED)  # Reproducibility
     init_object = hydra_utils.init_trainlike_script(cfg)
 
+    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-2-attn-1-beta/2026-03-27_22-46-58/checkpoints/epochepoch=39-stepstep=102120.ckpt"
     student = init_object.student
     teacher = init_object.teacher
 
     kd_train_datamodule = KdTrainDataModule(
         dataset_paths=cfg.dataset_descriptors,
         batch_size=cfg.trainer.batch_size,
-        dequantize_keys=["eeg", "aud", "vid", "txt", "ecg"],
-        seed=AppConfig.SEED
+        dequantize_keys=["eeg", "aud", "vid", "ecg"],
+        seed=cfg.data_seed,
+        take_keys=[student.pivot.code] + student.fusion_keys()
     )
 
-    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/epochepoch=45-stepstep=117484.ckpt"
+    ckpt_path = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-2-attn-1-beta/2026-03-27_22-46-58/checkpoints/epochepoch=39-stepstep=102120.ckpt"
     module = EasyEegAviKdVateMaskedModule.load_from_checkpoint(
         ckpt_path,
         student=student,
         teacher=teacher,
         datamodule=kd_train_datamodule,
-        use_moco=True,
+        use_moco=cfg.trainer.use_moco,
         kd_loss_weight=cfg.trainer.kd_loss_weight,
         fusion_loss_weight=cfg.trainer.fusion_loss_weight,
         lr=cfg.trainer.lr,
@@ -48,6 +48,7 @@ def main(cfg: KdConfig):
         kd_keys=list(map(lambda o: o.key, init_object.teacher_keys)),
         strict=False
     )
+
     module.eval()
 
     for n, p in student.named_parameters():
@@ -58,7 +59,7 @@ def main(cfg: KdConfig):
 
     trainer = L.Trainer(
         accelerator="gpu",
-        logger=TensorBoardLogger("tb_logs", name="my_model"),
+        logger=TensorBoardLogger("tb_logs", name="FINAL-TEST-" + str(cfg.seed)),
         devices=1,
         callbacks=[RichProgressBar()],
         # num_sanity_val_steps=1,
@@ -70,7 +71,6 @@ def main(cfg: KdConfig):
         # limit_train_batches=cfg.trainer.batches_per_epoch, Debug only
         val_check_interval=1.0,
         max_epochs=-1,  # or a very large number
-        accumulate_grad_batches=2,  # This is to stabilize training
     )
 
     if False:
