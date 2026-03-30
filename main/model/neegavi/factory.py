@@ -248,5 +248,5 @@ class Factory:
         # Load previous state
         model.load_state_dict(get_model_ckpt(weights_path=trainer_ckpt_path), strict=False)
         # Model is now frozen
-        model.eval()
+        # model.eval()
         return model

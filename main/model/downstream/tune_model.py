@@ -13,8 +13,9 @@ class SimpleTuneLinearProbe(nn.Module):
         for p in self.backbone.parameters():
             p.requires_grad = False
 
-        for p in self.backbone.gatedXAttn_layers[-1].parameters():
-            p.requires_grad = True
+        for block in self.backbone.gatedXAttn_layers[-2:]:
+            for p in block.parameters():
+                p.requires_grad = True
 
     def forward(self, x: TensorDict) -> torch.Tensor:
         # Data inputs are of the shape [B, B', T, P, D]

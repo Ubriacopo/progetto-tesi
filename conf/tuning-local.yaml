@@ -1,19 +1,26 @@
 defaults:
   - hydra-setup
   - model: default
-  - trainer: default-local
+  - trainer: default-revised
   - teacher: default
-  - search_space: default-local
+  - search_space: default
 
 experiment: ???
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
-
+study_name: ???
 # This is an optimization trick for my local machine that cant handle 6 attn layers + b=32 (VRAM)
-use_trick: True
+use_trick: False
 trick_batch_size: 32
 
 seed: 1
+data_seed: 150
+
+model:
+  factory:
+    args:
+      disabled_supports: [ txt ]
+
 
 dataset_descriptors:
   - dataset_path: "/home/jacopo/dataset/EEGAVI/AMIGOS/combined-compressed/"

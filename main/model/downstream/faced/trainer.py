@@ -23,17 +23,18 @@ def dequantize(x: dict | TensorDict, dequantize_keys: list[str], dtype=torch.flo
 class FacedTrainer(lightning.LightningModule):
     default_dequantize_keys: list[str] = [EEG.modality_code(), ]
 
-    def __init__(self, model: nn.Module, labels: int, seed: int, lr=1e-4):
+    def __init__(self, model: nn.Module, labels: int, seed: int, lr=3e-4, backbone_lr=3e-5):
         super().__init__()
         self.model: nn.Module = model
         self.save_hyperparameters(ignore=["model"])
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        return {
-            "optimizer": torch.optim.Adam(
-                params=filter(lambda p: p.requires_grad, self.parameters()), lr=self.hparams.lr
-            ),
-        }
+        optimizer = torch.optim.AdamW([
+            {"params": self.model.project.parameters(), "lr": self.hparams.lr},
+            {"params": filter(lambda p: p.requires_grad, self.model.backbone.parameters()), "lr": self.hparams.backbone_lr},
+        ])
+
+        return optimizer
 
     def training_step(self, batch):
         # Labels
