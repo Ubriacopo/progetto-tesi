@@ -10,7 +10,9 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.trainer import FacedTrainer
-from main.model.downstream.probe_model import SimpleCbraLinearProbe
+from main.model.downstream.probe_model import SimpleLinearProbe
+from main.model.downstream.tune_model import SimpleTuneLinearProbe
+from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
 
@@ -45,21 +47,39 @@ def main(cfg: SeedConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
+    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
     labels = 9
-    model = SimpleCbraLinearProbe(in_dim=200, out_dim=labels)
+    model = SimpleTuneLinearProbe(backbone=backbone, in_dim=384, out_dim=labels)
     module = FacedTrainer(model, labels=labels, seed=cfg.seed)
 
     torchinfo.summary(module)
+    trainable = []
+    frozen = []
+
+    for name, p in model.named_parameters():
+        if p.requires_grad:
+            trainable.append(name)
+        else:
+            frozen.append(name)
+
+    print("Trainable:")
+    for n in trainable:
+        print("  ", n)
+
+    print("\nFrozen:")
+    for n in frozen[:20]:
+        print("  ", n)
+    print(f"... frozen count: {len(frozen)}")
 
     monitor_key = "valid_loss"
-    model_name = "FACED-CBRA-" + str(cfg.seed)
+    model_name = "FACED-FINETUNE" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
         devices=1,
         logger=TensorBoardLogger("tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
-            EarlyStopping(monitor=monitor_key, min_delta=0.002, patience=8, mode="min", verbose=True),
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=10, mode="min", verbose=True),
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",

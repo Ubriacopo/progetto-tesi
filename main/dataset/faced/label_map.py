@@ -28,3 +28,48 @@ labels = [
     "Tenderness",
     "Tenderness",
 ]
+
+
+class LabelMap:
+    labels = [
+        "Anger",
+        "Anger",
+        "Anger",
+        "Disgust",
+        "Disgust",
+        "Disgust",
+        "Fear",
+        "Fear",
+        "Fear",
+        "Sadness",
+        "Sadness",
+        "Sadness",
+        "Neutral",
+        "Neutral",
+        "Neutral",
+        "Neutral",
+        "Amuse",
+        "Amuse",
+        "Amuse",
+        "Inspiration",
+        "Inspiration",
+        "Inspiration",
+        "Joy",
+        "Joy",
+        "Joy",
+        "Tenderness",
+        "Tenderness",
+        "Tenderness",
+    ]
+    num_labels = [
+        0,0,0,
+        1,1,1,
+        2,2,2,
+        3,3,3,
+        4,4,4,4,
+        5,5,5,
+        6,6,6,
+        7,7,7,
+        8,8,8
+    ]
+    # /3

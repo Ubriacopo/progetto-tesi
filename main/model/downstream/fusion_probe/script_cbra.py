@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.profilers import SimpleProfiler
 from omegaconf import OmegaConf
 
-from main.model.downstream.linear_probe_datamodule import LinearProbeDataModule
+from main.model.downstream.fusion_probe.datamodule import FusionDataModule
 from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
 from main.model.downstream.probe_model import SimpleCbraLinearProbe
 from main.model.neegavi.factory import Factory
@@ -47,7 +47,7 @@ def main(cfg: FusionConfig):
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = LinearProbeDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
+    datamodule = FusionDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
     datamodule.add_dataset(cfg.train_dataset, 1, valid_fraction=0.1)
     datamodule.add_dataset(cfg.test_dataset, 1, test_fraction=1.0)
     # Load existing model

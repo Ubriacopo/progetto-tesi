@@ -8,10 +8,10 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
-
 from main.model.downstream.faced.datamodule import FacedDataModule
+from main.model.downstream.faced.trainer import FacedTrainer
 from main.model.downstream.probe_model import SimpleLinearProbe
-from main.model.downstream.linear_probe_trainer import SimpleLinearProbeTrainer
+from main.model.downstream.tune_model import SimpleTuneLinearProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
@@ -46,14 +46,14 @@ def main(cfg: SeedConfig):
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=32)
-    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)  # TODO vedi se questo causa problemi
+    datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
+    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
+    labels = 9
+    model = SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=labels)
+    module = FacedTrainer(model, labels=labels, seed=cfg.seed)
 
-    model = SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=12)
-    module = SimpleLinearProbeTrainer(model, labels=12)
     torchinfo.summary(module)
-    # todo compute a mean predictor baseline
-    monitor_key = "val_rmse"
+    monitor_key = "valid_loss"
     model_name = "FACED-" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
@@ -61,7 +61,7 @@ def main(cfg: SeedConfig):
         logger=TensorBoardLogger("tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
-            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=20, mode="min", verbose=True),
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=10, mode="min", verbose=True),
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",
@@ -74,6 +74,7 @@ def main(cfg: SeedConfig):
     res = trainer.test(module, datamodule=datamodule)
     logger.info(res)
     logger.info("Finished testing")
+
 
 if __name__ == "__main__":
     main()

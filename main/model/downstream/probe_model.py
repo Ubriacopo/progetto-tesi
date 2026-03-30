@@ -33,21 +33,25 @@ class SimpleLinearProbe(nn.Module):
         super(SimpleLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
         self.project = nn.Linear(in_dim, out_dim)
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+        self.backbone.eval()
 
     def forward(self, x: TensorDict) -> torch.Tensor:
         # Data inputs are of the shape [B, B', T, P, D]
-        b_inner = x.shape[1]
+        b, b_inner = x.shape[:2]
         x = x.flatten(0, 1)
         # Frozen encoder
         with torch.no_grad():
             y = self.backbone(x)
 
         # Restore previous batch
-        y = y.cls.unflatten(0, (-1, b_inner))
+        y = y.cls.unflatten(0, (b, b_inner))
         # AVG over N timesteps of a sample
         y = y.mean(dim=-2)
-        return self.project(y)
-
+        logits = self.project(y)
+        return logits
 
 class SimpleNonLinearProbe(nn.Module):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, hidden_dim: int = 64):

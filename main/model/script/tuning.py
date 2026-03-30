@@ -4,7 +4,7 @@ import hydra
 import optuna
 from optuna.samplers import TPESampler, GridSampler
 
-from main.model.neegavi.hp_tuning.tuning import objective, TuningSearchSpace
+from main.model.neegavi.hp_tuning.tuning import objective, TuningSearchSpace, refine_objective
 from main.model.script.hydra_beans import TuningKdConfig
 
 
@@ -15,12 +15,12 @@ def main(cfg: TuningKdConfig):
         # Reproducibility
         sampler=GridSampler(seed=cfg.seed, search_space=cfg.search_space),
         direction="maximize",
-        study_name="eegavi_hp",
-        storage="sqlite:///../optuna.db",
+        study_name=cfg.study_name,
+        storage="sqlite:///../optuna-remote.db",
         load_if_exists=True,
     )
 
-    obj = partial(objective, cfg=cfg, search_space=search_space)
+    obj = partial(refine_objective, cfg=cfg, search_space=search_space, epochs=4)
     # Optimize the space
     study.optimize(
         obj,

@@ -201,9 +201,6 @@ def refine_objective(trial: optuna.Trial, cfg: TuningKdConfig, search_space: Tun
         lightning.seed_everything(cfg.seed if seed_override is None else seed_override, workers=True)
         custom_config, accumulation = make_trial_config(trial, cfg, logger, search_space)
 
-        if custom_config.trainer.lr == 3e-5:
-            return 0 # Avoid this we see it is harmfull
-
         if avoid_duplicates:
             duplicate = find_duplicates(trial, logger)
             if duplicate is not None:
