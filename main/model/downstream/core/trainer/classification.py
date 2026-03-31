@@ -1,18 +1,18 @@
-# TODO fai visto che ha roba sua
-
 import lightning
 import torch
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from tensordict import TensorDict
 from torch import nn
 
+from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
+from main.core_data.media.video import Video
 
 
 def dequantize(x: dict | TensorDict, dequantize_keys: list[str], dtype=torch.float16):
     return_dict: dict = {}
     for key, td in x.items():
-        if key in dequantize_keys:
+        if key in dequantize_keys and "data" in td:
             data = td["data"].to(dtype=dtype)
             data.mul_(td["scales"])
             td = {"data": data, "mask": td["mask"]}
@@ -20,8 +20,8 @@ def dequantize(x: dict | TensorDict, dequantize_keys: list[str], dtype=torch.flo
     return TensorDict.from_dict(return_dict, auto_batch_size=True)
 
 
-class FacedTrainer(lightning.LightningModule):
-    default_dequantize_keys: list[str] = [EEG.modality_code(), ]
+class ClassificationTrainer(lightning.LightningModule):
+    default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ]
 
     def __init__(self, model: nn.Module, labels: int, seed: int, lr=3e-4, backbone_lr=3e-5):
         super().__init__()

@@ -8,10 +8,9 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
-from main.model.downstream.faced.datamodule import FacedDataModule
+from main.model.downstream.eav_task.datamodule import EavDataModule
 from main.model.downstream.faced.trainer import FacedTrainer
-from main.model.downstream.probe_model import SimpleLinearProbe, PooledLinearProbe, SimpleNonLinearProbe
-from main.model.downstream.tune_model import SimpleTuneLinearProbe
+from main.model.downstream.probe_model import SimpleLinearProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
@@ -19,7 +18,7 @@ from main.utils.logging import make_logger
 @dataclasses.dataclass
 class TrainerConfig:
     epochs: int = 50
-    batch_size: int = 32
+    batch_size: int = 16
 
 
 @dataclasses.dataclass
@@ -29,7 +28,7 @@ class ModelConfiguration:
 
 @dataclasses.dataclass
 class SeedConfig:
-    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FACED-PROBE/interleaved/"
+    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-eav"
     seed: int = 42
 
     model_config: ModelConfiguration = dataclasses.field(default_factory=ModelConfiguration)
@@ -46,15 +45,16 @@ def main(cfg: SeedConfig):
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
+    datamodule = EavDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
     backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
-    labels = 9
+
+    labels = 5
     model = SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=labels)
     module = FacedTrainer(model, labels=labels, seed=cfg.seed)
 
     torchinfo.summary(module)
     monitor_key = "valid_loss"
-    model_name = "FACED-LIN" + str(cfg.seed)
+    model_name = "EAV-LIN" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
         devices=1,

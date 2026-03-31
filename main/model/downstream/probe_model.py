@@ -49,29 +49,90 @@ class SimpleLinearProbe(nn.Module):
         # Restore previous batch
         y = y.cls.unflatten(0, (b, b_inner))
         # AVG over N timesteps of a sample
-        y = y.mean(dim=-2)
+        y = y.max(dim=-2).values
         logits = self.project(y)
         return logits
 
-class SimpleNonLinearProbe(nn.Module):
-    def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, hidden_dim: int = 64):
-        super(SimpleNonLinearProbe, self).__init__()
+
+class PooledLinearProbe(nn.Module):
+    def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
+        super(PooledLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
-        self.hidden = nn.Sequential(nn.Linear(in_dim, hidden_dim), nn.GELU(), )
-        self.project = nn.Linear(hidden_dim, out_dim)
+        self.project = nn.Linear(in_dim * 2, out_dim)
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+        self.backbone.eval()
 
     def forward(self, x: TensorDict) -> torch.Tensor:
         # Data inputs are of the shape [B, B', T, P, D]
-        b_inner = x.shape[1]
+        b, b_inner = x.shape[:2]
         x = x.flatten(0, 1)
         # Frozen encoder
         with torch.no_grad():
             y = self.backbone(x)
 
         # Restore previous batch
-        y = y.cls.unflatten(0, (-1, b_inner))
-        # AVG over N timesteps of a sample
-        y = y.mean(dim=-2)
+        # [B, B1, 32, 384] (Drop CLS token)
+        z = y.embeddings["data"].unflatten(0, (b, b_inner))[:, :, :-1]
+        # [B, B1, 32] (Drop CLS Token)
+        mask = y.embeddings["mask"].unflatten(0, (b, b_inner))[:, :, :-1]
 
-        y = self.hidden(y)
+        mask_f = mask.to(z.dtype)
+
+        # MEAN
+        tok_mean = (z * mask_f.unsqueeze(-1)).sum(dim=2) / mask_f.sum(dim=2, keepdim=True).clamp_min(1.0)
+        # MAX
+        # token-level masked max -> [B, B', D]
+        neg_inf = torch.finfo(z.dtype).min
+        tok_max = z.masked_fill(~mask.unsqueeze(-1), neg_inf).max(dim=2).values
+
+        # chunk-level mean/max -> [B, D]
+        sample_mean = tok_mean.mean(dim=1)
+        sample_max = tok_max.max(dim=1).values
+
+        sample_emb = torch.cat([sample_mean, sample_max], dim=-1)  # [B, 2D]
+        # AVG over N timesteps of a sample
+
+        logits = self.project(sample_emb)
+        return logits
+
+
+class SimpleNonLinearProbe(nn.Module):
+    def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, hidden_dim: int = 128):
+        super(SimpleNonLinearProbe, self).__init__()
+        self.backbone: EegInterAviModel = backbone
+        self.hidden = nn.Sequential(nn.Linear(in_dim * 2, hidden_dim), nn.GELU(), nn.Dropout(0.1), )
+        self.project = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, x: TensorDict) -> torch.Tensor:
+        # Data inputs are of the shape [B, B', T, P, D]
+        b, b_inner = x.shape[:2]
+        x = x.flatten(0, 1)
+        # Frozen encoder
+        with torch.no_grad():
+            y = self.backbone(x)
+
+        # Restore previous batch
+        # [B, B1, 32, 384] (Drop CLS token)
+        z = y.embeddings["data"].unflatten(0, (b, b_inner))[:, :, :-1]
+        # [B, B1, 32] (Drop CLS Token)
+        mask = y.embeddings["mask"].unflatten(0, (b, b_inner))[:, :, :-1]
+
+        mask_f = mask.to(z.dtype)
+
+        # MEAN
+        tok_mean = (z * mask_f.unsqueeze(-1)).sum(dim=2) / mask_f.sum(dim=2, keepdim=True).clamp_min(1.0)
+        # MAX
+        # token-level masked max -> [B, B', D]
+        neg_inf = torch.finfo(z.dtype).min
+        tok_max = z.masked_fill(~mask.unsqueeze(-1), neg_inf).max(dim=2).values
+
+        # chunk-level mean/max -> [B, D]
+        sample_mean = tok_mean.mean(dim=1)
+        sample_max = tok_max.max(dim=1).values
+
+        sample_emb = torch.cat([sample_mean, sample_max], dim=-1)  # [B, 2D]
+        # AVG over N timesteps of a sample
+        y = self.hidden(sample_emb)
         return self.project(y)
