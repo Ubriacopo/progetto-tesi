@@ -1,12 +1,12 @@
 # @package _global_
 defaults:
-  - override /dataset: amigos
+  - override /dataset: clare
   - override /preprocessing: interleaved-downstream
 
 dataset:
   uid_store_path: ${base_path}EEGAVI/uid_store.csv
 
 preprocessing:
-  output_path: ${base_path}EEGAVI/DOWNSTREAM/${.out_folder_name}-amigos/
+  output_path: ${base_path}EEGAVI/DOWNSTREAM/${.out_folder_name}-clare/
 
 base_path: /mnt/datasets/
