@@ -19,7 +19,7 @@ class EavDataModule(BaseDatamodule):
         for td in batch:
             # Video indexes are scaled from [1-28], labels from [0-27]
             # Pool labels in even
-            one_hot = td["assessment", "score"][0]
+            one_hot = td["assessment", "scores"][0]
 
             cls = one_hot.argmax(dim=-1).long()
             emotion_label = cls // 2

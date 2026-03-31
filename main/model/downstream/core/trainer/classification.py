@@ -73,4 +73,7 @@ class ClassificationTrainer(lightning.LightningModule):
         loss = criterion(pred, y)
         self.log("test_loss", loss, prog_bar=True)
         self.log("log(baseline)", 1.945, prog_bar=True)
+
+        acc = (pred.argmax(dim=-1) == y).float().mean()
+        self.log("valid_acc", acc, prog_bar=True)
         return loss

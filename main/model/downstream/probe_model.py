@@ -49,7 +49,8 @@ class SimpleLinearProbe(nn.Module):
         # Restore previous batch
         y = y.cls.unflatten(0, (b, b_inner))
         # AVG over N timesteps of a sample
-        y = y.max(dim=-2).values
+        # y = y.max(dim=-2).values
+        y = y.mean(dim=-2)
         logits = self.project(y)
         return logits
 
