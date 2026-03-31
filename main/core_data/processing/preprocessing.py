@@ -275,12 +275,12 @@ class ExperimentPreprocessor(Preprocessor[FlexibleDatasetPoint]):
 
         base_object = {"index": 0}
         # Return file specification
-        base_object = {}
+        base_object = {x.get_identifier(): x.eid}
         if hasattr(y, Metadata.modality_code()):
             # We have metaobject to pass to the csv. Better have it redundant than not enough.
-            base_object = {key: value for key, value in y.meta.data.items()}
-        sanitize_for_ast(base_object)
-        return base_object
+            base_object |= {key: value for key, value in y.meta.data.items()}
+        base_object = sanitize_for_ast(base_object)
+        return [base_object]
 
     def export(self, x: FlexibleDatasetPoint, output_path: str) -> None:
         td = TensorDict(x.to_dict()) if hasattr(x, "to_dict") else TensorDict(x)

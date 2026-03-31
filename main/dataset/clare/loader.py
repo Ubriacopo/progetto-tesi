@@ -72,6 +72,7 @@ class ClarePointsLoader(DataPointsLoader):
                             ecg = ecg_df[(ecg_df["Timestamp"] >= sub_experiment * 10) &
                                          (ecg_df["Timestamp"] <= (sub_experiment + 1) * 10)]
 
+                            ecg = ecg.dropna(subset=["ECG LL-RA CAL", "ECG LA-RA CAL", "ECG Vx-RL CAL"])
                             ll_ra = ecg["ECG LL-RA CAL"].to_numpy()
                             la_ra = ecg["ECG LA-RA CAL"].to_numpy()
                             vx_rl = ecg["ECG Vx-RL CAL"].to_numpy()  # optional
@@ -79,7 +80,7 @@ class ClarePointsLoader(DataPointsLoader):
                             ecg_tensor = np.stack([ll_ra, la_ra, vx_rl], axis=0)  # [C, T]
                             ecg_tensor = torch.from_numpy(ecg_tensor).float()
 
-                            metadata = MetaObject(experiment=eid, dataset_id=self.DATASET_ID, person_id=user_id,
+                            metadata = MetaObject(experiment=eid, dataset_id=self.DATASET_ID, person_id=int(user_id),
                                                   trial=experiment * 10 + sub_experiment, )
 
                             yield FlexibleDatasetPoint(
@@ -93,7 +94,8 @@ class ClarePointsLoader(DataPointsLoader):
                             )
 
                     except Exception as e:
-                        self.logger.error(f"Loading failed for {experiment} of {user_id}. Procedure will continue and drop the element")
+                        self.logger.error(
+                            f"Loading failed for {experiment} of {user_id}. Procedure will continue and drop the element")
                         self.logger.error(e)
 
             except Exception as e:
