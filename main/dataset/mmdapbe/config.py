@@ -21,6 +21,6 @@ class MmdapbeEegSourceConfig(EegSourceConfig):
 
 @dataclasses.dataclass
 class MmdapbeConfig(DatasetConfig):
-    eeg_source_config: MmdapbeEegSourceConfig = dataclasses.field(default_factory=EavEegSourceConfig)
+    eeg_source_config: MmdapbeEegSourceConfig = dataclasses.field(default_factory=MmdapbeEegSourceConfig)
     aud_source_config: AudSourceConfig = dataclasses.field(default_factory=lambda: AudSourceConfig(fs=44100))
     vid_source_config: VidSourceConfig = dataclasses.field(default_factory=lambda: VidSourceConfig(fps=30))
