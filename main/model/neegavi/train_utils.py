@@ -6,6 +6,10 @@ from tensordict import TensorDict
 from torch.utils.data import DataLoader, IterableDataset, ChainDataset
 
 from main.core_data.dataset import CacheableDatasetDescriptor, RoundRobinBatchMultiDataset, H5KdDataset
+from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
+from main.core_data.media.eeg import EEG
+from main.core_data.media.video import Video
 from main.utils.logging import make_logger
 
 
@@ -20,7 +24,9 @@ class KdTrainDataModule(lightning.LightningDataModule):
             # Parameters for stuff less related to the data itself
             batch_size: int,
             seed: int,
-            dequantize_keys: list[str],
+            dequantize_keys: list[str] = (
+                    EEG.modality_code(), Audio.modality_code(), Video.modality_code(), ECG.modality_code(),
+            ),
             collate_fn=collate,
             restore_iteration: int = None,
             # These are only here for hp tuning at the moment
@@ -190,7 +196,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
             self.test_dataset,
             batch_size=None,
             collate_fn=self.collate_fn,
-            num_workers=1,
+            num_workers=2,
             prefetch_factor=1,
             persistent_workers=True,
             pin_memory=False
@@ -202,7 +208,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 ds,
                 batch_size=None,
                 collate_fn=self.collate_fn,
-                num_workers=1,
+                num_workers=2,
                 prefetch_factor=1,
                 persistent_workers=True,
                 pin_memory=False

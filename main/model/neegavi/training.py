@@ -184,16 +184,17 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         for k, mv in stud_out.multimodal_outs.items():
             valid_k = mv["mask"].sum(1) > 0
             valid_both = valid_p & valid_k
-
             if not valid_both.any():
                 continue
 
             f = F.normalize(stud_out.cls[valid_both], dim=-1)
             e = F.normalize(self.y_mean(mv, valid_both), dim=-1)
+            b = F.normalize(self.y_mean(stud_out.multimodal_outs["eeg"], valid_both), dim=-1)
 
-            entry = self._validation_pairs.setdefault(k, {"f": [], "e": []})
+            entry = self._validation_pairs.setdefault(k, {"f": [], "e": [], "b": []})
             entry["f"].append(f)
             entry["e"].append(e)
+            entry["b"].append(b)
 
         return loss_object["loss"]
 
@@ -202,11 +203,17 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         top_k = (1, 3, 5, 10)
         combined = '-'.join(map(str, top_k))
         mean_acc = {top: [] for top in top_k}
+        prefusion_mean_acc = {top: [] for top in top_k}
+
         mean_r_items, mrr_items = [], []
+        prefusion_mean_r_items, prefusion_mrr_items = [], []
+
+        eeg_b: Optional[torch.Tensor] = None
 
         for key, pe in self._validation_pairs.items():
             f = torch.cat(pe["f"], dim=0)
             e = torch.cat(pe["e"], dim=0)
+            b = torch.cat(pe["b"], dim=0)
             metrics = retrieval_metrics_chunked(f, e, chunk_size=256)
             mrr = metrics["mrr"]
 
@@ -234,18 +241,57 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
             margin = metrics["margin"]
             self.log(f"{step_type}/fused/margin_{key}", margin, on_epoch=True)
 
+            if key == "eeg":
+                continue
+
+            metrics = retrieval_metrics_chunked(b, e, chunk_size=256)
+            mrr = metrics["mrr"]
+
+            recalls = []
+            for top in top_k:
+                top_values = metrics["recalls"][top]
+                recalls.append(top_values)
+
+                self.log(f"{step_type}/prefusion/top{top}_{key}", top_values, on_epoch=True)
+                prefusion_mean_acc[top].append(top_values)
+
+            # Mean Recall@K over selected Ks
+            mean_r = metrics["mean_r"]
+            prefusion_mean_r_items.append(mean_r)
+
+            prefusion_mrr_items.append(mrr)
+
+            self.log(f"{step_type}/prefusion/meanR@{combined}_{key}", mean_r, on_epoch=True)
+            self.log(f"{step_type}/prefusion/mrr_{key}", mrr, on_epoch=True)
+
+            alignment = metrics["alignment"]
+            self.log(f"{step_type}/prefusion/alignment_{key}", alignment, on_epoch=True)
+
+            # Margin between positives and typical negatives
+            margin = metrics["margin"]
+            self.log(f"{step_type}/prefusion/margin_{key}", margin, on_epoch=True)
+
         for top in top_k:
             if mean_acc[top]:
                 top_mean_value = torch.stack(mean_acc[top]).mean()
                 self.log(f"{step_type}/fused/top{top}_mean", top_mean_value, on_epoch=True)
+            if prefusion_mean_acc[top]:
+                top_mean_value = torch.stack(prefusion_mean_acc[top]).mean()
+                self.log(f"{step_type}/prefusion/top{top}_mean", top_mean_value, on_epoch=True)
 
         if mean_r_items:
             mean_r_mean = torch.stack(mean_r_items).mean()
             self.log(f"{step_type}/fused/meanR@{combined}_mean", mean_r_mean, on_epoch=True)
+            prefusion_mean_r_mean = torch.stack(prefusion_mean_r_items).mean()
+            self.log(f"{step_type}/prefusion/meanR@{combined}_mean", prefusion_mean_r_mean, on_epoch=True)
 
         if mrr_items:
             mrr_items_mean = torch.stack(mrr_items).mean()
             self.log(f"{step_type}/fused/mrr_mean", mrr_items_mean, on_epoch=True)
+            mrr_items_mean = torch.stack(prefusion_mrr_items).mean()
+            self.log(f"{step_type}/prefusion/mrr_mean", mrr_items_mean, on_epoch=True)
+
+        # Repeat for EEG vs Fused
 
     def on_validation_epoch_end(self):
         self.compute_batch_metrics("val")

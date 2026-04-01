@@ -323,6 +323,8 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         allow[:, -1, :] = True
 
         for xattn in self.gatedXAttn_layers:
+            # This was a fast way to test EEGAVI no fusion
+            # q = xattn(q, support_out, attn_mask=allow, q_mask=q_mask.bool(), kv_mask=None)
             q = xattn(q, support_out, attn_mask=allow, q_mask=q_mask.bool(), kv_mask=support_mask)
 
         out.embeddings = MaskedValue(data=q, mask=q_mask)

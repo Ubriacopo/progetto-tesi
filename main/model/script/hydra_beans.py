@@ -74,6 +74,7 @@ class KdConfig:
     dataset_descriptors: list[CacheableDatasetDescriptor]
     teacher_weights_path: str
 
+    checkpoint_path: str
 
 class TuningKdConfig(KdConfig):
     search_space: dict
