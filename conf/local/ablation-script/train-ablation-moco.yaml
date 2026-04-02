@@ -1,10 +1,10 @@
 # @package _global_
 defaults:
   - /train-local-defaults
-  - override /model: best
-  - override /trainer: best
+  - override /model: default
+  - override /trainer: default
 
-experiment: ablation-moco-best
+experiment: ablation-moco-default
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
 teacher_weights_path: ${base_path}main/dependencies/VATE/best_model_contrastive.pt
 

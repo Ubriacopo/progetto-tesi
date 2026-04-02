@@ -1,8 +1,8 @@
 # @package _global_
 defaults:
   - /train-local-defaults
-  - override /model: best
-  - override /trainer: best
+  - override /model: default
+  - override /trainer: default
 
 experiment: ablation-ecg
 base_path: /home/jacopo/PycharmProjects/progetto-tesi/
