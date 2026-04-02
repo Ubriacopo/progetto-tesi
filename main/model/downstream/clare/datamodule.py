@@ -1,5 +1,4 @@
-import torch
-from tensordict import TensorDict, tensordict
+from tensordict import TensorDict
 
 from main.core_data.ds.td_dataset import TdSegmentedExperimentDataset
 from main.model.downstream.core.datamodule import BaseDatamodule
@@ -15,23 +14,16 @@ class ClareDataModule(BaseDatamodule):
 
     @staticmethod
     def train_collate_fn(batch: list[TensorDict]) -> TensorDict:
-        # TODO
         return_object = []
         for td in batch:
-            # Video indexes are scaled from [1-28], labels from [0-27]
-            # Pool labels in even
-            one_hot = td["assessment", "scores"][0]
+            if td["eeg"].shape == (1,):
+                # 13 samples are broken in train, 1 in test
+                continue
 
-            cls = one_hot.argmax(dim=-1).long()
-            emotion_label = cls // 2
-            speaking = cls % 2
-
-            td["assessment", "score"] = torch.full(td.batch_size, emotion_label.item(), dtype=torch.long)
-            td["assessment", "speaking"] = torch.full(td.batch_size, speaking.item(), dtype=torch.long)
             td = td.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )
             return_object.append(td)
 
-        return tensordict.pad_sequence(return_object, 0, return_mask="pad_mask")
+        return TensorDict.stack(return_object, 0)
 
     @staticmethod
     def test_collate_fn(batch: list[TensorDict]) -> TensorDict:

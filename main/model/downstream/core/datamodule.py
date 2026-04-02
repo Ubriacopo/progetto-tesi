@@ -89,8 +89,8 @@ class BaseDatamodule(lightning.LightningDataModule, ABC):
             dataset=self.train_dataset,
             batch_size=self.batch_size,
             collate_fn=self.train_collate_fn,
-            num_workers=1,
-            prefetch_factor=1,
+            num_workers=4,
+            prefetch_factor=2,
             persistent_workers=True,
             pin_memory=False,
             shuffle=True,
@@ -101,7 +101,11 @@ class BaseDatamodule(lightning.LightningDataModule, ABC):
             dataset=self.valid_dataset,
             batch_size=self.batch_size,
             collate_fn=self.valid_collate_fn,
-            num_workers=0,
+            num_workers=4,
+            prefetch_factor=2,
+            persistent_workers=True,
+            pin_memory=False,
+            shuffle=False,
         )
 
     def test_dataloader(self):
@@ -109,8 +113,9 @@ class BaseDatamodule(lightning.LightningDataModule, ABC):
             dataset=self.test_dataset,
             batch_size=self.batch_size,
             collate_fn=self.test_collate_fn,
-            num_workers=1,
-            prefetch_factor=1,
+            num_workers=4,
+            prefetch_factor=2,
             persistent_workers=True,
-            pin_memory=False
+            pin_memory=False,
+            shuffle=False,
         )
