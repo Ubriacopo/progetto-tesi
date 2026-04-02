@@ -1,23 +1,12 @@
 import lightning
 import torch
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
-from tensordict import TensorDict
 from torch import nn
 
 from main.core_data.media.audio import Audio
 from main.core_data.media.eeg import EEG
 from main.core_data.media.video import Video
-
-
-def dequantize(x: dict | TensorDict, dequantize_keys: list[str], dtype=torch.float16):
-    return_dict: dict = {}
-    for key, td in x.items():
-        if key in dequantize_keys and "data" in td:
-            data = td["data"].to(dtype=dtype)
-            data.mul_(td["scales"])
-            td = {"data": data, "mask": td["mask"]}
-        return_dict[key] = td
-    return TensorDict.from_dict(return_dict, auto_batch_size=True)
+from main.model.downstream.core.utils import dequantize
 
 
 class ClassificationTrainer(lightning.LightningModule):
@@ -31,7 +20,7 @@ class ClassificationTrainer(lightning.LightningModule):
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optimizer = torch.optim.AdamW([
             {"params": self.model.project.parameters(), "lr": self.hparams.lr},
-          #  {"params": filter(lambda p: p.requires_grad, self.model.backbone.parameters()), "lr": self.hparams.backbone_lr},
+            #  {"params": filter(lambda p: p.requires_grad, self.model.backbone.parameters()), "lr": self.hparams.backbone_lr},
         ])
 
         return optimizer

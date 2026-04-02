@@ -110,7 +110,6 @@ class SimpleLinearProbeTrainer(lightning.LightningModule):
 
     def validation_step(self, batch: SupervisedInput, batch_idx):
         y = self.extract_target(batch)
-
         x = self.dequantize(batch)
         pred = self.model(x)
 
