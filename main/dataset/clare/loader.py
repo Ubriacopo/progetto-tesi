@@ -51,7 +51,7 @@ class ClarePointsLoader(DataPointsLoader):
 
                         current_labels = labels[f"level_{experiment}"].to_list()
                         for sub_experiment, label in enumerate(current_labels):
-                            eid = self.dataset_uid_store.uid(str(user_id), str(experiment * 10 + sub_experiment),
+                            eid = self.dataset_uid_store.uid(str(user_id), str(experiment * 1000 + sub_experiment),
                                                              "CLARE")
 
                             # Each experiment has range 10 seconds
@@ -81,7 +81,7 @@ class ClarePointsLoader(DataPointsLoader):
                             ecg_tensor = torch.from_numpy(ecg_tensor).float()
 
                             metadata = MetaObject(experiment=eid, dataset_id=self.DATASET_ID, person_id=int(user_id),
-                                                  trial=experiment * 10 + sub_experiment, )
+                                                  trial=experiment * 1000 + sub_experiment, )
 
                             yield FlexibleDatasetPoint(
                                 eid,

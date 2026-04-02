@@ -1,4 +1,5 @@
 import tensordict
+import torch
 from tensordict import TensorDict
 from torch.utils.data import Dataset, ConcatDataset
 
@@ -15,7 +16,29 @@ class FusionDataModule(BaseDatamodule):
         batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:10] for b in batch]
         for td in batch:
             # Only take the first 5 (V/A/D/L/F) because the train dataset (AMIGOS) has more
-            td["assessment", "scores"] = td["assessment", "scores"][:, :5]
+            td["assessment", "scores"] = td["assessment", "scores"][:, :3]
+            # Add missing tensors
+            if "vid" not in td:
+                td["vid"] = TensorDict({
+                    "data": torch.zeros((td.shape[0], 8, 256, 768), dtype=torch.int8),
+                    "mask": torch.zeros((td.shape[0], 8), dtype=torch.bool),
+                    "scales": torch.zeros((td.shape[0], 8, 256, 1), dtype=torch.float16)
+                })
+
+            if "aud" not in td:
+                td["aud"] = TensorDict({
+                    "data": torch.zeros((td.shape[0], 8, 199, 768), dtype=torch.int8),
+                    "mask": torch.zeros((td.shape[0], 8), dtype=torch.bool),
+                    "scales": torch.zeros((td.shape[0], 8, 199, 1), dtype=torch.float16)
+                })
+
+            if "ecg" not in td:
+                td["ecg"] = TensorDict({
+                    "data": torch.zeros((td.shape[0], 8, 32, 256), dtype=torch.int8),
+                    "mask": torch.zeros((td.shape[0], 8), dtype=torch.bool),
+                    "scales": torch.zeros((td.shape[0], 8, 32, 1), dtype=torch.float16)
+                })
+
         return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
 
     @staticmethod
@@ -46,4 +69,5 @@ class FusionDataModule(BaseDatamodule):
     def setup(self, stage: str) -> None:
         if self.is_initialized:
             return
+        self.inner_initialize()
         self.is_initialized = True
