@@ -84,7 +84,7 @@ def main(cfg: FusionConfig):
         max_epochs=cfg.trainer_config.epochs
     )
 
-    trainer.fit(module, datamodule=datamodule)
+    # trainer.fit(module, datamodule=datamodule)
     res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-{cfg.seed}.ckpt")
     logger.info("Finished training")
 
