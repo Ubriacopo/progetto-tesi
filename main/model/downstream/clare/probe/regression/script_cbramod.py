@@ -9,9 +9,8 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
 from main.model.downstream.clare.datamodule import ClareDataModule
-from main.model.downstream.clare.probe.trainer import ClaireTrainer
-from main.model.downstream.probe_model import SimpleLinearProbe
-from main.model.neegavi.factory import Factory
+from main.model.downstream.clare.probe.regression.trainer import ClaireTrainer
+from main.model.downstream.core.probe_model import SimpleCbraLinearProbe
 from main.utils.logging import make_logger
 
 
@@ -42,27 +41,26 @@ cs.store(name="train", node=ClareConfig)
 
 @hydra.main(version_base=None, config_name="train")
 def main(cfg: ClareConfig):
+    print(cfg.seed)
     lightning.seed_everything(cfg.seed, workers=True)
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = ClareDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
-    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
-
-    model = SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=1)
+    model = SimpleCbraLinearProbe(in_dim=200, out_dim=1)
     module = ClaireTrainer(model, seed=cfg.seed)
 
     torchinfo.summary(module)
-    monitor_key = "valid_loss"
-    model_name = "CLARE-LIN-" + str(cfg.seed)
+    monitor_key = "val_loss"
+    model_name = "CLARE-CBRA-" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
         devices=1,
-        logger=TensorBoardLogger("tb_logs", name=model_name),
+        logger=TensorBoardLogger("../tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
             EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=5, mode="min", verbose=True),
-            ModelCheckpoint(dirpath="checkpoints", filename=f"best-{cfg.seed}", every_n_epochs=1, save_top_k=1,
+            ModelCheckpoint(dirpath="checkpoints", filename=f"best-cbra-{cfg.seed}", every_n_epochs=1, save_top_k=1,
                             save_last=True, monitor=monitor_key, mode="min"),
         ],
         num_sanity_val_steps=0,
@@ -73,7 +71,7 @@ def main(cfg: ClareConfig):
     trainer.fit(module, datamodule=datamodule)
     logger.info("Finished training")
     # Test now
-    res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-{cfg.seed}.ckpt")
+    res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-cbra-{cfg.seed}.ckpt")
     logger.info(res)
     logger.info("Finished testing")
 

@@ -8,9 +8,9 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ModelChe
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
-from main.model.downstream.core.trainer.classification import ClassificationTrainer
-from main.model.downstream.eav_task.datamodule import EavDataModule
-from main.model.downstream.core.probe_model import SimpleCbraLinearProbe
+from main.model.downstream.clare.datamodule import ClareDataModule
+from main.model.downstream.clare.probe.regression.trainer import ClaireTrainer
+from main.model.downstream.core.probe_model import Simple1DLinearProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
@@ -23,12 +23,13 @@ class TrainerConfig:
 
 @dataclasses.dataclass
 class ModelConfiguration:
+    # Fixed
     backbone_checkpoint: str = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-2-attn-1-beta/2026-03-27_22-46-58/checkpoints/epochepoch=39-stepstep=102120.ckpt"
 
 
 @dataclasses.dataclass
-class SeedConfig:
-    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-eav"
+class ClareConfig:
+    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-clare"
     seed: int = 42
 
     model_config: ModelConfiguration = dataclasses.field(default_factory=ModelConfiguration)
@@ -36,34 +37,33 @@ class SeedConfig:
 
 
 cs = ConfigStore.instance()
-cs.store(name="train", node=SeedConfig)
+cs.store(name="train", node=ClareConfig)
 
 
 @hydra.main(version_base=None, config_name="train")
-def main(cfg: SeedConfig):
+def main(cfg: ClareConfig):
     lightning.seed_everything(cfg.seed, workers=True)
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = EavDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
+    datamodule = ClareDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
     backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
 
-    labels = 5
-    model = SimpleCbraLinearProbe(in_dim=200, out_dim=labels)
-    module = ClassificationTrainer(model, labels=labels, seed=cfg.seed)
+    model = Simple1DLinearProbe(backbone=backbone, in_dim=384, out_dim=1)
+    module = ClaireTrainer(model, seed=cfg.seed,lr=3e-4)
 
     torchinfo.summary(module)
-    monitor_key = "valid_loss"
-    model_name = "EAV-CBRA" + str(cfg.seed)
+    monitor_key = "val_loss"
+    model_name = "CLARE-LIN-" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
         devices=1,
-        logger=TensorBoardLogger("tb_logs", name=model_name),
+        logger=TensorBoardLogger("../tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
-            ModelCheckpoint(dirpath="checkpoints", filename=f"best-cbra-{cfg.seed}", every_n_epochs=1, save_top_k=1,
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=15, mode="min", verbose=True),
+            ModelCheckpoint(dirpath="checkpoints", filename=f"best-{cfg.seed}", every_n_epochs=1, save_top_k=1,
                             save_last=True, monitor=monitor_key, mode="min"),
-            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=5, mode="min", verbose=True),
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",
@@ -73,7 +73,7 @@ def main(cfg: SeedConfig):
     trainer.fit(module, datamodule=datamodule)
     logger.info("Finished training")
     # Test now
-    res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-cbra-{cfg.seed}.ckpt")
+    res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-{cfg.seed}.ckpt")
     logger.info(res)
     logger.info("Finished testing")
 

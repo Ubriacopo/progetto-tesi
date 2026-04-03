@@ -10,8 +10,7 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.trainer import FacedTrainer
-from main.model.downstream.probe_model import SimpleLinearProbe, PooledLinearProbe, SimpleNonLinearProbe
-from main.model.downstream.tune_model import SimpleTuneLinearProbe
+from main.model.downstream.core.probe_model import SimpleLinearProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 

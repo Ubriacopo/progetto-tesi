@@ -9,9 +9,8 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
 from main.model.downstream.clare.datamodule import ClareDataModule
-from main.model.downstream.clare.probe.trainer import ClaireTrainer
-from main.model.downstream.probe_model import SimpleCbraLinearProbe
-from main.model.neegavi.factory import Factory
+from main.model.downstream.clare.probe.binary.trainer import ClaireClassificationTrainer
+from main.model.downstream.core.probe_model import SimpleCbraLinearProbe
 from main.utils.logging import make_logger
 
 
@@ -48,11 +47,11 @@ def main(cfg: ClareConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = ClareDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
-    model = SimpleCbraLinearProbe(in_dim=384, out_dim=1)
-    module = ClaireTrainer(model, seed=cfg.seed)
+    model = SimpleCbraLinearProbe(in_dim=200, out_dim=2)
+    module = ClaireClassificationTrainer(model, seed=cfg.seed, lr=3e-4)
 
     torchinfo.summary(module)
-    monitor_key = "valid_loss"
+    monitor_key = "val_f1"
     model_name = "CLARE-CBRA-" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
@@ -60,7 +59,7 @@ def main(cfg: ClareConfig):
         logger=TensorBoardLogger("tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
-            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=5, mode="min", verbose=True),
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=15, mode="min", verbose=True),
             ModelCheckpoint(dirpath="checkpoints", filename=f"best-cbra-{cfg.seed}", every_n_epochs=1, save_top_k=1,
                             save_last=True, monitor=monitor_key, mode="min"),
         ],

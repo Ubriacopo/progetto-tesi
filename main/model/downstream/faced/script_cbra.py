@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.trainer import FacedTrainer
-from main.model.downstream.probe_model import SimpleCbraLinearProbe
+from main.model.downstream.core.probe_model import SimpleCbraLinearProbe
 from main.utils.logging import make_logger
 
 

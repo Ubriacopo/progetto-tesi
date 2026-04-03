@@ -5,6 +5,7 @@ from torch import nn
 from main.model.neegavi.model import EegInterAviModel
 
 
+
 class SimpleCbraLinearProbe(nn.Module):
     def __init__(self, in_dim: int, out_dim: int):
         super(SimpleCbraLinearProbe, self).__init__()
@@ -26,6 +27,35 @@ class SimpleCbraLinearProbe(nn.Module):
         pooled = summed / counts  # [B, D]
 
         return self.project(pooled)  # [B, out_dim]
+
+
+class Simple1DLinearProbe(nn.Module):
+    def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
+        super(Simple1DLinearProbe, self).__init__()
+        self.backbone: EegInterAviModel = backbone
+        self.project = nn.Sequential(
+            # nn.Linear(in_dim, out_dim),
+            # nn.Linear(in_dim, 32),
+            # nn.GELU(),
+            # nn.Linear(32, out_dim)
+        )
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+        self.backbone.eval()
+
+    def forward(self, x: TensorDict) -> torch.Tensor:
+        # Data inputs are of the shape [B, B', T, P, D]
+        # Frozen encoder
+        with torch.no_grad():
+            y = self.backbone(x)
+
+        # Restore previous batch
+        y = y.cls
+        # AVG over N timesteps of a sample
+        # y = y.max(dim=-2).values
+        logits = self.project(y)
+        return logits
 
 
 class SimpleLinearProbe(nn.Module):

@@ -20,7 +20,7 @@ class ClareDataModule(BaseDatamodule):
                 # 13 samples are broken in train, 1 in test
                 continue
 
-            td = td.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )
+            td = td.exclude("meta", ("assessment", "scales"), ("assessment", "labels"),)
             return_object.append(td)
 
         return TensorDict.stack(return_object, 0)

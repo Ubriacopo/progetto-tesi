@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.core.trainer.classification import ClassificationTrainer
 from main.model.downstream.eav_task.datamodule import EavDataModule
-from main.model.downstream.probe_model import SimpleLinearProbe
+from main.model.downstream.core.probe_model import SimpleLinearProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 

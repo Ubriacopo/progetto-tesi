@@ -8,13 +8,14 @@ from torch import nn
 from torchmetrics import R2Score, MeanSquaredError, MeanAbsoluteError
 
 from main.core_data.media.audio import Audio
+from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.video import Video
 from main.model.downstream.core.utils import dequantize
 
 
 class RegressionTrainer(lightning.LightningModule, ABC):
-    default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ]
+    default_dequantize_keys = [EEG.modality_code(), Video.modality_code(), Audio.modality_code(), ECG.modality_code()]
 
     def __init__(self, model: nn.Module, seed: int, lr=3e-4, backbone_lr=3e-5):
         super().__init__()
@@ -46,7 +47,7 @@ class RegressionTrainer(lightning.LightningModule, ABC):
         # Labels
         y = self.extract_target(batch)
         x = dequantize(batch, self.default_dequantize_keys)
-        pred = self.model(x)
+        pred = self.model(x).squeeze()
 
         loss = F.mse_loss(pred, y)
         self.train_rmse.update(pred, y)
@@ -58,7 +59,7 @@ class RegressionTrainer(lightning.LightningModule, ABC):
     def validation_step(self, batch):
         y = self.extract_target(batch)
         x = dequantize(batch, self.default_dequantize_keys)
-        pred = self.model(x)
+        pred: torch.Tensor = self.model(x).squeeze()
 
         loss = F.mse_loss(pred, y)
 
@@ -74,7 +75,7 @@ class RegressionTrainer(lightning.LightningModule, ABC):
     def test_step(self, batch):
         y = self.extract_target(batch)
         x = dequantize(batch, self.default_dequantize_keys)
-        pred = self.model(x)
+        pred = self.model(x).squeeze()
 
         loss = F.mse_loss(pred, y)
 
