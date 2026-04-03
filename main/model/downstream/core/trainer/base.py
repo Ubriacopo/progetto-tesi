@@ -21,8 +21,9 @@ class AbstractClassificationTrainer(lightning.LightningModule, ABC):
         self.model: nn.Module = model
         self.save_hyperparameters(ignore=["model"])
 
-        self.register_buffer("class_weights", torch.tensor([1.39, 3.57], dtype=torch.float32))
-        self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_weights)
+        #self.register_buffer("class_weights", torch.tensor([1.39, 3.57], dtype=torch.float32))
+        #self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_weights)
+        self.criterion = torch.nn.CrossEntropyLoss()
         # validation metrics
         self.val_acc = MulticlassAccuracy(num_classes=classes, average="micro")
         self.val_bal_acc = MulticlassAccuracy(num_classes=classes, average="macro")

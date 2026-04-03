@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.clare.datamodule import ClareDataModule
 from main.model.downstream.clare.probe.binary.trainer import ClaireClassificationTrainer
-from main.model.downstream.core.probe_model import Simple1DLinearProbe
+from main.model.downstream.core.probe_model import Simple1DLinearProbe, Simple1DZLinearProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
@@ -50,7 +50,7 @@ def main(cfg: ClareConfig):
     backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
 
     model = Simple1DLinearProbe(backbone=backbone, in_dim=384, out_dim=2)
-    module = ClaireClassificationTrainer(model, seed=cfg.seed, lr=3e-4)
+    module = ClaireClassificationTrainer(model, seed=cfg.seed, lr=6e-5)
 
     torchinfo.summary(module)
     monitor_key = "val_f1"

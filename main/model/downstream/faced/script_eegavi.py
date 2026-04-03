@@ -4,13 +4,13 @@ import hydra
 import lightning
 import torchinfo
 from hydra.core.config_store import ConfigStore
-from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.trainer import FacedTrainer
-from main.model.downstream.core.probe_model import SimpleLinearProbe
+from main.model.downstream.core.probe_model import SimpleLinearProbe, SimplePoolingProbe
 from main.model.neegavi.factory import Factory
 from main.utils.logging import make_logger
 
@@ -48,11 +48,12 @@ def main(cfg: SeedConfig):
     datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
     backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
     labels = 9
-    model = SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=labels)
-    module = FacedTrainer(model, labels=labels, seed=cfg.seed)
+
+    model = SimplePoolingProbe(backbone=backbone, in_dim=384, out_dim=labels)
+    module = FacedTrainer(model, classes=labels, seed=cfg.seed, lr=1e-4)
 
     torchinfo.summary(module)
-    monitor_key = "valid_loss"
+    monitor_key = "val_loss"
     model_name = "FACED-LIN" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
@@ -60,7 +61,9 @@ def main(cfg: SeedConfig):
         logger=TensorBoardLogger("tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
-            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=10, mode="min", verbose=True),
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=15, mode="min", verbose=True),
+            ModelCheckpoint(dirpath="checkpoints", filename=f"best-FACED{cfg.seed}", every_n_epochs=1, save_top_k=1,
+                            save_last=True, monitor=monitor_key, mode="min"),
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",
@@ -70,7 +73,8 @@ def main(cfg: SeedConfig):
     trainer.fit(module, datamodule=datamodule)
     logger.info("Finished training")
     # Test now
-    res = trainer.test(module, datamodule=datamodule)
+    trainer.validate(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-FACED{cfg.seed}.ckpt")
+    res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-FACED{cfg.seed}.ckpt")
     logger.info(res)
     logger.info("Finished testing")
 
