@@ -15,14 +15,14 @@ from main.model.blocks.time_masked import TimeMaskSwitchableProperties
 from main.model.blocks.xattention import GatedXAttentionFactory, GatedXAttentionCustomArgs
 from main.model.neegavi.adapters import EegAdapter, PerceiverResamplerAdapter, TemporalEncoderAdapter, \
     SimpleFeedForwardAdapter, PerceiverResamplerConfig
-from main.model.neegavi.config import EegModalityConfig, KdPerceiverModalityConfig, MaskedFeedForwardConfig, \
-    ModalityConfig, PerceiverModalityConfig
-from main.model.neegavi.model import EegInterAviModel, EegInterAviModelConfiguration
+from main.model.neegavi.config import ModalityConfig, EegModalityConfig, KdPerceiverModalityConfig, \
+    MaskedFeedForwardConfig, PerceiverModalityConfig
+from main.model.neegavi.model import EegInterAviModelConfiguration, EegInterAviModel
 from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
 
 
-class Factory:
+class CoreFactory:
     # The real Factory pattern (Clearer than the one I did before)
     def __init__(self):
         self.logger = make_logger(self.__class__.__name__)
@@ -36,11 +36,11 @@ class Factory:
 
         self.built: bool = False
 
-    def config(self, custom_config: EegInterAviModelConfiguration) -> Factory:
+    def config(self, custom_config: EegInterAviModelConfiguration) -> CoreFactory:
         self._config = custom_config
         return self
 
-    def pivot(self, code: str, config: ModalityConfig, adapter: nn.Module, kd: KDHead | None = None) -> Factory:
+    def pivot(self, code: str, config: ModalityConfig, adapter: nn.Module, kd: KDHead | None = None) -> CoreFactory:
         if code in self._supports:
             raise ValueError("Supporting modality cannot have same key as pivot")
 
@@ -54,7 +54,7 @@ class Factory:
 
         return self
 
-    def support(self, code: str, config: ModalityConfig, adapter: nn.Module, kd: KDHead | None = None) -> Factory:
+    def support(self, code: str, config: ModalityConfig, adapter: nn.Module, kd: KDHead | None = None) -> CoreFactory:
         if code in self._supports:
             self.logger.warning(f"You are overriding the config with key: {code}. It has an existing configuration")
 
@@ -71,19 +71,19 @@ class Factory:
 
         return self
 
-    def modality_dropout(self, dropout: ModalityDropout) -> Factory:
+    def modality_dropout(self, dropout: ModalityDropout) -> CoreFactory:
         self._dropout = dropout
         return self
 
-    def disabled(self, code: str) -> Factory:
+    def disabled(self, code: str) -> CoreFactory:
         self._disabled_supports.add(code)
         return self
 
-    def attention(self, attention_module: list[AbstractAttentionBlock]) -> Factory:
+    def attention(self, attention_module: list[AbstractAttentionBlock]) -> CoreFactory:
         self._attention = attention_module
         return self
 
-    def pooling(self, pooling_module: nn.Module) -> Factory:
+    def pooling(self, pooling_module: nn.Module) -> CoreFactory:
         self._pooling = pooling_module
         return self
 
@@ -120,9 +120,9 @@ class Factory:
             attention_config: int | list[GatedXAttentionCustomArgs],
             custom_config: EegInterAviModelConfiguration = None,
             disabled_supports: set[str] = None,
-    ) -> Factory:
+    ) -> CoreFactory:
         factory = (
-            Factory()
+            CoreFactory()
             .config(custom_config)
             # .pooling(None) Pooling is by default None which is a valid value
             .modality_dropout(BernoulliSupportsModalityDropout(4, custom_config.drop_p))  # TODO find good configuration
@@ -197,7 +197,7 @@ class Factory:
             disabled_supports: set[str] = ("txt",)
     ):
         factory = (
-            Factory()
+            CoreFactory()
             .config(custom_config)
             .attention(
                 GatedXAttentionFactory(custom_config.pivot_dim, custom_config.support_dim).build(attention_config)
@@ -244,7 +244,7 @@ class Factory:
 
     @staticmethod
     def best_inference_loaded(trainer_ckpt_path: str):
-        model = Factory.best_inference().build()
+        model = CoreFactory.best_inference().build()
         # Load previous state
         model.load_state_dict(get_model_ckpt(weights_path=trainer_ckpt_path), strict=False)
         # Model is now frozen

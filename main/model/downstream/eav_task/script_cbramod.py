@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 from main.model.downstream.core.trainer.classification import ClassificationTrainer
 from main.model.downstream.eav_task.datamodule import EavDataModule
 from main.model.downstream.core.probe_model import SimpleCbraLinearProbe
-from main.model.neegavi.factory import Factory
+from main.model.neegavi.factories.core import CoreFactory
 from main.utils.logging import make_logger
 
 
@@ -46,7 +46,7 @@ def main(cfg: SeedConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = EavDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
-    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
+    backbone = CoreFactory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
 
     labels = 5
     model = SimpleCbraLinearProbe(in_dim=200, out_dim=labels)

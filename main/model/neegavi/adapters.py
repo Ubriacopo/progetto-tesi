@@ -2,6 +2,7 @@ from dataclasses import dataclass, asdict
 from typing import Optional
 
 import torch
+from cbramod.models.cbramod import CBraMod
 from einops import rearrange
 from torch import nn
 
@@ -48,6 +49,28 @@ class EegAdapter(nn.Module):
 
         # TODO pool here per time alignment
         return MaskedValue(data=x, mask=mask)
+
+
+class EegCbraModAdapter(nn.Module):
+    def __init__(self, weights_path: str, output_size: int):
+        super().__init__()
+        self.encoder = CBraMod()
+        self.encoder.load_state_dict(torch.load(weights_path))
+        self.adapter = EegAdapter(channels=30, latent_input_size=200, output_size=output_size)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> MaskedValue:
+        # Is already time padded.
+        # TODO Canonical transform.
+
+
+        x = x.float()
+        if mask is not None:
+            mask = mask.bool()
+        z = self.encoder(x=x, mask=mask)
+
+        # todo custom adapter part
+        z = self.adapter(x=z, mask=mask)
+        return z
 
 
 class PerceiverResamplerAdapter(nn.Module):

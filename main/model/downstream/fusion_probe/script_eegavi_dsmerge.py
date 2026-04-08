@@ -8,10 +8,10 @@ from lightning.pytorch.callbacks import RichProgressBar, EarlyStopping, ModelChe
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
-from main.model.downstream.core.probe_model import SimpleLinearProbe
+from main.model.downstream.core.probe_model import SimpleLinearProbe, SimplePoolingProbe
 from main.model.downstream.fusion_probe.datamodule import FusionDataModule
 from main.model.downstream.fusion_probe.trainer import FusionTrainer
-from main.model.neegavi.factory import Factory
+from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
 
@@ -48,20 +48,20 @@ def main(cfg: FusionConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = FusionDataModule(seed=cfg.seed, batch_size=cfg.trainer_config.batch_size)
-    datamodule.add_dataset(cfg.train_dataset, 1, valid_fraction=0.1, test_fraction=0.15)
+    # datamodule.add_dataset(cfg.train_dataset, 1, valid_fraction=0.1, test_fraction=0.15)
     datamodule.add_dataset("/home/jacopo/dataset/EEGAVI/FUSION-DOWNSTREAM/DOWNSTREAM/interleaved-downstream-dreamer", 1,
-                           valid_fraction=0.1, test_fraction=0.15)  # Add dreamer TODO
+                          valid_fraction=0.1, test_fraction=0.15)  # Add dreamer TODO
     datamodule.add_dataset(cfg.test_dataset, 1, valid_fraction=0.1, test_fraction=0.15)
     # Load existing model
     ckpt = get_model_ckpt(weights_path=cfg.eegavi_ckpt)
-    backbone = Factory.best_inference().build()
+    backbone = CoreFactory.best_inference().build()
     # Load state of the seed ckpt
     backbone.load_state_dict(ckpt, strict=False)
     backbone.eval()
 
     # EEGAVI outputs a 384 embedding
     module = FusionTrainer(
-        model=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=3), seed=cfg.seed
+        model=SimpleLinearProbe(backbone=backbone, in_dim=384, out_dim=3), seed=cfg.seed, lr=1e-3
     )
 
     torchinfo.summary(module)
@@ -81,7 +81,8 @@ def main(cfg: FusionConfig):
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",
-        max_epochs=cfg.trainer_config.epochs
+        max_epochs=cfg.trainer_config.epochs,
+        accumulate_grad_batches=4
     )
 
     trainer.fit(module, datamodule=datamodule)

@@ -6,7 +6,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from optuna.integration import PyTorchLightningPruningCallback
 
 from main.model.VATE.constrastive_model import MaskedContrastiveModel
-from main.model.neegavi.factory import Factory
+from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
 from main.model.script.hydra_beans import KdConfig
@@ -18,7 +18,7 @@ def build_easy_eegavi_module(cfg: KdConfig, train_data_frac: float = None) -> Ea
     teacher.load_state_dict(torch.load(cfg.teacher_weights_path))
     teacher.eval()
 
-    student = Factory.default(**cfg.model.factory.args).build()
+    student = CoreFactory.default(**cfg.model.factory.args).build()
 
     return EasyEegAviKdVateMaskedModule(
         # Student model has args of default factory call in input from YAML

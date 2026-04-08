@@ -10,8 +10,8 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.clare.datamodule import ClareDataModule
 from main.model.downstream.clare.probe.binary.trainer import ClaireClassificationTrainer
-from main.model.downstream.core.probe_model import Simple1DLinearProbe, Simple1DZLinearProbe
-from main.model.neegavi.factory import Factory
+from main.model.downstream.core.probe_model import Simple1ZFF, Simple1DLinearProbe
+from main.model.neegavi.factories.core import CoreFactory
 from main.utils.logging import make_logger
 
 
@@ -47,7 +47,7 @@ def main(cfg: ClareConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = ClareDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
-    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
+    backbone = CoreFactory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
 
     model = Simple1DLinearProbe(backbone=backbone, in_dim=384, out_dim=2)
     module = ClaireClassificationTrainer(model, seed=cfg.seed, lr=6e-5)
@@ -72,7 +72,7 @@ def main(cfg: ClareConfig):
 
     trainer.fit(module, datamodule=datamodule)
     logger.info("Finished training")
-    # Test now
+    # Test nowt
     res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-{cfg.seed}.ckpt")
     logger.info(res)
     logger.info("Finished testing")

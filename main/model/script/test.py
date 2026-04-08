@@ -6,7 +6,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 
 import hydra_utils
-from main.model.neegavi.factory import Factory
+from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.train_utils import KdTrainDataModule
 from main.model.neegavi.training import EasyEegAviKdVateMaskedModule
 from main.model.script.hydra_beans import KdConfig

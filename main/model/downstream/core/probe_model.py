@@ -62,11 +62,11 @@ class Simple1ZFF(nn.Module):
         super(Simple1ZFF, self).__init__()
         self.backbone: EegInterAviModel = backbone
         self.project = nn.Sequential(
-            nn.Linear(32 * in_dim, 256),
+            nn.Linear(32 * in_dim, 1024),
             # nn.Linear(in_dim, 32),
             nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, out_dim)
+            # nn.Dropout(0.1),
+            nn.Linear(1024, out_dim)
         )
         for p in self.backbone.parameters():
             p.requires_grad = False
@@ -149,8 +149,7 @@ class SimplePoolingProbe(nn.Module):
 
         # Restore previous batch
         z = y.cls.unflatten(0, (b, b_inner))
-        logits = (self
-                  .project(z))
+        logits = self.project(z)
         return logits
 
 

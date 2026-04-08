@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 from main.model.downstream.core.probe_model import SimpleLinearProbe, SimplePoolingProbe
 from main.model.downstream.fusion_probe.datamodule import FusionDataModule
 from main.model.downstream.fusion_probe.trainer import FusionTrainer
-from main.model.neegavi.factory import Factory
+from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.utils import get_model_ckpt
 from main.utils.logging import make_logger
 
@@ -54,7 +54,7 @@ def main(cfg: FusionConfig):
     datamodule.add_dataset(cfg.test_dataset, 1, test_fraction=1.0)
     # Load existing model
     ckpt = get_model_ckpt(weights_path=cfg.eegavi_ckpt)
-    backbone = Factory.best_inference().build()
+    backbone = CoreFactory.best_inference().build()
     # Load state of the seed ckpt
     backbone.load_state_dict(ckpt, strict=False)
     backbone.eval()

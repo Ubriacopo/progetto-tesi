@@ -19,14 +19,13 @@ from main.utils.logging import make_logger
 @dataclasses.dataclass
 class EegInterAviModelConfiguration:
     # Shapes
-    pivot_dim: int
-    support_dim: int
-
-    output_size: int  # End size of the model (Output).
-    modality: TimeMaskSwitchableProperties
-
+    pivot_dim: int = 384
+    support_dim: int = 384
+    # End size of the model (Output).
+    output_size: int = 384
+    modality: TimeMaskSwitchableProperties = TimeMaskSwitchableProperties("bidirectional")
     # Configuration variables
-    drop_p: float = .0
+    drop_p: float = .1
     use_modality_encoder: bool = True
 
 
@@ -189,7 +188,6 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
     def build_allow_mask(self, t_q: torch.Tensor, t_kv: torch.Tensor):
         """
-        TODO: Could this be cached by configuration?
         Allowance mask aligns the same timesteps and previous ones.
         If modality is window only a limited amount of past is preserved as context.
         :param t_q: Time map for query vector
@@ -282,7 +280,11 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         return support, mask, time
 
     def modality_is_fused(self, modality_code: str):
-        # TODO: If it ever is the case we have to change behaviour we at least the function ready
+        """
+        If it ever is the case we have to change behaviour we at least the function ready
+        :param modality_code: the modality code
+        :return:
+        """
         return True
 
     def fusion_keys(self):

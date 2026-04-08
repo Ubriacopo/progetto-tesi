@@ -41,8 +41,8 @@ class FusionDataModule(BaseDatamodule):
                     "mask": torch.zeros((td.shape[0], 8), dtype=torch.bool),
                     "scales": torch.zeros((td.shape[0], 8, 32, 1), dtype=torch.float16)
                 })
-
-        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )[:10] for b in batch]
+        # boh magari audio unica modalita buona?
+        batch = [b.exclude("meta", ("assessment", "scales"), ("assessment", "labels"))[:10] for b in batch]
         return tensordict.pad_sequence(batch, 0, return_mask="pad_mask")
 
     @staticmethod

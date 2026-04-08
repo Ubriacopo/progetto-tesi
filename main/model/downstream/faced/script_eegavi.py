@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.trainer import FacedTrainer
 from main.model.downstream.core.probe_model import SimpleLinearProbe, SimplePoolingProbe
-from main.model.neegavi.factory import Factory
+from main.model.neegavi.factories.core import CoreFactory
 from main.utils.logging import make_logger
 
 
@@ -46,7 +46,7 @@ def main(cfg: SeedConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
-    backbone = Factory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
+    backbone = CoreFactory.best_inference_loaded(cfg.model_config.backbone_checkpoint)
     labels = 9
 
     model = SimplePoolingProbe(backbone=backbone, in_dim=384, out_dim=labels)
