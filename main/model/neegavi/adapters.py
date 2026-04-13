@@ -52,17 +52,14 @@ class EegAdapter(nn.Module):
 
 
 class EegCbraModAdapter(nn.Module):
-    def __init__(self, weights_path: str, output_size: int):
+    def __init__(self, weights_path: str, output_size: int, channels: int):
         super().__init__()
         self.encoder = CBraMod()
-        self.encoder.load_state_dict(torch.load(weights_path))
-        self.adapter = EegAdapter(channels=30, latent_input_size=200, output_size=output_size)
+        self.encoder.load_state_dict(torch.load(weights_path, map_location="cpu"))
+        self.adapter = EegAdapter(channels=channels, latent_input_size=200, output_size=output_size)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> MaskedValue:
         # Is already time padded.
-        # TODO Canonical transform.
-
-
         x = x.float()
         if mask is not None:
             mask = mask.bool()
@@ -83,6 +80,7 @@ class PerceiverResamplerAdapter(nn.Module):
         perceiver_config.dim = in_size  # Make sure the dims match
         if project_out_size is not None and project_out_size != in_size:
             # TODO: In case this is noisy just to MLP + LN + non-linearity
+            project_out_size: int
             self.logger.info(f"Shapes do not match so a nn.Linear({in_size}, {project_out_size}) is created")
             perceiver_config.dim = project_out_size
             self.linear_reshape = nn.Linear(in_size, project_out_size)

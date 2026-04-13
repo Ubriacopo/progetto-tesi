@@ -17,11 +17,22 @@ class KdModalityConfig(ModalityConfig):
 
 @dataclasses.dataclass(frozen=True)
 class EegModalityConfig(ModalityConfig):
-    channels: int = 19
+    channels: int
 
     @staticmethod
-    def default():
+    def default(**kwargs):
         return EegModalityConfig(in_size=None, out_size=384, timestep_seconds=1, channels=19)
+
+
+@dataclasses.dataclass(frozen=True)
+class CBraModEegModalityConfig(EegModalityConfig):
+    weights_path: str
+
+    @staticmethod
+    def default(weights_path: str, **kwargs):
+        return CBraModEegModalityConfig(
+            in_size=200, out_size=384, timestep_seconds=1, channels=19, weights_path=weights_path
+        )
 
 
 @dataclasses.dataclass(frozen=True)

@@ -23,8 +23,10 @@ class EegInterAviModelConfiguration:
     support_dim: int = 384
     # End size of the model (Output).
     output_size: int = 384
-    modality: TimeMaskSwitchableProperties = TimeMaskSwitchableProperties("bidirectional")
-    # Configuration variables
+    modality: TimeMaskSwitchableProperties = dataclasses.field(
+        default_factory=lambda: TimeMaskSwitchableProperties("bidirectional")
+    )
+
     drop_p: float = .1
     use_modality_encoder: bool = True
 

@@ -116,13 +116,25 @@ def retrieval_metrics_chunked(
     return {"mrr": mrr, "recalls": recalls, "mean_r": mean_r, "alignment": alignment, "margin": margin, }
 
 
-def get_model_ckpt(weights_path: str, check_path: str = "student."):
+def get_model_ckpt(weights_path: str, check_path: str = "student.", is_finetune: bool = False):
     ckpt = torch.load(weights_path, map_location="cpu")
     my_ckpt = dict()
 
     for key, value in ckpt["state_dict"].items():
+        if is_finetune:
+            key = key.replace("pivot.adapter.", "pivot.adapter.adapter.", 1)
         if key.startswith(check_path):
             my_ckpt[key[len(check_path):]] = value
 
     return my_ckpt
 
+
+def get_model_ckpt_finetune(weights_path: str, check_path: str = "student."):
+    ckpt = torch.load(weights_path, map_location="cpu")
+    my_ckpt = dict()
+    for key, value in ckpt["state_dict"].items():
+        if key.startswith(check_path):
+            key = key.replace("pivot.adapter.", "pivot.adapter.adapter.", 1)
+            my_ckpt[key[len(check_path):]] = value
+
+    return my_ckpt

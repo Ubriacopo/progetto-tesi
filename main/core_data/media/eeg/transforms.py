@@ -9,7 +9,7 @@ from torch import nn
 
 from main.core_data.media.eeg.eeg import EEG
 from main.core_data.utils import timed
-from main.core_data.media.eeg.channel_canonical_order import EegCanonicalOrder
+from main.core_data.media.eeg.channel_canonical_order import EegCanonicalOrder, EegOrder
 from main.utils.data import MaskedValue
 from main.utils.logging import make_logger
 
@@ -174,9 +174,9 @@ class CBraModEmbedderTransform(nn.Module):
 
 
 class CanonicalOrderTransform(nn.Module):
-    def __init__(self, eeg_order: list[str], canonical_order: EegCanonicalOrder = EegCanonicalOrder()):
+    def __init__(self, eeg_order: list[str], canonical_order: EegOrder = EegCanonicalOrder()):
         super().__init__()
-        self.canonical_order: EegCanonicalOrder = canonical_order
+        self.canonical_order: EegOrder = canonical_order
         self.eeg_order: list[str] = eeg_order
 
     def forward(self, x: torch.Tensor) -> MaskedValue:

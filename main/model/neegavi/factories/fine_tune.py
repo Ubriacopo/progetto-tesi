@@ -5,7 +5,8 @@ from main.core_data.media.video import Video
 from main.model.blocks.dropout import BernoulliSupportsModalityDropout
 from main.model.blocks.xattention import GatedXAttentionFactory
 from main.model.neegavi.adapters import EegCbraModAdapter, PerceiverResamplerAdapter, SimpleFeedForwardAdapter
-from main.model.neegavi.config import EegModalityConfig, PerceiverModalityConfig, MaskedFeedForwardConfig
+from main.model.neegavi.config import PerceiverModalityConfig, MaskedFeedForwardConfig, \
+    CBraModEegModalityConfig
 from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.model import EegInterAviModelConfiguration
 
@@ -13,8 +14,8 @@ from main.model.neegavi.model import EegInterAviModelConfiguration
 class FineTuneFactory(CoreFactory):
     @staticmethod
     def fine_tune_default(
+            eeg_config: CBraModEegModalityConfig,
             config: EegInterAviModelConfiguration = EegInterAviModelConfiguration(),
-            eeg_config: EegModalityConfig = EegModalityConfig.default(),
             vid_config: PerceiverModalityConfig = PerceiverModalityConfig.vid_default(),
             aud_config: PerceiverModalityConfig = PerceiverModalityConfig.aud_default(),
             ecg_config: MaskedFeedForwardConfig = MaskedFeedForwardConfig.ecg_default(),
@@ -32,7 +33,7 @@ class FineTuneFactory(CoreFactory):
             .attention(GatedXAttentionFactory(pivot_dim, support_dim).build(attention_layers))
             .pivot(
                 code=EEG.modality_code(), config=eeg_config,
-                adapter=EegCbraModAdapter()
+                adapter=EegCbraModAdapter(eeg_config.weights_path, eeg_config.out_size, eeg_config.channels),
             )
             .support(
                 code=Video.modality_code(), config=vid_config,
