@@ -57,7 +57,7 @@ def main(cfg: SeedConfig):
     module = EavClassificationTrainer(model, classes=labels, seed=cfg.seed)
 
     torchinfo.summary(module)
-    monitor_key = "valid_loss"
+    monitor_key = "val_loss"
     model_name = "EAV-CBRA" + str(cfg.seed)
     trainer = lightning.Trainer(
         accelerator="gpu",
