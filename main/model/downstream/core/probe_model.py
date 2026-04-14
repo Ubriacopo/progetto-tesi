@@ -264,3 +264,23 @@ class SimpleNonLinearProbe(nn.Module):
         # AVG over N timesteps of a sample
         y = self.hidden(sample_emb)
         return self.project(y)
+
+
+class SimpleFineTuneProbe(nn.Module):
+    def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, hidden_dim: int = 128):
+        super(SimpleFineTuneProbe, self).__init__()
+        self.backbone: EegInterAviModel = backbone
+        self.project = nn.Sequential(
+            Rearrange('b t d -> b d t'),
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(),
+            nn.Linear(in_dim, out_dim),
+        )
+
+    def forward(self, x: TensorDict) -> torch.Tensor:
+        b, b_inner = x.shape[:2]
+        x = x.flatten(0, 1)
+        y = self.backbone(x)
+        z = y.cls.unflatten(0, (b, b_inner))
+        logits = self.project(z)
+        return logits
