@@ -24,6 +24,8 @@ class AbstractClassificationTrainer(lightning.LightningModule, ABC):
         #self.register_buffer("class_weights", torch.tensor([1.39, 3.57], dtype=torch.float32))
         #self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_weights)
         self.criterion = torch.nn.CrossEntropyLoss()
+        self.train_acc = MulticlassAccuracy(num_classes=classes, average="micro")
+
         # validation metrics
         self.val_acc = MulticlassAccuracy(num_classes=classes, average="micro")
         self.val_bal_acc = MulticlassAccuracy(num_classes=classes, average="macro")
@@ -52,9 +54,12 @@ class AbstractClassificationTrainer(lightning.LightningModule, ABC):
         y = self.extract_target(batch)
         x = dequantize(batch, self.default_dequantize_keys)
         pred = self.model(x)
-
         loss = self.criterion(pred, y)
-        self.log("train_loss", loss, prog_bar=True)
+
+        self.train_acc.update(pred, y)
+        self.log("train_acc", self.train_acc, prog_bar=True, on_step=False, on_epoch=True)
+
+        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch):
