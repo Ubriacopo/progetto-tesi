@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.core.probe_model import SimpleFineTuneProbe
 from main.model.downstream.eav_task.datamodule import EavDataModule
-from main.model.downstream.eav_task.fine_tune.custom_trainer import EavFineTuneTrainer
+from main.model.downstream.eav_task.fine_tune.trainer import EavClassificationTrainer
 from main.model.neegavi.config import CBraModEegModalityConfig
 from main.model.neegavi.factories.fine_tune import FineTuneFactory
 from main.model.neegavi.utils import get_model_ckpt_finetune
@@ -54,7 +54,7 @@ def main(cfg: SeedConfig):
 
     labels = 5
     model = SimpleFineTuneProbe(backbone=backbone, in_dim=384, out_dim=labels)
-    module = EavFineTuneTrainer(model, labels=labels, seed=cfg.seed)
+    module = EavClassificationTrainer(model, classes=labels, seed=cfg.seed)
 
     torchinfo.summary(module)
     monitor_key = "valid_loss"
