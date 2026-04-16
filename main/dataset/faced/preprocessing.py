@@ -8,6 +8,7 @@ from main.core_data.media.metadata.metadata import Metadata
 from main.core_data.media.metadata.transforms import MetadataToTensor
 from main.core_data.processing.preprocessing import TorchExportsSegmentsReadyPreprocessor
 from main.core_data.sampler import FixedIntervalsSegmenter
+from main.dataset.faced.config import FacedConfig
 from main.dataset.mahnob.config import MahnobConfig
 
 
@@ -31,7 +32,7 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
 
 
 
-def interleaved_downstream_finetune_preprocessor(output_path: str, extraction_data_folder: str, config: EavConfig):
+def interleaved_downstream_finetune_preprocessor(output_path: str, extraction_data_folder: str, config: FacedConfig):
     return TorchExportsSegmentsReadyPreprocessor(
         output_path=output_path,
         segment_pipeline=FlexibleDatasetTransformWrapper(

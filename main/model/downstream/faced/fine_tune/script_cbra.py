@@ -34,7 +34,7 @@ class ModelConfiguration:
 
 @dataclasses.dataclass
 class SeedConfig:
-    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FACED-PROBE/interleaved/"
+    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FACED-PROBE/FINETUNE/interleaved-downstream/"
     seed: int = 42
 
     model_config: ModelConfiguration = dataclasses.field(default_factory=ModelConfiguration)
