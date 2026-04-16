@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - override /dataset: eav
+  - override /preprocessing: interleaved-downstream
+
+dataset:
+  uid_store_path: ${base_path}EEGAVI/FACED-PROBE/uid_store.csv
+
+preprocessing:
+  output_path: ${base_path}EEGAVI/FACED-PROBE-FINETUNE/${.out_folder_name}/
+
+base_path: /home/jacopo/dataset/

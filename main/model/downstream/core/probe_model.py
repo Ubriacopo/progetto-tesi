@@ -1,9 +1,11 @@
 import torch
+from cbramod.models.cbramod import CBraMod
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from tensordict import TensorDict
 from torch import nn
 
+from main.model.neegavi.adapters import EegCbraModAdapter
 from main.model.neegavi.model import EegInterAviModel
 
 
@@ -44,7 +46,7 @@ class Simple1DLinearProbe(nn.Module):
         self.backbone.eval()
 
     def forward(self, x: TensorDict) -> torch.Tensor:
-        # Data inputs are of the shape [B, B', T, P, D]
+        # Data inputs are of the shape [B, B1, T, P, D]
         # Frozen encoder
         with torch.no_grad():
             y = self.backbone(x)
@@ -74,7 +76,7 @@ class Simple1ZFF(nn.Module):
         self.backbone.eval()
 
     def forward(self, x: TensorDict) -> torch.Tensor:
-        # Data inputs are of the shape [B, B', T, P, D]
+        # Data inputs are of the shape [B, B1, T, P, D]
         # Frozen encoder
         with torch.no_grad():
             y = self.backbone(x)
@@ -270,11 +272,27 @@ class SimpleFineTuneProbe(nn.Module):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, hidden_dim: int = 128):
         super(SimpleFineTuneProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
+
+        # Freeze CBraMod except last layers
+        m: EegCbraModAdapter = self.backbone.pivot.adapter
+        for p in m.encoder.parameters():
+            p.requires_grad = False
+
+        for p in m.encoder.proj_out.parameters():
+            p.requires_grad = True
+
+        for l in m.encoder.encoder.layers[-1:]:
+            for p in l.parameters():
+                p.requires_grad = True
+
         self.project = nn.Sequential(
             Rearrange('b t d -> b d t'),
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten(),
-            nn.Linear(in_dim, out_dim),
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(0.4),
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, x: TensorDict) -> torch.Tensor:
@@ -283,4 +301,51 @@ class SimpleFineTuneProbe(nn.Module):
         y = self.backbone(x)
         z = y.cls.unflatten(0, (b, b_inner))
         logits = self.project(z)
+        return logits
+
+
+class SimpleCbraFineTune(nn.Module):
+    def __init__(self, encoder: CBraMod, in_dim: int, out_dim: int):
+        super().__init__()
+        self.encoder = encoder
+        self.project = nn.Sequential(
+            nn.LayerNorm( in_dim),
+            nn.Linear(in_dim, 128),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(128, out_dim),
+        )
+
+        for p in self.encoder.parameters():
+            p.requires_grad = False
+
+        for p in self.encoder.proj_out.parameters():
+            p.requires_grad = True
+
+        for l in self.encoder.encoder.layers[-2:]:
+            for p in l.parameters():
+                p.requires_grad = True
+
+    def forward(self, batch: TensorDict) -> torch.Tensor:
+        x = batch["eeg", "data"]  # e.g. [B, B_inner, P, C, D] or similar
+        mask = batch["eeg", "mask"]  # same token structure as encoder input, without D
+
+        b, b_inner = x.shape[:2]
+        # Flatten outer batch dims for encoder
+        x_flat = x.flatten(0, 1)
+        mask_flat = mask.flatten(0, 1).bool()
+
+        # Encoder output keeps token structure, only batch is flattened
+        y = self.encoder(x_flat.float(), mask_flat)
+
+        # Restore outer batch dims
+        y = y.unflatten(0, (b, b_inner))
+        mask = mask_flat.unflatten(0, (b, b_inner))
+        y = rearrange(y, 'b ... d -> b (...) d')
+        mask = rearrange(mask, 'b ... -> b (...)').bool()
+
+        token_logits = self.project(y)  # [B, N, C]
+
+        mask_f = mask.unsqueeze(-1).to(token_logits.dtype)
+        logits = (token_logits * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp_min(1.0)
         return logits
