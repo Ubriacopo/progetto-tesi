@@ -309,7 +309,7 @@ class SimpleCbraFineTune(nn.Module):
         super().__init__()
         self.encoder = encoder
         self.project = nn.Sequential(
-            nn.LayerNorm( in_dim),
+            nn.LayerNorm(in_dim),
             nn.Linear(in_dim, 128),
             nn.GELU(),
             nn.Dropout(0.1),
