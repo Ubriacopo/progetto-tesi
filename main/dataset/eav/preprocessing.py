@@ -72,12 +72,12 @@ def interleaved_preprocessor(output_path: str, extraction_data_folder: str, conf
             vid_vivit_interleaved_transform_pipe(config),
             aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
             eeg_transform_pipe(config),
-            txt_from_aud_interleaved_txt_extract_transform_pipe(config),
+            # txt_from_aud_interleaved_txt_extract_transform_pipe(config),
             (Metadata.modality_code(), MetadataToTensor())
         ),
         sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
-            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
+            #(Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
             eeg_sample_pipeline(config)
         )
     )
@@ -110,23 +110,16 @@ def combined_preprocessor(output_path: str, extraction_data_folder: str, config:
             vid_vivit_interleaved_transform_pipe(config),
             aud_wav2vec_interleaved_txt_extract_transform_pipe(config),
             eeg_transform_pipe(config),
-            txt_from_aud_interleaved_txt_extract_transform_pipe(config),
             (Metadata.modality_code(), MetadataToTensor())
         ),
         student_sample_pipeline=FlexibleDatasetTransformWrapper(
             "shared_interleaved_preprocessor",
-            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
             eeg_sample_pipeline(config)
         ),
         teacher_segment_pipeline=FlexibleDatasetTransformWrapper(
             "EAV-vate-processor",
             vid_vate_basic_transform_pipe(config),
             aud_vate_basic_transform_pipe(config),
-            txt_vate_basic_transform_pipe(),
             (Metadata.modality_code(), MetadataToTensor())
         ),
-        teacher_sample_pipeline=FlexibleDatasetTransformWrapper(
-            "shared_vate_preprocessor",
-            (Text.modality_code(), RestoreTextExtract(base_path=extraction_data_folder)),
-        )
     )

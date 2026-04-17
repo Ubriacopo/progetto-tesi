@@ -1,7 +1,7 @@
 # @package _global_
 defaults:
   - override /dataset: eav
-  - override /preprocessing: interleaved
+  - override /preprocessing: combined
 
 dataset:
   uid_store_path: ${base_path}EEGAVI/uid_store.csv

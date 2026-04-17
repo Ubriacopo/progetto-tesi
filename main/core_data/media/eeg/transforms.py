@@ -167,10 +167,9 @@ class CBraModEmbedderTransform(nn.Module):
         x = x.float().to(self.device)
         if mask is not None:
             mask: torch.Tensor = mask.bool().to(self.device)
-            mask = ~mask  # It was a presence mask before
 
         with torch.inference_mode():
-            z = self.model(x=x, mask=mask)
+            z = self.model(x=x, mask=~mask if mask is not None else None)
 
         return z if mask is None else MaskedValue(data=z, mask=mask)
 

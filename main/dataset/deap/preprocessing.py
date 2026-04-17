@@ -59,19 +59,6 @@ def interleaved_downstream_preprocessor(output_path: str, extraction_data_folder
     )
 
 
-def vate_preprocessor(output_path: str, extraction_data_folder: str, config: DeapConfig):
-    return TorchExportsSegmentsReadyPreprocessor(
-        output_path=output_path,
-        extraction_data_folder=extraction_data_folder,
-        segment_pipeline=FlexibleDatasetTransformWrapper(
-            "deap-vate-processor",
-            vid_vate_basic_transform_pipe(config),
-            # Audio and text do not exist so we cannot use them :(
-            (Metadata.modality_code(), MetadataToTensor())
-        ),
-    )
-
-
 def combined_preprocessor(output_path: str, extraction_data_folder: str, config: DeapConfig):
     return TorchExportsKdSegmentsReadyPreprocessor(
         output_path=output_path,
@@ -80,8 +67,6 @@ def combined_preprocessor(output_path: str, extraction_data_folder: str, config:
             "DEAP-interleaved_preprocessor",
             vid_vivit_interleaved_transform_pipe(config),
             eeg_transform_pipe(config),
-            # Audio and text do not exist so we cannot use them :(
-            # assessment_transform_pipe(),
             (Metadata.modality_code(), MetadataToTensor())
         ),
         student_sample_pipeline=FlexibleDatasetTransformWrapper(
@@ -91,7 +76,6 @@ def combined_preprocessor(output_path: str, extraction_data_folder: str, config:
         teacher_segment_pipeline=FlexibleDatasetTransformWrapper(
             "DEAP-vate-processor",
             vid_vate_basic_transform_pipe(config),
-            # Audio and text do not exist so we cannot use them :(
             (Metadata.modality_code(), MetadataToTensor())
         )
     )
