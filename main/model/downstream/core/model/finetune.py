@@ -78,8 +78,9 @@ class CBraFineTune(FineTuneModel, ABC):
         # Collapse the batch
         x = x.flatten(0, 1)
         mask_flat = mask.flatten(0, 1).bool()
-        y = self.encoder(x, mask)
-        z = y.cls.unflatten(0, (b, b_inner))
-        # TODO mask?
+        y = self.encoder(x, mask_flat)
+        z = y.unflatten(0, (b, b_inner))
+        # valid = ~mask.bool()
+        # z = z * valid.unsqueeze(-1)
         logits = self.project(z)
         return logits
