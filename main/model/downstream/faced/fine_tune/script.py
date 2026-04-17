@@ -3,12 +3,15 @@ import lightning
 import torch
 from cbramod.models.cbramod import CBraMod
 from hydra.core.config_store import ConfigStore
+from lightning.pytorch.callbacks import RichProgressBar, ModelCheckpoint, EarlyStopping
+from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
 from main.model.downstream.faced.config import SeedConfig
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.model import DefaultFacedCBraFineTune
 from main.model.downstream.faced.trainer import CBraModFacedClassificationTrainer
+from main.model.downstream.utils import print_parameter_summary_by_module, print_trainable_parameters
 from main.utils.logging import make_logger
 
 cs = ConfigStore.instance()
@@ -29,8 +32,38 @@ def main(cfg: SeedConfig):
         backbone.load_state_dict(torch.load(cbra_weights_path, map_location="cpu"))
         model = DefaultFacedCBraFineTune(encoder=backbone, num_classes=cfg.labels)
         module = CBraModFacedClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
+
+        model_name = "FACED-CBRA" + str(cfg.seed)
     else:
-        pass
+
+        model_name = "FACED" + str(cfg.seed)
+
+    print_parameter_summary_by_module(model)
+    print_trainable_parameters(model)
+    monitor_key = "val_loss"
+
+    trainer = lightning.Trainer(
+        accelerator="gpu",
+        devices=1,
+        logger=TensorBoardLogger("tb_logs", name=model_name),
+        callbacks=[
+            RichProgressBar(),
+            ModelCheckpoint(dirpath="checkpoints", filename=f"best-cbra-{cfg.seed}", every_n_epochs=1, save_top_k=1,
+                            save_last=True, monitor=monitor_key, mode="min"),
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=5, mode="min", verbose=True),
+        ],
+        num_sanity_val_steps=0,
+        precision="16-mixed",
+        max_epochs=cfg.trainer_config.epochs,
+        accumulate_grad_batches=4
+    )
+
+    trainer.fit(module, datamodule=datamodule)
+    logger.info("Finished training")
+    # Test now
+    res = trainer.test(module, datamodule=datamodule, ckpt_path=f"checkpoints/best-cbra-{cfg.seed}.ckpt")
+    logger.info(res)
+    logger.info("Finished testing")
 
 
 if __name__ == "__main__":

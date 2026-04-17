@@ -1,5 +1,6 @@
 from abc import abstractmethod, ABC
 
+import torch
 from cbramod.models.cbramod import CBraMod
 from tensordict import TensorDict
 from torch import nn
@@ -65,23 +66,24 @@ class CBraFineTune(FineTuneModel, ABC):
 
     def freeze(self):
         # Freeze everything
-        for p in self.encoder.parameters():
-            p.requires_grad = False
+        #for p in self.encoder.parameters():
+        #    p.requires_grad = False
 
         # Unfreeze what we want to learn
         for l in self.encoder.encoder.layers[-2:]:
             for p in l.parameters():
                 p.requires_grad = True
+        return
 
     def forward(self, td: TensorDict):
         x, mask = td["eeg", "data"], td["eeg", "mask"]
         b, b_inner = x.shape[:2]
         # Collapse the batch
         x = x.flatten(0, 1)
-        mask_flat = mask.flatten(0, 1).bool()
-        y = self.encoder(x, mask_flat)
+        mask_flat = ~mask.flatten(0, 1).bool()
+        y = self.encoder(x.float(), mask_flat)
         z = y.unflatten(0, (b, b_inner))
         # valid = ~mask.bool()
         # z = z * valid.unsqueeze(-1)
-        logits = self.project(z)
+        logits = self.project(z.half())
         return logits

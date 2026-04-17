@@ -11,7 +11,7 @@ class FacedTrainer(AbstractClassificationTrainer):
 
 class CBraModFacedClassificationTrainer(AbstractClassificationTrainer):
     def __init__(self, model: SimpleCbraFineTune, seed: int, lr=3e-4, classes: int = 2,
-                 backbone_lr=3e-4, cbramod_lr=1e-5, weight_decay: float = 0.01):
+                 backbone_lr=1e-5, cbramod_lr=1e-5, weight_decay: float = 0.01):
         super().__init__(model, seed, lr, classes, backbone_lr)
 
     def extract_target(self, batch):

@@ -105,7 +105,7 @@ class EegTimePadding(nn.Module):
         self.drop_mask: bool = drop_mask
 
     @timed()
-    def forward(self, x: MaskedValue) -> dict | torch.Tensor:
+    def forward(self, x: MaskedValue) -> MaskedValue | torch.Tensor:
         # If masking enabled I expect the mask to be of the shape [c, T].
         data: torch.Tensor = x['data']
         mask: torch.Tensor = x['mask']
@@ -139,7 +139,7 @@ class EegTimePadding(nn.Module):
         # Set time steps first. We get a simpler MASK like this.
         data = rearrange(data, "c t d -> t c d")  # (T, C, D)
         mask = rearrange(mask, "c t -> t c")  # (T, C)
-        return data if self.drop_mask else {"data": data, "mask": mask}
+        return data if self.drop_mask else MaskedValue(data=data, mask=mask)
 
 
 class CBraModEmbedderTransform(nn.Module):
@@ -153,10 +153,11 @@ class CBraModEmbedderTransform(nn.Module):
 
     @timed()
     def forward(self, x: MaskedValue | torch.Tensor) -> MaskedValue | torch.Tensor:
-        mask = None
+        mask: Optional[torch.Tensor] = None
         if isinstance(x, dict):
             x, mask = x["data"], x["mask"]
 
+        x: torch.Tensor
         if len(x.shape) == 3:
             # Add the batch
             x = x.unsqueeze(0)
@@ -165,12 +166,13 @@ class CBraModEmbedderTransform(nn.Module):
 
         x = x.float().to(self.device)
         if mask is not None:
-            mask = mask.bool().to(self.device)
+            mask: torch.Tensor = mask.bool().to(self.device)
+            mask = ~mask  # It was a presence mask before
 
         with torch.inference_mode():
             z = self.model(x=x, mask=mask)
 
-        return z if mask is None else {"data": z, "mask": mask}
+        return z if mask is None else MaskedValue(data=z, mask=mask)
 
 
 class CanonicalOrderTransform(nn.Module):
@@ -181,4 +183,4 @@ class CanonicalOrderTransform(nn.Module):
 
     def forward(self, x: torch.Tensor) -> MaskedValue:
         x, mask = self.canonical_order.adapt(x, self.eeg_order)
-        return {"data": x, "mask": mask}
+        return MaskedValue(data=x, mask=mask)

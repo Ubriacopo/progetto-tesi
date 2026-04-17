@@ -63,9 +63,7 @@ class EegCbraModAdapter(nn.Module):
         x = x.float()
         if mask is not None:
             mask = mask.bool()
-        z = self.encoder(x=x, mask=mask)
-
-        # todo custom adapter part
+        z = self.encoder(x=x, mask=~mask)
         z = self.adapter(x=z, mask=mask)
         return z
 

@@ -4,7 +4,7 @@ import dataclasses
 @dataclasses.dataclass
 class TrainerConfig:
     epochs: int = 50
-    batch_size: int = 32
+    batch_size: int = 8
 
 
 @dataclasses.dataclass
