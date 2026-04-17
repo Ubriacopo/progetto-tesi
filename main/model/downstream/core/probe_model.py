@@ -308,6 +308,8 @@ class SimpleCbraFineTune(nn.Module):
     def __init__(self, encoder: CBraMod, in_dim: int, out_dim: int):
         super().__init__()
         self.encoder = encoder
+
+        self.encoder.proj_out = nn.Identity()
         self.project = nn.Sequential(
             nn.LayerNorm(in_dim),
             nn.Linear(in_dim, 128),
