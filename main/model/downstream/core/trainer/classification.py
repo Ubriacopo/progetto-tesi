@@ -18,12 +18,7 @@ class ClassificationTrainer(lightning.LightningModule):
         self.save_hyperparameters(ignore=["model"])
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        optimizer = torch.optim.AdamW([
-            {"params": self.model.project.parameters(), "lr": self.hparams.lr},
-            #  {"params": filter(lambda p: p.requires_grad, self.model.backbone.parameters()), "lr": self.hparams.backbone_lr},
-        ])
-
-        return optimizer
+        return torch.optim.AdamW([{"params": self.model.project.parameters(), "lr": self.hparams.lr}, ])
 
     def training_step(self, batch):
         # Labels

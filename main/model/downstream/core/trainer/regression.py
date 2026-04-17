@@ -40,12 +40,7 @@ class RegressionTrainer(lightning.LightningModule, ABC):
         self.out_dim: int = out_dim
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        optimizer = torch.optim.AdamW([
-            {"params": self.model.project.parameters(), "lr": self.hparams.lr},
-            #  {"params": filter(lambda p: p.requires_grad, self.model.backbone.parameters()), "lr": self.hparams.backbone_lr},
-        ])
-
-        return optimizer
+        return torch.optim.AdamW([{"params": self.model.project.parameters(), "lr": self.hparams.lr}, ])
 
     @abstractmethod
     def extract_target(self, batch):
@@ -83,7 +78,6 @@ class RegressionTrainer(lightning.LightningModule, ABC):
 
             self.log(f"val_rmse_dim_{i}", self.val_rmse_dims[i], on_step=False, on_epoch=True)
             self.log(f"val_mae_dim_{i}", self.val_mae_dims[i], on_step=False, on_epoch=True)
-
 
         return loss
 

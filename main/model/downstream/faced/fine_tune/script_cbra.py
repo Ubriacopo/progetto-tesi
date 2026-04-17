@@ -1,5 +1,3 @@
-import dataclasses
-
 import hydra
 import lightning
 import torch
@@ -10,85 +8,15 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ModelChe
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
-from main.model.downstream.core.probe_model import SimpleFineTuneProbe, SimpleCbraFineTune
-from main.model.downstream.eav_task.datamodule import EavDataModule
-from main.model.downstream.eav_task.fine_tune.trainer import EavClassificationTrainer, CBraModEavClassificationTrainer
+from main.model.downstream.core.probe_model import SimpleCbraFineTune
+from main.model.downstream.faced.config import SeedConfig
 from main.model.downstream.faced.datamodule import FacedDataModule
 from main.model.downstream.faced.trainer import CBraModFacedClassificationTrainer
-from main.model.neegavi.config import CBraModEegModalityConfig
-from main.model.neegavi.factories.fine_tune import FineTuneFactory
-from main.model.neegavi.utils import get_model_ckpt_finetune
+from main.model.downstream.utils import print_parameter_summary_by_module, print_trainable_parameters
 from main.utils.logging import make_logger
-
-
-@dataclasses.dataclass
-class TrainerConfig:
-    epochs: int = 50
-    batch_size: int = 32
-
-
-@dataclasses.dataclass
-class ModelConfiguration:
-    backbone_checkpoint: str = "/home/jacopo/PycharmProjects/progetto-tesi/main/model/script/outputs/best-2-attn-1-beta/2026-03-27_22-46-58/checkpoints/epochepoch=39-stepstep=102120.ckpt"
-
-
-@dataclasses.dataclass
-class SeedConfig:
-    dataset_path: str = "/home/jacopo/dataset/EEGAVI/FACED-PROBE/FINETUNE/interleaved-downstream/"
-    seed: int = 42
-
-    model_config: ModelConfiguration = dataclasses.field(default_factory=ModelConfiguration)
-    trainer_config: TrainerConfig = dataclasses.field(default_factory=TrainerConfig)
-
-
 
 cs = ConfigStore.instance()
 cs.store(name="train", node=SeedConfig)
-
-
-def print_parameter_summary_by_module(model):
-    summary = {}
-
-    for name, p in model.named_parameters():
-        top = name.split(".")[0]
-        if top not in summary:
-            summary[top] = {"trainable": 0, "frozen": 0}
-
-        if p.requires_grad:
-            summary[top]["trainable"] += p.numel()
-        else:
-            summary[top]["frozen"] += p.numel()
-
-    for module, counts in summary.items():
-        total = counts["trainable"] + counts["frozen"]
-        print(
-            f"{module:20s} "
-            f"trainable={counts['trainable']:>12,d} "
-            f"frozen={counts['frozen']:>12,d} "
-            f"total={total:>12,d}"
-        )
-
-def print_trainable_parameters(model):
-    trainable = 0
-    frozen = 0
-
-    for name, p in model.named_parameters():
-        n = p.numel()
-        status = "TRAIN" if p.requires_grad else "FROZEN"
-        print(f"{status:7s} | {n:>12,d} | {name}")
-        if p.requires_grad:
-            trainable += n
-        else:
-            frozen += n
-
-    total = trainable + frozen
-    pct = 100.0 * trainable / total if total > 0 else 0.0
-
-    print("\nSummary")
-    print(f"Trainable: {trainable:,}")
-    print(f"Frozen:    {frozen:,}")
-    print(f"Total:     {total:,}")
-    print(f"% trainable: {pct:.2f}%")
 
 
 @hydra.main(version_base=None, config_name="train")

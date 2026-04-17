@@ -26,6 +26,8 @@ class EegAviFineTune(FineTuneModel, ABC):
             raise NotImplementedError("Can only accept cbra backbone")
         self.encoder.pivot.adapter.encoder.proj_out = nn.Identity()
         self.project = self.make_projection_head()
+        # Freeze parts of the model you want to keep fixed
+        self.freeze()
 
     def freeze(self):
         if not isinstance(self.encoder.pivot.adapter, EegCbraModAdapter):
@@ -58,7 +60,7 @@ class CBraFineTune(FineTuneModel, ABC):
         self.encoder: CBraMod = encoder
         self.encoder.proj_out = nn.Identity()
         self.project = self.make_projection_head()
-
+        # Freeze parts of the model you want to keep fixed
         self.freeze()
 
     def freeze(self):
@@ -71,7 +73,6 @@ class CBraFineTune(FineTuneModel, ABC):
             for p in l.parameters():
                 p.requires_grad = True
 
-    @abstractmethod
     def forward(self, td: TensorDict):
         x, mask = td["eeg", "data"], td["eeg", "mask"]
         b, b_inner = x.shape[:2]
