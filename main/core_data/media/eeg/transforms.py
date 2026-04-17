@@ -147,6 +147,7 @@ class CBraModEmbedderTransform(nn.Module):
         super().__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model = CBraMod(**kwargs).to(self.device)
+        self.model.eval()
 
         if weights_path is not None:
             self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
