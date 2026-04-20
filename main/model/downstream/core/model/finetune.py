@@ -30,6 +30,11 @@ class EegAviFineTune(FineTuneModel, ABC):
         # Freeze parts of the model you want to keep fixed
         self.freeze()
 
+    def get_pivot_adapter(self) -> EegCbraModAdapter:
+        if not isinstance(self.encoder.pivot.adapter, EegCbraModAdapter):
+            raise NotImplementedError("Can only accept cbra backbone")
+        return self.encoder.pivot.adapter
+
     def freeze(self):
         if not isinstance(self.encoder.pivot.adapter, EegCbraModAdapter):
             raise NotImplementedError("Can only accept cbra backbone")
@@ -66,7 +71,7 @@ class CBraFineTune(FineTuneModel, ABC):
 
     def freeze(self):
         # Freeze everything
-        #for p in self.encoder.parameters():
+        # for p in self.encoder.parameters():
         #    p.requires_grad = False
 
         # Unfreeze what we want to learn

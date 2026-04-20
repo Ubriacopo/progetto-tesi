@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - override /dataset: deap
+  - override /preprocessing: combined
+
+dataset:
+  uid_store_path: ${base_path}EEGAVI/uid_store.csv
+  eeg_config:
+    model_weights_path: /home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
+
+preprocessing:
+  output_path: ${base_path}EEGAVI/DEAP/${.out_folder_name}/
+
+
+base_path: /home/jacopo/dataset/

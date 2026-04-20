@@ -319,11 +319,7 @@ class SimpleCbraFineTune(nn.Module):
         )
 
         for p in self.encoder.parameters():
-            p.requires_grad = False
-
-        for p in self.encoder.proj_out.parameters():
             p.requires_grad = True
-
         for l in self.encoder.encoder.layers[-2:]:
             for p in l.parameters():
                 p.requires_grad = True
@@ -335,7 +331,7 @@ class SimpleCbraFineTune(nn.Module):
         b, b_inner = x.shape[:2]
         # Flatten outer batch dims for encoder
         x_flat = x.flatten(0, 1)
-        mask_flat = mask.flatten(0, 1).bool()
+        mask_flat = ~mask.flatten(0, 1).bool()
 
         # Encoder output keeps token structure, only batch is flattened
         y = self.encoder(x_flat.float(), mask_flat)

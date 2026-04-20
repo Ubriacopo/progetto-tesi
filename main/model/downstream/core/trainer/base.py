@@ -10,7 +10,9 @@ from main.core_data.media.audio import Audio
 from main.core_data.media.ecg import ECG
 from main.core_data.media.eeg import EEG
 from main.core_data.media.video import Video
+from main.model.downstream.core.model.finetune import EegAviFineTune, CBraFineTune
 from main.model.downstream.core.utils import dequantize
+from main.model.neegavi.adapters import EegCbraModAdapter
 
 
 class AbstractClassificationTrainer(lightning.LightningModule, ABC):
@@ -20,30 +22,21 @@ class AbstractClassificationTrainer(lightning.LightningModule, ABC):
         super().__init__()
         self.model: nn.Module = model
         self.save_hyperparameters(ignore=["model"])
-
-        #self.register_buffer("class_weights", torch.tensor([1.39, 3.57], dtype=torch.float32))
-        #self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_weights)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.train_acc = MulticlassAccuracy(num_classes=classes, average="micro")
-
-        # validation metrics
+        # Validation metrics
         self.val_acc = MulticlassAccuracy(num_classes=classes, average="micro")
         self.val_bal_acc = MulticlassAccuracy(num_classes=classes, average="macro")
         self.val_f1 = MulticlassF1Score(num_classes=classes, average="macro")
         self.val_cm = MulticlassConfusionMatrix(num_classes=classes)
-        # test metrics
+        # Test metrics
         self.test_acc = MulticlassAccuracy(num_classes=classes, average="micro")
         self.test_bal_acc = MulticlassAccuracy(num_classes=classes, average="macro")
         self.test_f1 = MulticlassF1Score(num_classes=classes, average="macro")
         self.test_cm = MulticlassConfusionMatrix(num_classes=classes)
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        optimizer = torch.optim.AdamW([
-            {"params": self.model.project.parameters(), "lr": self.hparams.lr},
-            #  {"params": filter(lambda p: p.requires_grad, self.model.backbone.parameters()), "lr": self.hparams.backbone_lr},
-        ])
-
-        return optimizer
+        return torch.optim.AdamW([{"params": self.model.project.parameters(), "lr": self.hparams.lr}, ])
 
     @abstractmethod
     def extract_target(self, batch):
@@ -112,3 +105,56 @@ class AbstractClassificationTrainer(lightning.LightningModule, ABC):
         print("\nValidation confusion matrix:")
         print(cm)
         self.val_cm.reset()
+
+
+class AbstractEegAviClassificationTrainer(AbstractClassificationTrainer, ABC):
+    def __init__(self, model: EegAviFineTune, seed: int, classes: int, lr=3e-4, backbone_lr=3e-5,
+                 cbra_lr=1e-5, weight_decay: float = 0.01):
+        self.model: EegAviFineTune = model
+        super().__init__(model, seed, lr, classes, backbone_lr)
+
+    def configure_optimizers(self):
+        project_parameters = self.model.project.parameters()
+        project_ids = {id(p) for p in project_parameters}
+
+        adapter: EegCbraModAdapter = self.model.get_pivot_adapter()
+
+        cbramod_params = list(p for p in adapter.encoder.parameters() if p.requires_grad)
+        cbra_params_ids = {id(p) for p in cbramod_params}
+
+        eegavi_params = [p for p in self.model.encoder.parameters() if p.requires_grad and id(p) not in cbra_params_ids]
+        eegavi_ids = {id(p) for p in eegavi_params}
+
+        # No overlap
+        assert project_ids.isdisjoint(cbra_params_ids)
+        assert project_ids.isdisjoint(eegavi_ids)
+        assert cbra_params_ids.isdisjoint(eegavi_ids)
+
+        optimizer = torch.optim.AdamW([
+            {"params": project_parameters, "lr": self.hparams.lr},
+            {"params": eegavi_params, "lr": self.hparams.backbone_lr},
+            {"params": cbramod_params, "lr": self.hparams.cbramod_lr},
+        ], weight_decay=self.hparams.weight_decay, )
+
+        return optimizer
+
+
+class AbstractCBraClassificationTrainer(AbstractClassificationTrainer, ABC):
+    def __init__(self, model: CBraFineTune, seed: int, lr=3e-4, classes: int = 2,
+                 backbone_lr=3e-5, weight_decay: float = 0.01):
+        self.model: CBraFineTune = model
+        super().__init__(model, seed, lr, classes, backbone_lr)
+
+    def configure_optimizers(self) -> OptimizerLRScheduler:
+        project_parameters = self.model.project.parameters()
+        project_ids = {id(p) for p in project_parameters}
+
+        cbramod_parameters = [p for p in self.model.encoder.parameters() if p.requires_grad]
+        cbra_params_ids = {id(p) for p in cbramod_parameters}
+
+        assert project_ids.isdisjoint(cbra_params_ids)
+        optimizer = torch.optim.AdamW([
+            {"params": project_parameters, "lr": self.hparams.lr},
+            {"params": cbramod_parameters, "lr": self.hparams.backbone_lr},
+        ], weight_decay=self.hparams.weight_decay, )
+        return optimizer
