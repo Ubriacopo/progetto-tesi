@@ -32,7 +32,7 @@ class EegAviBaseModel(BaseModel, ABC):
         self.freeze()
 
         if self.encoder_frozen:
-            encoder.eval()
+            self.encoder.eval()
 
     def get_pivot_adapter(self) -> EegCbraModAdapter:
         if not isinstance(self.encoder.pivot.adapter, EegCbraModAdapter):
@@ -45,7 +45,7 @@ class EegAviBaseModel(BaseModel, ABC):
         x = x.flatten(0, 1)
 
         if self.encoder_frozen:
-            with torch.inference_mode():
+            with torch.no_grad():
                 y = self.encoder(x)
         else:
             y = self.encoder(x)
@@ -67,7 +67,7 @@ class CBraModBaseModel(BaseModel, ABC):
         self.freeze()
 
         if self.encoder_frozen:
-            encoder.eval()
+            self.encoder.eval()
 
     def forward(self, td: TensorDict):
         x, mask = td["eeg", "data"], td["eeg", "mask"]
@@ -77,7 +77,7 @@ class CBraModBaseModel(BaseModel, ABC):
         mask_flat = ~mask.flatten(0, 1).bool()
 
         if self.encoder_frozen:
-            with torch.inference_mode():
+            with torch.no_grad():
                 y = self.encoder(x.float(), mask_flat)
         else:
             y = self.encoder(x.float(), mask_flat)

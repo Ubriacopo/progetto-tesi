@@ -114,7 +114,7 @@ class AbstractEegAviClassificationTrainer(AbstractClassificationTrainer, ABC):
         self.model: EegAviFineTune = model
 
     def configure_optimizers(self):
-        project_parameters = self.model.project.parameters()
+        project_parameters = [p for p in self.model.project.parameters() if p.requires_grad]
         project_ids = {id(p) for p in project_parameters}
 
         adapter: EegCbraModAdapter = self.model.get_pivot_adapter()
@@ -146,7 +146,7 @@ class AbstractCBraClassificationTrainer(AbstractClassificationTrainer, ABC):
         self.model: CBraFineTune = model
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        project_parameters = self.model.project.parameters()
+        project_parameters = [p for p in self.model.project.parameters() if p.requires_grad]
         project_ids = {id(p) for p in project_parameters}
 
         cbramod_parameters = [p for p in self.model.encoder.parameters() if p.requires_grad]
