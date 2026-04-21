@@ -8,9 +8,9 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ModelChe
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
-from main.model.downstream.core.probe_model import SimpleFineTuneProbe
 from main.model.downstream.eav_task.datamodule import EavDataModule
-from main.model.downstream.eav_task.fine_tune.trainer import EavClassificationTrainer
+from main.model.downstream.eav_task.model import DefaultEavFineTune
+from main.model.downstream.eav_task.trainer import EavClassificationTrainer
 from main.model.neegavi.config import CBraModEegModalityConfig
 from main.model.neegavi.factories.fine_tune import FineTuneFactory
 from main.model.neegavi.utils import get_model_ckpt_finetune
@@ -63,6 +63,7 @@ def print_parameter_summary_by_module(model):
             f"total={total:>12,d}"
         )
 
+
 def print_trainable_parameters(model):
     trainable = 0
     frozen = 0
@@ -98,8 +99,9 @@ def main(cfg: SeedConfig):
     backbone.load_state_dict(get_model_ckpt_finetune(weights_path=cfg.model_config.backbone_checkpoint), strict=False)
 
     labels = 5
-    model = SimpleFineTuneProbe(backbone=backbone, in_dim=384, out_dim=labels)
+    model = DefaultEavFineTune(encoder=backbone, num_classes=labels)
     module = EavClassificationTrainer(model, classes=labels, seed=cfg.seed)
+
     print_parameter_summary_by_module(model)
     print_trainable_parameters(model)
 

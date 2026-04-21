@@ -13,7 +13,6 @@ from main.model.downstream.faced.model import DefaultFacedCBraFineTune, DefaultF
 from main.model.downstream.faced.trainer import CBraModFacedClassificationTrainer, FacedClassificationTrainer
 from main.model.downstream.utils import print_parameter_summary_by_module, print_trainable_parameters
 from main.model.neegavi.config import CBraModEegModalityConfig
-from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.factories.fine_tune import FineTuneFactory
 from main.model.neegavi.utils import get_model_ckpt_finetune
 from main.utils.logging import make_logger

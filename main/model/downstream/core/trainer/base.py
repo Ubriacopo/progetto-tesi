@@ -109,9 +109,9 @@ class AbstractClassificationTrainer(lightning.LightningModule, ABC):
 
 class AbstractEegAviClassificationTrainer(AbstractClassificationTrainer, ABC):
     def __init__(self, model: EegAviFineTune, seed: int, classes: int, lr=3e-4, backbone_lr=3e-5,
-                 cbra_lr=1e-5, weight_decay: float = 0.01):
-        self.model: EegAviFineTune = model
+                 cbramod_lr=1e-5, weight_decay: float = 0.01):
         super().__init__(model, seed, lr, classes, backbone_lr)
+        self.model: EegAviFineTune = model
 
     def configure_optimizers(self):
         project_parameters = self.model.project.parameters()
@@ -119,8 +119,8 @@ class AbstractEegAviClassificationTrainer(AbstractClassificationTrainer, ABC):
 
         adapter: EegCbraModAdapter = self.model.get_pivot_adapter()
 
-        cbramod_params = list(p for p in adapter.encoder.parameters() if p.requires_grad)
-        cbra_params_ids = {id(p) for p in cbramod_params}
+        cbramod_parameters = list(p for p in adapter.encoder.parameters() if p.requires_grad)
+        cbra_params_ids = {id(p) for p in cbramod_parameters}
 
         eegavi_params = [p for p in self.model.encoder.parameters() if p.requires_grad and id(p) not in cbra_params_ids]
         eegavi_ids = {id(p) for p in eegavi_params}
@@ -130,20 +130,20 @@ class AbstractEegAviClassificationTrainer(AbstractClassificationTrainer, ABC):
         assert project_ids.isdisjoint(eegavi_ids)
         assert cbra_params_ids.isdisjoint(eegavi_ids)
 
-        optimizer = torch.optim.AdamW([
-            {"params": project_parameters, "lr": self.hparams.lr},
-            {"params": eegavi_params, "lr": self.hparams.backbone_lr},
-            {"params": cbramod_params, "lr": self.hparams.cbramod_lr},
-        ], weight_decay=self.hparams.weight_decay, )
+        params = [{"params": project_parameters, "lr": self.hparams.lr}]
+        if len(eegavi_params) != 0:
+            params.append({"params": eegavi_params, "lr": self.hparams.backbone_lr})
+        if len(cbramod_parameters) != 0:
+            params.append({"params": cbramod_parameters, "lr": self.hparams.cbramod_lr})
 
-        return optimizer
+        return torch.optim.AdamW(params, weight_decay=self.hparams.weight_decay, )
 
 
 class AbstractCBraClassificationTrainer(AbstractClassificationTrainer, ABC):
     def __init__(self, model: CBraFineTune, seed: int, lr=3e-4, classes: int = 2,
                  backbone_lr=3e-5, weight_decay: float = 0.01):
-        self.model: CBraFineTune = model
         super().__init__(model, seed, lr, classes, backbone_lr)
+        self.model: CBraFineTune = model
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         project_parameters = self.model.project.parameters()
@@ -153,8 +153,8 @@ class AbstractCBraClassificationTrainer(AbstractClassificationTrainer, ABC):
         cbra_params_ids = {id(p) for p in cbramod_parameters}
 
         assert project_ids.isdisjoint(cbra_params_ids)
-        optimizer = torch.optim.AdamW([
-            {"params": project_parameters, "lr": self.hparams.lr},
-            {"params": cbramod_parameters, "lr": self.hparams.backbone_lr},
-        ], weight_decay=self.hparams.weight_decay, )
-        return optimizer
+        params = [{"params": project_parameters, "lr": self.hparams.lr}]
+        if len(cbramod_parameters) != 0:
+            params.append({"params": cbramod_parameters, "lr": self.hparams.cbramod_lr})
+
+        return torch.optim.AdamW(params, weight_decay=self.hparams.weight_decay, )
