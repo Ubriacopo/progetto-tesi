@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
 from main.model.downstream.clare.datamodule import ClareDataModule
-from main.model.downstream.clare.probe.binary.trainer import ClaireClassificationTrainer
+from main.model.downstream.clare.trainer import ClaireClassificationTrainer
 from main.model.downstream.core.probe_model import SimpleCbraLinearProbe
 from main.utils.logging import make_logger
 

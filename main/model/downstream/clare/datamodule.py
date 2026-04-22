@@ -1,3 +1,4 @@
+import torch
 from tensordict import TensorDict
 
 from main.core_data.ds.td_dataset import TdSegmentedExperimentDataset
@@ -20,7 +21,12 @@ class ClareDataModule(BaseDatamodule):
                 # 13 samples are broken in train, 1 in test
                 continue
 
-            td = td.exclude("meta", ("assessment", "scales"), ("assessment", "labels"),)
+            if td["eeg", "data"].isnan().any() or td["ecg", "data"].isnan().any():
+                continue
+            if td["assessment", "scores"].isnan().any():
+                continue
+
+            td = td.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )
             return_object.append(td)
 
         return TensorDict.stack(return_object, 0)

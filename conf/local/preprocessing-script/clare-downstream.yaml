@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - override /dataset: clare
+  - override /preprocessing: interleaved-downstream
+
+dataset:
+  uid_store_path: ${base_path}EEGAVI/uid_store.csv
+
+preprocessing:
+  output_path: ${base_path}EEGAVI/DOWNSTREAM-CLARE/
+
+base_path: /home/jacopo/dataset/

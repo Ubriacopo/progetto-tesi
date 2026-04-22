@@ -155,6 +155,6 @@ class AbstractCBraClassificationTrainer(AbstractClassificationTrainer, ABC):
         assert project_ids.isdisjoint(cbra_params_ids)
         params = [{"params": project_parameters, "lr": self.hparams.lr}]
         if len(cbramod_parameters) != 0:
-            params.append({"params": cbramod_parameters, "lr": self.hparams.cbramod_lr})
+            params.append({"params": cbramod_parameters, "lr": self.hparams.backbone_lr})
 
         return torch.optim.AdamW(params, weight_decay=self.hparams.weight_decay, )

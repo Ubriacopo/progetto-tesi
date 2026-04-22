@@ -24,7 +24,7 @@ class EegAviFineTune(EegAviBaseModel, ABC):
             p.requires_grad = False
 
         # Unfreeze what we want to learn
-        for l in cbra.encoder.encoder.layers[-2:]:
+        for l in cbra.encoder.encoder.layers[-4:]:
             for p in l.parameters():
                 p.requires_grad = True
 

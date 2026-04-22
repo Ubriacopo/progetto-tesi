@@ -1,4 +1,4 @@
-from main.model.downstream.core.trainer.base import AbstractClassificationTrainer, AbstractEegAviClassificationTrainer, \
+from main.model.downstream.core.trainer.base import AbstractEegAviClassificationTrainer, \
     AbstractCBraClassificationTrainer
 
 

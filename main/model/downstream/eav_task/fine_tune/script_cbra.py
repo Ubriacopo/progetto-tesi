@@ -12,7 +12,8 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.core.probe_model import SimpleFineTuneProbe, SimpleCbraFineTune
 from main.model.downstream.eav_task.datamodule import EavDataModule
-from main.model.downstream.eav_task.fine_tune.trainer import EavClassificationTrainer, CBraModEavClassificationTrainer
+from main.model.downstream.eav_task.model import DefaultCbraModEavFineTune
+from main.model.downstream.eav_task.trainer import EavCbraModClassificationTrainer
 from main.model.neegavi.config import CBraModEegModalityConfig
 from main.model.neegavi.factories.fine_tune import FineTuneFactory
 from main.model.neegavi.utils import get_model_ckpt_finetune
@@ -65,6 +66,7 @@ def print_parameter_summary_by_module(model):
             f"total={total:>12,d}"
         )
 
+
 def print_trainable_parameters(model):
     trainable = 0
     frozen = 0
@@ -100,8 +102,8 @@ def main(cfg: SeedConfig):
     backbone.load_state_dict(torch.load(cbra_weights_path, map_location="cpu"))
 
     labels = 5
-    model = SimpleCbraFineTune(encoder=backbone, in_dim=200, out_dim=labels)
-    module = CBraModEavClassificationTrainer(model, classes=labels, seed=cfg.seed)
+    model = DefaultCbraModEavFineTune(encoder=backbone, num_classes=labels)
+    module = EavCbraModClassificationTrainer(model, seed=cfg.seed, classes=labels)
     print_parameter_summary_by_module(model)
     print_trainable_parameters(model)
 

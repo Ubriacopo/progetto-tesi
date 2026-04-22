@@ -22,7 +22,7 @@ from main.core_data.sampler import FixedIntervalsSegmenter
 from main.dataset.clare.config import ClareConfig
 
 
-def interleaved_downstream_preprocessor(output_path: str, extraction_data_folder: str, config: ClareConfig):
+def interleaved_downstream_finetune_preprocessor(output_path: str, extraction_data_folder: str, config: ClareConfig):
     # Todo sarebbe uyn altro preprocessor, non segemntato
     max_length = math.ceil(config.max_length / config.unit_seconds)
     latent_size, patches = 256, 32
@@ -54,7 +54,6 @@ def interleaved_downstream_preprocessor(output_path: str, extraction_data_folder
                 # Because we have fs=200 and CBraMod wants fs as points per patch max_segments=max_length
                 EEGToTimePatches(points_per_patch=config.eeg_target_config.fs, max_segments=config.max_length),
                 CanonicalOrderTransform(eeg_order=config.eeg_source_config.EEG_CHANNELS),
-                CBraModEmbedderTransform(weights_path=config.eeg_target_config.model_weights_path),
                 EegTimePadding(max_length=config.max_length),
                 DataQuantizationTransform()
             )),
