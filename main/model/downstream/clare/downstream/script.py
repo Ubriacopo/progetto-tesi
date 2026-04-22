@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 
 from main.model.downstream.clare.datamodule import ClareDataModule
 from main.model.downstream.clare.model import DefaultClareCBraFineTune, DefaultClareFineTune
-from main.model.downstream.clare.trainer import ClaireClassificationTrainer
+from main.model.downstream.clare.trainer import ClaireClassificationTrainer, CBraModClareClassificationTrainer
 from main.model.downstream.faced.config import SeedConfig
 from main.model.downstream.utils import print_parameter_summary_by_module, print_trainable_parameters
 from main.model.neegavi.config import CBraModEegModalityConfig
@@ -38,7 +38,7 @@ def main(cfg: SeedConfig):
         backbone = CBraMod()
         backbone.load_state_dict(torch.load(cbra_weights_path, map_location="cpu"))
         model = DefaultClareCBraFineTune(encoder=backbone, num_classes=cfg.labels)
-        module = ClaireClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
+        module = CBraModClareClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
 
         model_name = "CLARE-CBRA" + str(cfg.seed)
     else:
