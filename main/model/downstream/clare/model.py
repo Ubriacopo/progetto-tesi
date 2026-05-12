@@ -36,6 +36,7 @@ class DefaultClareCBraFineTune(CBraFineTune):
 
         # valid = ~mask.bool()
         # z = z * valid.unsqueeze(-1)
+        y = torch.nan_to_num(y, nan=0.0)
         logits = self.project(y.half())
         return logits
 
@@ -64,6 +65,7 @@ class DefaultClareBraModLinearProbe(CBraModProbe):
 
         # valid = ~mask.bool()
         # z = z * valid.unsqueeze(-1)
+        y = torch.nan_to_num(y, nan=0.0)
         logits = self.project(y.half())
         return logits
 
@@ -112,5 +114,6 @@ class DefaultClareLinearProbe(EegAviProbe):
             y = self.encoder(x)
         # Restore the batch size and use the CLS token
         z = y.cls
+        z = torch.nan_to_num(z, nan=0.0)
         logits = self.project(z)
         return logits

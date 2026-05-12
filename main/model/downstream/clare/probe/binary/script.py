@@ -7,14 +7,13 @@ from lightning.pytorch.callbacks import RichProgressBar, ModelCheckpoint, EarlyS
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
+from main.model.downstream.clare.datamodule import ClareDataModule
+from main.model.downstream.clare.model import DefaultClareCBraFineTune, DefaultClareFineTune, DefaultClareLinearProbe, \
+    DefaultClareBraModLinearProbe
+from main.model.downstream.clare.trainer import ClaireClassificationTrainer, CBraModClareClassificationTrainer
 from main.model.downstream.faced.config import SeedConfig
-from main.model.downstream.faced.datamodule import FacedDataModule
-from main.model.downstream.faced.model import DefaultFacedCBraFineTune, DefaultFacedFineTune, DefaultFacedLinearProbe, \
-    DefaultFacedCBraModLinearProbe
-from main.model.downstream.faced.trainer import CBraModFacedClassificationTrainer, FacedClassificationTrainer
 from main.model.downstream.utils import print_parameter_summary_by_module, print_trainable_parameters
 from main.model.neegavi.config import CBraModEegModalityConfig
-from main.model.neegavi.factories.core import CoreFactory
 from main.model.neegavi.factories.fine_tune import FineTuneFactory
 from main.model.neegavi.utils import get_model_ckpt_finetune
 from main.utils.logging import make_logger
@@ -29,23 +28,27 @@ def main(cfg: SeedConfig):
     logger = make_logger("hydra-main.train")
     logger.info(OmegaConf.to_yaml(cfg))
 
-    datamodule = FacedDataModule(cfg.dataset_path, 1, batch_size=cfg.trainer_config.batch_size)
+    cfg.dataset_path = "/home/jacopo/dataset/EEGAVI/DOWNSTREAM-CLARE/"
+    cfg.labels = 2
+    cfg.trainer_config.batch_size = 32
+
+    datamodule = ClareDataModule(cfg.dataset_path, 20, batch_size=cfg.trainer_config.batch_size)
     cbra_weights_path = "/home/jacopo/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth"
 
     if cfg.model_config.is_baseline:
         backbone = CBraMod()
         backbone.load_state_dict(torch.load(cbra_weights_path, map_location="cpu"))
-        model = DefaultFacedCBraModLinearProbe(encoder=backbone, num_classes=cfg.labels)
-        module = CBraModFacedClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
+        model = DefaultClareBraModLinearProbe(encoder=backbone, num_classes=cfg.labels)
+        module = CBraModClareClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
 
-        model_name = "FACED-CBRA" + str(cfg.seed)
+        model_name = "CLARE-CBRA" + str(cfg.seed)
     else:
         backbone = FineTuneFactory.fine_tune_default(CBraModEegModalityConfig.default(cbra_weights_path)).build()
         backbone.load_state_dict(get_model_ckpt_finetune(weights_path=cfg.model_config.weights_path), strict=False)
-        model = DefaultFacedLinearProbe(encoder=backbone, num_classes=cfg.labels)
-        module = FacedClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
+        model = DefaultClareLinearProbe(encoder=backbone, num_classes=cfg.labels)
+        module = ClaireClassificationTrainer(model, classes=cfg.labels, seed=cfg.seed)
 
-        model_name = "FACED" + str(cfg.seed)
+        model_name = "CLARE" + str(cfg.seed)
 
     print_parameter_summary_by_module(model)
     print_trainable_parameters(model)
@@ -64,7 +67,7 @@ def main(cfg: SeedConfig):
         num_sanity_val_steps=0,
         precision="16-mixed",
         max_epochs=cfg.trainer_config.epochs,
-        accumulate_grad_batches=4
+        accumulate_grad_batches=2
     )
 
     trainer.fit(module, datamodule=datamodule)
