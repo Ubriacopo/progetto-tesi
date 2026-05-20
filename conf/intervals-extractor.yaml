@@ -1,9 +1,11 @@
-base_path: /mnt/turing-datasets/
+base_path: /mnt/pve/datasets_jfichera/
 defaults:
   - hydra-setup
   - dataset: ???
   - preprocessing: ??? # todo cambia
-  - segmenter: base-segmenter
+  - segmenter: base_segmenter
+
+transcript_audio: ???
 
 hydra:
   job:

@@ -1,4 +1,4 @@
-base_path: /mnt/datasets/EEGAVI/
+base_path: /mnt/pve/datasets_jfichera/EEGAVI/
 defaults:
   - hydra-setup
   - sharding: ???

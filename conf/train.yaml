@@ -15,16 +15,16 @@ seed: 1
 data_seed: 150
 
 dataset_descriptors:
-  - dataset_path: "/mnt/datasets/EEGAVI/AMIGOS/combined/"
+  - dataset_path: "/mnt/pve/datasets_jfichera/EEGAVI/AMIGOS/combined/"
     cache_path: null
     dataset_weight: 137 # Power Law
-  - dataset_path: "/mnt/datasets/EEGAVI/DEAP/combined-compressed/"
+  - dataset_path: "/mnt/pve/datasets_jfichera/EEGAVI/DEAP/combined-compressed/"
     cache_path: null
     dataset_weight: 101 # Power Law
-  - dataset_path: "/mnt/datasets/EEGAVI/MAHNOB/combined-compressed/"
+  - dataset_path: "/mnt/pve/datasets_jfichera/EEGAVI/MAHNOB/combined-compressed/"
     cache_path: null
     dataset_weight: 28 # Power Law
-  - dataset_path: "/mnt/datasets/EEGAVI/EAV/combined-compressed/"
+  - dataset_path: "/mnt/pve/datasets_jfichera/EEGAVI/EAV/combined-compressed/"
     cache_path: null
     dataset_weight: 227
 

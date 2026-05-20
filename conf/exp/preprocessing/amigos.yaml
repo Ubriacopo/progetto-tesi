@@ -1,6 +1,6 @@
 # @package _global_
 defaults:
-  - override /dataset: dreamer
+  - override /dataset: amigos
   - override /preprocessing: interleaved
 
 base_path: /mnt/pve/datasets_jfichera/

@@ -48,7 +48,7 @@ mlflow
 webdataset
 optuna
 av
-mediapipe==0.10.21
+mediapipe>=0.10.30
 tensorboard
 rich
 plotly

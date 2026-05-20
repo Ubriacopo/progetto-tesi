@@ -24,7 +24,7 @@ class Config:
     transcript_audio: bool
 
 
-@hydra.main(config_path="../../../conf", config_name="intervals-extractor-local")
+@hydra.main(config_path="../../../conf", config_name="intervals-extractor")
 def main(cfg: Config):
     logger = make_logger("intervals_extractor")
     logger.info(OmegaConf.to_yaml(cfg))

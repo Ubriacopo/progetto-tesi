@@ -5,7 +5,7 @@ segmenter_args:
   max_length: 32
 
   # Is minimum number of segments to extract. Upper bound is calc from length of clip.
-  num_segments: 20
+  min_num_segments: 20
 
   anchor_identification_hop: 0.125
   extraction_jitter: 0.1
