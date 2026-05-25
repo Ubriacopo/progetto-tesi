@@ -14,27 +14,52 @@ def enforce_minimum_frames(frames, target=32):
 
 class VideoResampler:
     """
-    Detect once (MediaPipe) -> track (OpenCV) -> compute RGB/BB change -> auto-threshold ->
-    keep frames whose change exceeds threshold -> return a new MoviePy clip.
-
-    Adapted from VATE for VATE
+    Detect once (MediaPipe Tasks API) -> track (OpenCV) -> compute RGB/BB change ->
+    auto-threshold -> keep frames whose change exceeds threshold.
     """
 
-    def __init__(self, detect_conf: float = 0.5, reduce_bbox: float = 0.10, min_frames: int = 32):
-        self.detect_conf: float = detect_conf
-        self.reduce_bbox: float = reduce_bbox
-        # Face detection
-        self.mp_fd = mp.solutions.face_detection.FaceDetection(self.detect_conf)
+    def __init__(self, detect_conf: float = 0.5, reduce_bbox: float = 0.10,
+                 min_frames: int = 32, model_path: str = "/home/jfichera/progetto-tesi/models/face_detector.task", ):
+        self.detect_conf = detect_conf
+        self.reduce_bbox = reduce_bbox
         self.min_frames = min_frames
+
+        # MediaPipe 0.10.35 Tasks API
+        BaseOptions = mp.tasks.BaseOptions
+        FaceDetector = mp.tasks.vision.FaceDetector
+        FaceDetectorOptions = mp.tasks.vision.FaceDetectorOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
+
+        options = FaceDetectorOptions(
+            base_options=BaseOptions(model_asset_path=model_path),
+            running_mode=VisionRunningMode.IMAGE,
+            min_detection_confidence=detect_conf,
+        )
+
+        self.mp_fd = FaceDetector.create_from_options(options)
+
         # Tracker (CSRT preferred; fall back to KCF)
         self.tracker_ctor = None
-        for ctor in (
-                "TrackerCSRT_create",
-                "TrackerKCF_create",
-                "legacy.TrackerCSRT_create",
-                "legacy.TrackerKCF_create"
+        for ctor_path in (
+                ("TrackerCSRT_create",),
+                ("TrackerKCF_create",),
+                ("legacy", "TrackerCSRT_create"),
+                ("legacy", "TrackerKCF_create"),
         ):
-            self.tracker_ctor = getattr(cv2, ctor, None) if self.tracker_ctor is None else self.tracker_ctor
+            obj = cv2
+            for name in ctor_path:
+                obj = getattr(obj, name, None)
+                if obj is None:
+                    break
+
+            if obj is not None:
+                self.tracker_ctor = obj
+                break
+
+    def close(self):
+        if self.mp_fd is not None:
+            self.mp_fd.close()
+            self.mp_fd = None
 
     @staticmethod
     def _calc_threshold(vec):
@@ -44,7 +69,7 @@ class VideoResampler:
         if v.size == 0:
             return np.inf
 
-        v = np.trim_zeros(v, trim='fb')
+        v = np.trim_zeros(v, trim="fb")
 
         if v.size == 0:
             return np.inf
@@ -57,27 +82,49 @@ class VideoResampler:
         nh = int(h * (1 - rf))
         nx = x + (w - nw) // 2
         ny = y + (h - nh) // 2
-        nx, ny = max(0, nx), max(0, ny)
-        return nx, ny, min(W, nx + nw), min(H, ny + nh)
+
+        x1 = max(0, nx)
+        y1 = max(0, ny)
+        x2 = min(W, nx + nw)
+        y2 = min(H, ny + nh)
+
+        return x1, y1, x2, y2
 
     def _first_face_bbox(self, frame_rgb):
-        res = self.mp_fd.process(frame_rgb)
-        if not res.detections:
+        frame_rgb = np.ascontiguousarray(frame_rgb.astype(np.uint8))
+
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
+            data=frame_rgb,
+        )
+
+        result = self.mp_fd.detect(mp_image)
+
+        if not result.detections:
             return None
-        rbb = res.detections[0].location_data.relative_bounding_box
+
+        bbox = result.detections[0].bounding_box
+
         H, W = frame_rgb.shape[:2]
-        x = int(rbb.xmin * W)
-        y = int(rbb.ymin * H)
-        w = int(rbb.width * W)
-        h = int(rbb.height * H)
+
+        x = max(0, int(bbox.origin_x))
+        y = max(0, int(bbox.origin_y))
+        w = max(0, int(bbox.width))
+        h = max(0, int(bbox.height))
+
         x1, y1, x2, y2 = self._shrink_box(x, y, w, h, self.reduce_bbox, W, H)
+
+        if x2 <= x1 or y2 <= y1:
+            return None
+
         return x1, y1, x2 - x1, y2 - y1
 
     def _init_tracker(self, frame_bgr, bbox_xywh):
-        if self.tracker_ctor is None:
+        if self.tracker_ctor is None or bbox_xywh is None:
             return None
+
         tracker = self.tracker_ctor()
-        ok = tracker.init(frame_bgr, tuple(bbox_xywh))
+        ok = tracker.init(frame_bgr, tuple(map(int, bbox_xywh)))
         return tracker if ok else None
 
     @staticmethod
@@ -89,24 +136,20 @@ class VideoResampler:
         return h0, h1, h2
 
     def resample_clip(self, clip: VideoTensor, keep_when_no_face=True, output_fps=None):
-        """
-        Returns an ImageSequenceClip keeping frames where (RGB-change > thrRGB) OR (BB-change > thrBB).
-        - keep_when_no_face: if True, keeps frames when tracking/detection fail (so output isn’t empty).
-        - output_fps: if None, uses input fps.
-        """
         fps = clip.fps if hasattr(clip, "fps") and clip.fps else 25
         output_fps = output_fps or fps
+
         frames_rgb = clip.value.numpy().transpose(0, 2, 3, 1)
 
-        if not frames_rgb.any():
+        if len(frames_rgb) == 0 or not frames_rgb.any():
             return ImageSequenceClip([], fps=output_fps)
 
-        # Detect once
         first_rgb = frames_rgb[0].astype(np.uint8)
         first_bgr = cv2.cvtColor(first_rgb, cv2.COLOR_RGB2BGR)
-        bbox = self._first_face_bbox(first_rgb)
 
+        bbox = self._first_face_bbox(first_rgb)
         tracker = self._init_tracker(first_bgr, bbox) if bbox is not None else None
+
         prev_bbox = None
         prev_hist = None
 
@@ -114,10 +157,12 @@ class VideoResampler:
         kept_indices = []
 
         for idx, fr_rgb in enumerate(frames_rgb):
+            fr_rgb = fr_rgb.astype(np.uint8)
             fr_bgr = cv2.cvtColor(fr_rgb, cv2.COLOR_RGB2BGR)
-            H, W = fr_bgr.shape[:2]
 
-            # update bbox
+            H, W = fr_bgr.shape[:2]
+            bbox_xyxy = None
+
             if tracker is not None:
                 ok, trk = tracker.update(fr_bgr)
                 if ok:
@@ -125,69 +170,65 @@ class VideoResampler:
                     x1, y1, x2, y2 = self._shrink_box(x, y, w, h, self.reduce_bbox, W, H)
                     bbox_xyxy = (x1, y1, x2, y2)
                 else:
-                    bbox_xyxy = None
-            else:
-                # try sparse re-detect every ~15 frames
-                bbox_xyxy = None
-                if idx % 15 == 0:
-                    bb0 = self._first_face_bbox(fr_rgb)
-                    if bb0 is not None:
-                        tracker = self._init_tracker(fr_bgr, bb0)
-                        if tracker is not None:
-                            # will take effect next iteration
-                            pass
+                    tracker = None
 
-            # compute signals
+            if tracker is None and idx % 15 == 0:
+                bb0 = self._first_face_bbox(fr_rgb)
+                if bb0 is not None:
+                    tracker = self._init_tracker(fr_bgr, bb0)
+                    x, y, w, h = bb0
+                    bbox_xyxy = (x, y, x + w, y + h)
+
             if bbox_xyxy is not None:
                 x1, y1, x2, y2 = bbox_xyxy
                 roi = fr_bgr[y1:y2, x1:x2]
+
                 if roi.size == 0:
                     rgb_change = np.inf
                     bb_change = np.inf
                 else:
                     h0, h1, h2 = self._roi_hist_rgb(roi)
+
                     if prev_hist is not None:
-                        rgb_change = (np.linalg.norm(h0 - prev_hist[0])
-                                      + np.linalg.norm(h1 - prev_hist[1])
-                                      + np.linalg.norm(h2 - prev_hist[2])) / 3.0
+                        rgb_change = (
+                                             np.linalg.norm(h0 - prev_hist[0])
+                                             + np.linalg.norm(h1 - prev_hist[1])
+                                             + np.linalg.norm(h2 - prev_hist[2])
+                                     ) / 3.0
                     else:
                         rgb_change = np.inf
 
                     if prev_bbox is not None:
-                        bb_change = np.linalg.norm(np.array([x1, y1, x2, y2]) - np.array(prev_bbox, dtype=np.int32))
+                        bb_change = np.linalg.norm(
+                            np.array([x1, y1, x2, y2], dtype=np.int32)
+                            - np.array(prev_bbox, dtype=np.int32)
+                        )
                     else:
                         bb_change = np.inf
 
                     prev_hist = (h0, h1, h2)
                     prev_bbox = (x1, y1, x2, y2)
             else:
-                # no bbox this frame
                 rgb_change = np.inf
                 bb_change = np.inf
+
                 if keep_when_no_face and prev_hist is None:
-                    # keep initial frames to avoid empty output
                     kept_indices.append(idx)
 
             vecRGB.append(rgb_change)
             vecBB.append(bb_change)
 
-        # thresholds
         thrRGB = self._calc_threshold(vecRGB)
         thrBB = self._calc_threshold(vecBB)
 
-        # select frames
         for i, (r, b) in enumerate(zip(vecRGB, vecBB)):
-            if np.isfinite(r) and r > thrRGB or np.isfinite(b) and b > thrBB:
+            if (np.isfinite(r) and r > thrRGB) or (np.isfinite(b) and b > thrBB):
                 kept_indices.append(i)
 
-        # always keep first and last for context
-        if frames_rgb.any():
-            kept_indices.extend([0, len(frames_rgb) - 1])
-
+        kept_indices.extend([0, len(frames_rgb) - 1])
         kept_indices = sorted(set(kept_indices))
-        # build output clip
+
         kept_frames = frames_rgb[kept_indices]
-        # Enforce minimum
         kept_frames = enforce_minimum_frames(kept_frames, target=self.min_frames)
-        # return ImageSequenceClip(kept_frames, fps=output_fps)
+
         return kept_frames

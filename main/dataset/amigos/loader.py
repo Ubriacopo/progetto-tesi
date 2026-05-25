@@ -41,7 +41,7 @@ class AmigosPointsLoader(DataPointsLoader):
                 extract_trial_data(self.base_path + "pre_processed_py/", str(f))
 
         participant_data = load_participant_data(Path(self.base_path + "pre_processed_py/"))
-        participant_metadata = pd.read_excel(self.base_path + "Metadata_xlsx/Participant_Questionnaires.xlsx")
+        participant_metadata = pd.read_excel(self.base_path + "metadata/Participant_Questionnaires.ods")
 
         face_folder = Path(self.face_video_folder)
         for v in face_folder.iterdir():

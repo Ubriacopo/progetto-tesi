@@ -28,11 +28,15 @@ class AmigosEegSourceConfig(EegSourceConfig):
 class AmigosEcgSourceConfig(EcgSourceConfig):
     @staticmethod
     def prepare_ecg(ecg: ECG) -> ECG:
-        # RA-LL  -> Lead II
-        II = ecg.data[:, 0, :]
-        # LA-LL  -> Lead III
-        III = ecg.data[:, 1, :]
-        I = II - III
+        # AMIGOS uses Shimmer ECG. Likely channel assignment:
+        ecg_right = ecg.data[:, 0, :]
+        ecg_left = ecg.data[:, 1, :]
+
+        # ch0 = LL - RA = Lead II
+        # ch1 = LA - RA = Lead I
+        II = -ecg_right          # LL - RA
+        III = -ecg_left          # LL - LA
+        I = ecg_left - ecg_right # LA - RA
 
         aVR = -(I + II) / 2
         aVL = I - II / 2
@@ -40,13 +44,8 @@ class AmigosEcgSourceConfig(EcgSourceConfig):
 
         zeros = np.zeros_like(I)
 
-        # shape [12, T] to be compliant with ECG-LM requirements
-        signal_12xT = np.stack([I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=1)
-        lead_names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-
-        ecg.leads = lead_names
-        ecg.data = signal_12xT
-
+        ecg.data = np.stack([I, II, III, aVR, aVL, aVF, zeros, zeros, zeros, zeros, zeros, zeros], axis=1, )
+        ecg.leads = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6", ]
         return ecg
 
 

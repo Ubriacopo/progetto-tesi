@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - override /dataset: eav
+  - override /preprocessing: combined
+
+base_path: /mnt/pve/datasets_jfichera/
+dataset:
+  uid_store_path: ${base_path}EEGAVI/uid_store.csv
+
+preprocessing:
+  output_path: ${base_path}EEGAVI/${.out_folder_name}/
+

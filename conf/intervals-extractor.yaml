@@ -5,7 +5,7 @@ defaults:
   - preprocessing: ??? # todo cambia
   - segmenter: base_segmenter
 
-transcript_audio: ???
+transcript_audio: false
 
 hydra:
   job:

@@ -12,4 +12,4 @@ hydra:
 
 dataset:
   eeg_config:
-    model_weights_path: /home/jfichera/PycharmProjects/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
+    model_weights_path: /home/jfichera/progetto-tesi/main/dependencies/cbramod/pretrained_weights.pth
