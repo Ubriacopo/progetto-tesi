@@ -30,14 +30,17 @@ class KDHead(nn.Module):
 
             return pooled, valid
 
-        m = mask.to(dtype=x.dtype)
-        while m.dim() < x.dim():
-            m = m.unsqueeze(-1)  # [...,N,1]
+        m_bool = mask.bool()
+        while m_bool.dim() < x.dim():
+            m_bool = m_bool.unsqueeze(-1)
+
+        m_bool = m_bool.expand_as(x)
+        m = m_bool.to(dtype=x.dtype)
 
         num = (x * m).sum(dim=dim)
         den = m.sum(dim=dim)
 
-        valid = den > 0
+        valid = (den > 0)[..., :1]
         pooled = num / den.clamp_min(eps)
         pooled = torch.where(valid, pooled, torch.zeros_like(pooled))
 

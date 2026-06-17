@@ -44,6 +44,12 @@ class SiglipLoss(nn.Module):
         self.logt = nn.Parameter(torch.tensor([init_u], dtype=torch.float32))
         self.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float32))
 
+    def logit_scale(self) -> torch.Tensor:
+        return (self.LOGT_MIN + (self.LOGT_MAX - self.LOGT_MIN) * torch.sigmoid(self.logt)).exp()
+
+    def effective_bias(self) -> torch.Tensor:
+        return self.bias_scale * torch.tanh(self.bias / self.bias_scale)
+
     def forward(self, za: torch.Tensor, zb: torch.Tensor, zb_negative: Optional[torch.Tensor] = None, ignore_mask=None):
         """
         How does siglip work:
@@ -78,8 +84,8 @@ class SiglipLoss(nn.Module):
             zb_negative = zb_negative.detach()
             zb = torch.cat([zb, zb_negative], dim=0)
 
-        t = (self.LOGT_MIN + (self.LOGT_MAX - self.LOGT_MIN) * torch.sigmoid(self.logt)).exp()
-        bias = self.bias_scale * torch.tanh(self.bias / self.bias_scale)
+        t = self.logit_scale()
+        bias = self.effective_bias()
 
         logits = (za @ zb.T) * t + bias  # [B, B]
 

@@ -320,13 +320,24 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         for key in teacher_out.keys():
             if key not in student_out:
                 continue  # This element is not KD or is absent from teacher so we cannot learn from it
-            student_data, teacher_data = student_out[key]["data"], teacher_out[key]['data']
-            modality_loss = self.kd_losses[key](student_data, teacher_data)
+            valid = student_out[key]["mask"].bool() & teacher_out[key]["mask"].bool()
+            if not valid.any():
+                continue
 
-            rand_baseline = siglip_random_baseline(self.kd_losses[key], student_data, teacher_data, )
+            student_data = student_out[key]["data"][valid]
+            teacher_data = teacher_out[key]["data"][valid]
+            loss_fn = self.kd_losses[key]
+            modality_loss = loss_fn(student_data, teacher_data)
+
+            rand_baseline = siglip_random_baseline(loss_fn, student_data, teacher_data, )
 
             self.log(f"{step_type}/kd/{key}/rand", rand_baseline, on_epoch=True, on_step=is_train, prog_bar=False)
             self.log(f"{step_type}/kd/{key}/loss", modality_loss, on_epoch=True, on_step=is_train, prog_bar=False)
+            self.log(f"{step_type}/kd/{key}/valid_n", valid.sum(), on_epoch=True, on_step=is_train, prog_bar=False)
+            self.log(f"{step_type}/kd/{key}/siglip_scale", loss_fn.logit_scale(), on_epoch=True, on_step=is_train,
+                     prog_bar=False)
+            self.log(f"{step_type}/kd/{key}/siglip_bias", loss_fn.effective_bias(), on_epoch=True, on_step=is_train,
+                     prog_bar=False)
 
             # ---- KD diagnostic: positive-pair cosine similarity ----
             # Assumes last dim is embedding dim.
@@ -380,9 +391,16 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
                 zb_pos = self.y_mean(value, valid_rows)
 
             count_present += 1
-            mod_loss = self.siglip_losses[key](q, zb_pos, zb_neg)
+            loss_fn = self.siglip_losses[key]
+            mod_loss = loss_fn(q, zb_pos, zb_neg)
             is_train = step_type == "train"
             self.log(f"{step_type}/fusion/{key}", mod_loss, on_epoch=True, on_step=is_train, prog_bar=False)
+            self.log(f"{step_type}/fusion/{key}/valid_n", valid_rows.sum(), on_epoch=True, on_step=is_train,
+                     prog_bar=False)
+            self.log(f"{step_type}/fusion/{key}/siglip_scale", loss_fn.logit_scale(), on_epoch=True,
+                     on_step=is_train, prog_bar=False)
+            self.log(f"{step_type}/fusion/{key}/siglip_bias", loss_fn.effective_bias(), on_epoch=True,
+                     on_step=is_train, prog_bar=False)
 
             base_loss = base_loss + mod_loss
             if use_moco:
