@@ -1,5 +1,5 @@
-## For easy download:
-> wget https://zenodo.org/records/13799131/files/meta_data.csv?token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjEyMDcwZmIzLTY4NmItNDdmZi04ZWM4LWYwZmZkMjExMWZjNyIsImRhdGEiOnt9LCJyYW5kb20iOiIyYzVlMzVmMThlMzI0Zjc2YjA1NGMyM2U0YmNiOWNjZiJ9.ubtQU4wzEjo_QEaiUC3Jrbp0N8c59rSzQ933PXLNpieraib5_r5s-AvyS115kwCfu01BbvMPaOgSOO887hRdBw -o res.zip
--O meta_data.csv
+# EAV dataset
 
-Token is embedded in request as you can see.
+EAV is distributed through [Zenodo record 13799131](https://zenodo.org/records/13799131).
+
+Downloads are available through the record page and its stable API links. Temporary access tokens are excluded from version control. Raw and processed data are stored in separate directories.

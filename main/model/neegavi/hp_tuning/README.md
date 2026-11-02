@@ -1,21 +1,13 @@
-### Rules for faster tuning
+# Hyperparameter tuning
 
-- Work on a subset of the data?
-    - This will help with speed. How many?
-      If we have 100k samples I'd say around 20-30% of the data.
-- Limit the steps?
+Successive halving limits the training budget spent on weak configurations.
 
-Best approach:
-> Hyperband / Successive Halving (deep learning standard) <br>
-> Li et al., “Hyperband: A Novel Bandit-Based Approach to Hyperparameter Optimization”
+1. A broad search is conducted with a small epoch budget.
+2. Only the strongest candidates are retained.
+3. Those candidates are trained for 10–15 epochs.
+4. The final candidates receive the full training budget.
+5. Selection is based on validation metrics. The chosen run is evaluated once on the test set.
 
-Core idea:
+A fixed data subset can accelerate exploration. The subset and its seed remain constant across trials. The final comparison uses the full training data.
 
-- Train many configurations with small training budgets (few epochs).
-- Only promising models continue training.
-
-#### Simple approach:
-
-- Fixed number of grid (not all) → 5 epochs each
-- Take best k → 10-15 epochs on these
-- Bet 1 → Full training
+The approach follows [Hyperband](https://jmlr.org/papers/v18/16-558.html).

@@ -1,61 +1,36 @@
-# Titled references are to review and read (Short comment pls)
+# Reading list
 
-## Self-Supervised Representation Learning & Self Learning
-> # https://lilianweng.github.io/posts/2019-11-10-self-supervised/
+Items in this file are candidates for review. The thesis bibliography remains the authoritative citation source.
 
-> # Contrastive learning: <br>
-> # https://lilianweng.github.io/posts/2021-05-31-contrastive/
+## Self-supervised and contrastive learning
 
-> # https://arxiv.org/pdf/2205.05476 
- 
-> # Papers di distillation <br>
-> https://github.com/lhyfst/knowledge-distillation-papers
+- [Self-Supervised Representation Learning](https://lilianweng.github.io/posts/2019-11-10-self-supervised/)
+- [Contrastive Representation Learning](https://lilianweng.github.io/posts/2021-05-31-contrastive/)
+- [Knowledge distillation paper list](https://github.com/lhyfst/knowledge-distillation-papers)
+- [Multimodal knowledge distillation](https://arxiv.org/abs/2307.07483)
 
-### EEG Processing / Models
-> # NeuroGPT <br>
-> https://arxiv.org/pdf/2311.03764 <br>
-> https://github.com/wenhui0206/NeuroGPT
+## EEG models
 
-> # EEGFormer: 
-> https://arxiv.org/pdf/2401.10278 <br>
-> Unoffical implementation: https://github.com/FENRlR/EEGformer
+- [NeuroGPT](https://arxiv.org/abs/2311.03764)
+- [EEGFormer](https://arxiv.org/abs/2401.10278)
+- [Unofficial EEGFormer implementation](https://github.com/FENRlR/EEGformer)
+- [BrainBERT paper](https://klab.tch.harvard.edu/publications/PDFs/gk8131.pdf)
+- [BrainBERT demo](https://github.com/czlwang/BrainBERT/blob/master/notebooks/demo.ipynb)
+- [Graph neural networks for EEG](https://arxiv.org/abs/2310.02152)
+- [A Gentle Introduction to Graph Neural Networks](https://distill.pub/2021/gnn-intro/)
+- [MNE filtering and resampling](https://mne.tools/stable/auto_tutorials/preprocessing/30_filtering_resampling.html)
 
-> # Brain Bert (FAVOURITE):
-> https://klab.tch.harvard.edu/publications/PDFs/gk8131.pdf <br>
-> Mi piace. Dataset di train era solo SEEG, a noi va bene? BrainBERT (STFT) <br>
-> # Demo: https://github.com/czlwang/BrainBERT/blob/master/notebooks/demo.ipynb
+## Multimodal learning
 
-> # How does the model handle different electrodes? Is training shared across them? I was also confused by “First, the Linear (5s time domain input) network is trained once per electrode, for all held-out electrodes.” on page 6 under baselines.
-I am particularly interested in the trade-offs of using fewer electrodes and if the authors found better performance on downstream task based on the location of the electrodes, as would be expected.
->
-> # https://openreview.net/forum?id=xmcYx_reUn6
+- [Attention pooling notes](https://benjaminwarner.dev/2022/07/14/tinkering-with-attention-pooling)
+- [Multimodal emotion recognition on RAVDESS](https://github.com/KangHyunWook/Pytorch-implementation-of-Multimodal-emotion-recognition-on-RAVDESS-dataset)
+- [Multimodal sentiment analysis resources](https://github.com/soujanyaporia/multimodal-sentiment-analysis)
+- [Pyramid pooling implementation](https://github.com/revidee/pytorch-pyramid-pooling)
 
+## Unsorted papers
 
-> Graph EEG: <br> 
-> # https://arxiv.org/pdf/2310.02152
-
-> # https://distill.pub/2021/gnn-intro/
-
-> # Multi-modal distillation
-> https://arxiv.org/abs/2307.07483
-
-> # Library
->https://mne.tools/stable/auto_tutorials/preprocessing/30_filtering_resampling.html
- 
-> # Good review on attention
-> https://benjaminwarner.dev/2022/07/14/tinkering-with-attention-pooling
-
-> ### https://github.com/KangHyunWook/Pytorch-implementation-of-Multimodal-emotion-recognition-on-RAVDESS-dataset
-
-> ### https://arxiv.org/pdf/2504.20069
-
-> ### http://arxiv.org/pdf/1702.01992
- 
-> ## https://arxiv.org/pdf/2208.11893
-
->### https://github.com/soujanyaporia/multimodal-sentiment-analysis?tab=readme-ov-file 
-
-
-> ## https://github.com/revidee/pytorch-pyramid-pooling
-
-># https://arxiv.org/abs/2104.11560 
+- [arXiv:2504.20069](https://arxiv.org/abs/2504.20069)
+- [arXiv:1702.01992](https://arxiv.org/abs/1702.01992)
+- [arXiv:2208.11893](https://arxiv.org/abs/2208.11893)
+- [arXiv:2104.11560](https://arxiv.org/abs/2104.11560)
+- [arXiv:2205.05476](https://arxiv.org/abs/2205.05476)

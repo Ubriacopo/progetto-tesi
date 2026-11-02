@@ -1,17 +1,13 @@
-## MMDAPBE
+# MMDAPBE exploration notes
 
-- Experiments with 3 main components:
-    - xxx_physio.zip → What's inside? Know knows
-    - xxcamera_recording.zip -> I suppose frontal videos
+MMDAPBE is not part of the current EEGAVI pretraining corpus. \
+Its source package appears to contain physiological archives, camera recordings, audio files, synchronization data, NIRS signals, and a behaviour matrix.
 
-In the folder I saw some interesting files (The physio extracted):
-Seems each experiment is performed twice (as told by Jacopo)
+Before adding an adapter, verify:
 
-
-- S0110_1.m4a and redux.m4a
-- S0110_2.m4a and redux.m4a
-    - m4a files are audios? Like itunes? What could it be?
-- SIMlsl:?? -> For segmentation 
-- NIRS aux data, do we want to use it?
-
-BehaviourMatrix contiene i dati probabilmente di self assessment
+- the contents and channel layout of the physiological archives;
+- the relationship between original and reduced audio files;
+- the synchronization format;
+- whether repeated sessions belong to the same participant;
+- which fields contain self-assessments;
+- whether NIRS is in scope.

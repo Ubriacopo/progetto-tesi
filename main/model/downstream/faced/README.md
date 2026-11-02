@@ -1,17 +1,13 @@
-> So your trial-level aggregation strategy is correct for all four datasets.
+# FACED downstream protocol
 
-Basically: I have samples that are annotated. These annotations are on the full clip only. <br>
-This makes splitting and chunking very hard so here is a possible solution:
+FACED labels apply to complete trials, while EEGAVI operates on shorter windows. The trial remains the unit of supervision.
 
-- Keep 1 experiment = 1 sample
-- Chunk samples in 32s windows (or 16s)
-    - TODO: Check how many train samples have more than 16s in my data and how many > 24s and
-      how many exactly 32. This gives insight in what we are gonna do later (see if I trained for long sequences).
-- Call our model as frozen encoder on each chunk
-- Aggregate the CLS tokens (Mean or Attention) + build predictor (MLP)
-- For comparison build same predictor on CBraMod as frozen backbone to see if my model with fusion helps.
+1. Each trial is split into fixed-length windows.
+2. Each window is encoded with a frozen backbone.
+3. Window-level CLS tokens are aggregated.
+4. A small predictor is trained on the trial representation.
+5. EEGAVI is compared with a frozen CBraMod baseline under the same protocol.
 
-Check chunk size=8 only if bad performance.
-This means all other datasets have to be preprocessed from scratch also.
-(15% of them only)
-Chunking is easier as we just split every x secs (16 or 24 or 32 or at worst 8)
+Initial window sizes are 16 or 32 seconds. The final size depends on the trial-length distribution. An 8-second window is an alternative if longer windows underperform or exceed memory limits.
+
+Participant splits precede windowing. This prevents windows from the same participant or trial from crossing data splits.

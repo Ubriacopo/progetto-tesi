@@ -1,41 +1,36 @@
-% TODO
-> > Controlla scales di tutti
+# Dataset labels
 
-Collected assessment data differs between datasets, here is what we have:
+Label spaces differ across datasets. A shared target requires prior verification of each scale against the original dataset documentation.
 
-# AMIGOS
+## AMIGOS
 
-## Labels
+AMIGOS contains self-assessments and external annotations. External annotations cover valence and arousal.
 
-- External and self assessments (before-after experiment)
-- External on V/A only
+| Dimension | Scale |
+|---|---:|
+| Valence | 1–9 |
+| Arousal | 1–9 |
+| Dominance | 1–9 |
+| Liking | 1–9 |
+| Familiarity | 1–9 |
+| Neutral, disgust, happiness, surprise, anger, fear, sadness | 0 or 1 |
 
-| Valence	 | Arousal   	 | 	Dominance | Liking   	 | Familiarity   	 | Neutral   	     | Disgust   	 | Happiness 	 | Surprise 	 | Anger 	 | Fear 	 | Sandness 	 |
-|----------|-------------|------------|------------|-----------------|-----------------|-------------|-------------|------------|---------|--------|------------|
-| 	   1-9  | 	1-9        | 1-9	       | 1-9 	      | 1-9	            | 	           0/1 | 0/1 	       | 0/1 	       | 0/1 	      | 0/1 	   | 0/1 	  | 0/1 	      |
+## DEAP
 
-# DEAP
+DEAP includes online annotations for valence, arousal, and dominance. Participant ratings also include liking and familiarity.
 
-- External and self assessments (before-after experiment)
-- External on V/A only
+| Dimension | Scale |
+|---|---:|
+| Valence | 1–9 |
+| Arousal | 1–9 |
+| Dominance | 1–9 |
+| Liking | 1–9 |
+| Familiarity | 1–9 |
 
-Online ratings (?):
+## MAHNOB-HCI
 
-| Valence	 | Arousal   	 | 	Dominance | 
-|----------|-------------|------------|
-| 	   1-9  | 	1-9        | 1-9	       |
+The current adapter does not expose assessment labels.
 
-Participant ratings:
+## EAV
 
-| Valence | Arousal | Dominance | Liking | Familiarity |
-|---------|---------|-----------|--------|-------------|
-| 1-9     | 1-9     | 1-9       | 1-9    | 1-9         |
-
-# MAHNOB
-
-No data available
-
-# EAV
-
-Valence Arousal are split in emotions (Happy, Calm, Angry, Sad)
-All these are [-5,5] discrete
+EAV represents affect through four categories: happy, calm, angry, and sad. Valence and arousal values are discrete and range from −5 to 5.

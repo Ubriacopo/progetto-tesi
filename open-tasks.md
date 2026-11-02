@@ -1,35 +1,22 @@
-## Amigos
+# Open tasks
 
-- Come fare con multi-person vids?
-- Crop su volti e tratti come singole persone? Sembra opzione piú ragionevole
-- Script decomposizione vid
-- Video gruppi gestione
-- Video Lunghi + segmenti di 20
-- Ma fare estrazione testo solo 1 volta per tipo di video? I candidati non parlano dopotutto
+This file tracks unresolved implementation and experiment work. Thesis writing tasks belong in [`report/tesi/note.md`](report/tesi/note.md).
 
+## Data
 
-## Loss
-
-- studia bilanciamento
+- Define a consistent policy for AMIGOS group recordings.
+- Decide whether to crop each participant from group videos.
+- Extract long recordings into aligned 20-second segments.
+- Avoid repeated transcript extraction for shared stimulus videos.
+- Complete MAHNOB-HCI preprocessing and integration.
+- Verify the DEAP preprocessing pipeline.
+- Run the remaining dataset preprocessing jobs.
 
 ## Model
-- Ripristino modality dropout
-- Prova unimodale (skip layer?)
-- Cambia parametrizzazioni
-- Verifica che video senza pooling vada. Quanto è limite di size?
-    - Meglio evitare: Memory explodes (non-solo ad inference che va ok ma during storage of pre-computed)
 
-## Run
+- Restore modality dropout.
+- Evaluate a unimodal EEG path.
+- Review loss balancing.
+- Confirm the safe video token limit during training.
 
-- preprocessing ds
-
-## Manhob
-
-- Usa manob per training
-- preprocessing core
-- pipeline implementaiton
-
-## Deap
-
-- Preprocessing pipeline fix
-
+Video without pooling is currently impractical. Precomputed features exceed the available memory.

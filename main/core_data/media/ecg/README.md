@@ -1,10 +1,10 @@
-## Choice of FM:
+# ECG representation
 
-- https://github.com/bowang-lab/ECG-FM/tree/main/data TolerantECG study showed it performs well with missing leads. It
-  is well-known so I'd pick this
-- https://github.com/Fsoft-AIC/TolerantECG : Good with missing leads but might be too recent.
-- https://github.com/PKUDigitalHealth/ECGFounder A good baseline.
+ECG features are extracted with [ECG-FM](https://github.com/bowang-lab/ECG-FM). It was selected because it is established and has been evaluated under missing-lead conditions.
 
-### About missing leads:
+Alternatives considered during development:
 
-For AMIGOS: Map your leads: RA & LA = effectively lead I. If you have RA & LL, you’d also get lead II.
+- [TolerantECG](https://github.com/Fsoft-AIC/TolerantECG), which targets incomplete lead sets.
+- [ECGFounder](https://github.com/PKUDigitalHealth/ECGFounder), which provides a useful baseline.
+
+AMIGOS exposes RA and LA signals. Their difference approximates lead I. RA and LL can also form lead II when both are available. Dataset adapters must document any derived lead mapping.

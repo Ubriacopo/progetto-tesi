@@ -1,12 +1,8 @@
-# The DEAP dataset
+# DEAP notes
 
-> Frontal clips are audioless
+DEAP records responses to one-minute music-video excerpts. \
+The frontal recordings do not contain audio.
 
+The metadata includes the start time of each selected highlight. This can be used to recover the matching stimulus segment when access to the original media is permitted.
 
-> It was performed on music videos extracts of 1 minute
-> Highlight_start The time in seconds where the extracted one-minute highlight begins as determined by MCA analysis.
-> For some videos, the highlight was manually overridden (for instance when a section of the song is particularly
-> well-known).
-
-So we can also get the video/audio the user was watching.
-> Should and can we use it?
+Participant recordings and stimulus media are distinct data sources. Their timestamps, licenses, and preprocessing steps differ.

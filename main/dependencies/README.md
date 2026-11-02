@@ -1,22 +1,34 @@
-Download here dependency projects. <br>
-Once downloaded in order to proceed there are two things to do:
+# External model dependencies
 
-- Runtime fix of imports: ``sys.path.insert(0,os.path.abspath("../dependencies/VATE"))`` (Set the dependency folder in
-  sys)
-- Static analysis fix of imports:
-    - VSCODE: ```{
-        "python.analysis.extraPaths": ["./dependencies"]
-    }```
-    - PyCharm: ```Right-click on dependencies/ → Mark Directory as → Sources Root```
+This directory contains third-party model code and weights used by EEGAVI. These assets are not installed through `requirements.txt`.
 
-### VATE
+## VATE
 
-> git clone https://github.com/Ubriacopo/VATE.git
+VATE is cloned into this directory:
 
-## BrainBERT
-> git clone https://github.com/Ubriacopo/BrainBERT.git
+```bash
+git clone https://github.com/Ubriacopo/VATE.git VATE
+```
 
-- Also download the pre-trained model from Google Drive. See the BrainBERT script to automate.
+The expected contrastive checkpoint location is `VATE/best_model_contrastive.pt`. \
+Alternative locations are configured through `teacher_weights_path`.
 
-Alternativa da vedere:
-export PYTHONPATH=$PYTHONPATH:./dependencies/VATE:./dependencies/NEUROG
+## CBraMod
+
+CBraMod is installed from the bundled package or an equivalent distribution. \
+The preprocessing checkpoint is specified by `dataset.eeg_config.model_weights_path`.
+
+## ECG-FM
+
+The ECG pipeline expects a local feature extraction service.\
+Service details are documented in [`ECG-FM/README.md`](ECG-FM/README.md). Its address is configured through `dataset.ecg_config.fm_endpoint`.
+
+## Import resolution
+
+Commands are run from the repository root. Unpackaged external projects are made available through `PYTHONPATH`:
+
+```bash
+export PYTHONPATH="$PWD/main/dependencies/VATE:$PYTHONPATH"
+```
+
+In PyCharm, `main/dependencies` is configured as a Sources Root. In VS Code, it is included in `python.analysis.extraPaths`.

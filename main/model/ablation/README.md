@@ -1,37 +1,27 @@
-For ablations, we have:
+# Ablation studies
 
-### MoCo-less (20H)
+All ablations use the same data split, training budget, evaluation protocol, and seed set as the reference run. A single component is changed per run.
 
-Simple change of config in `trainer/default.yaml`:
+## MoCo
 
-``` yaml
-use_moco:  False
+The momentum queue is disabled through the trainer configuration:
+
+```yaml
+use_moco: false
 ```
 
-### Modalities-less (3 * 20H)
+## Supporting modalities
 
-Here we go one modality at a time with exception made for Video that we consider core.<br>
-So we try:
+Audio, text, and ECG are disabled separately. Video remains enabled as the primary supporting modality. Results include the absolute score and the change from the complete model.
 
-- Audio-less
-- Text-less
-- ECG-less
+## Knowledge distillation
 
-### Knowledge Distillation less (20H)
+The distillation objective is disabled through the model configuration:
 
-KD less is achieved by passing to the model the `use_kd` flag.
-Just as MoCo less it is to be disabled in config ``:
-
-``` yaml
-use_kd:  False
+```yaml
+use_kd: false
 ```
 
-## NOTA
+## Interpretation
 
-> An ablation on a suboptimal but consistent config is still methodologically correct.
-
-We can use this to do ablation also locally on smaller batch size (supposing optimal b!=32)
-
-> Heuristic: require the ablation delta to be at least 2× the usual seed fluctuation
-
-Seed noise I get from my first train If I do 3 seeds and fluctuation is 0.01 that is my order of reference for ablation difference
+A consistent suboptimal configuration is acceptable for component comparison. Seed variance is estimated on the reference model first. Changes smaller than normal seed variation are considered inconclusive.

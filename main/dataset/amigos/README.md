@@ -1,21 +1,27 @@
-## Download AMIGOS dataset:
+# AMIGOS adapter
 
-Just run the ```amigos_download_script.py``` with args:
+The AMIGOS adapter handles physiological signals, frontal videos, stimulus media, and assessments. Raw data must be obtained under the dataset's access terms.
 
-- "-p", "--path": output path of the generation
+## Download helper
 
-Face folder example output:
+The repository includes a helper for authorized downloads:
 
-- P{0}_{1}_face.mov: Experiment n. {1} of Person {0}
-- P{0}_{L}{1}_face.mov: Epxeriment n. {1} of Person {0} for
+```bash
+python -m main.dataset.amigos.scripts.download_script --path /path/to/amigos
+```
 
-> Face_video contains the frontal face videos recorded from both experiments.
-> Videos of the short videos experiment have been sorted in 40 .zip files, one for each of the recording sessions.
-> File Exp1_PXX_face.zip corresponds to the trials of participant XX. In the zip file, PXX_VideoID_face.mov corresponds
-> to the face video for the stimuli video VideoID of participant XX. Videos of the long videos experiment have been
-> sorted in 22 .zip files, one for each of the recording sessions. File Exp2_LXX_TYY_NZZ_face.zip corresponds to
-> the trials of recording session XX, type YY (Ind, Group), and Group/Individual ZZ. In the zip files of individuals'
-> recordings, PXX_VideoID_face.mov corresponds to the face video for the stimuli video VideoID of participant XX.
-> In the zip files of group recordings, P(XX1,XX2,XX3,XX4)_VideoID_face.mov corresponds to the face video for the
-> stimuli video VideoID of participants XX1,XX2,XX3, and XX4. UserIDs are listed in the order the participants were sit,
-> on a front view, during the recording session from left to right. 
+The current arguments are listed by `--help`.
+
+## Face video naming
+
+- `P<participant>_<video>_face.mov` identifies a short-video trial.
+- Long-video files include an `L` marker.
+- Group recordings list all participant identifiers in left-to-right order.
+
+Group recordings require a consistent participant-cropping policy before preprocessing.
+
+## Storage estimate
+
+An early estimate placed the processed face-video corpus near 100 GB. A 120 GB allocation allows for temporary files and failed runs. The estimate remains provisional until the video pipeline is finalized.
+
+The source archive layout is described in [`AMIGOS.md`](AMIGOS.md).

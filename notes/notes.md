@@ -1,27 +1,25 @@
-> For long EEG-video sequences (3–4 minutes), here's how to approach sampling:
+# Sampling notes
 
-Hybrid:
-Apply random sampling with bias toward segments with EEG activity changes (e.g., threshold crossings, variance spikes).
+Long recordings need both coverage and informative segments.
 
-Balance coverage and informativeness.
-A questo potresti applicare sliding window.
+Broader limitations and proposed solutions are collected in [`future-work.md`](future-work.md).
 
-Se troppo difficile: Uniform Random Sampling (Baseline)
+## Preferred strategy
 
-Zero padding su elementi che non arrivano a lunghezza desiderata
+Candidate windows are sampled uniformly, then selection is biased toward EEG changes such as variance peaks or threshold crossings. Uniform sampling provides the comparison baseline.
 
-Downsampling can be applied to video (if video is in 30fps I compress the fps ex 15fps video -> 2 seconds from 1 second)
-> This approach is commonly used in VideoMAE, TimeSformer, and X-CLIP as well.<br>
-> So yes—downsampling and adjusting frame rate is a standard and smart move.
+Short sequences are padded with zeros and paired with an explicit validity mask.
 
+Video may be downsampled before encoding. The effective duration and timestamps remain aligned with the EEG windows.
 
-Per risolvere problema di random con shuffle: (Così posso tenere i due dataset disinti a patto abbia stesso num di
-samples che è ovviamente così) -> TODO: Pulizia postprocessing per vedere che esistono tutti i sample.
+## Reproducible shuffling
 
-```py
-G = torch.Generator()
-G = G.manual_seed(1)
+Each sampler receives an explicit generator:
 
-ran_sampler = RandomSampler(data_source=torch.ones(20), generator=G)
-loader = DataLoader(ds, sampler=ran_sampler)
+```python
+generator = torch.Generator().manual_seed(1)
+sampler = RandomSampler(dataset, generator=generator)
+loader = DataLoader(dataset, sampler=sampler)
 ```
+
+Postprocessing checks establish whether each expected sample exists in every required modality.

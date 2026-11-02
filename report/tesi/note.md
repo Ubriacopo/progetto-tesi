@@ -1,5 +1,9 @@
-- Ho droppato ECG da DREAMER in downstream task solo perche il mio ECG FM si basa su Leads che non espone
-- Fine tuning process in 3 step
-    - Exploration
-    - Candidates selection (15 epoch -> best 3 seeds)
-    - Final training -> Select best  (top4) -> Test that one
+# Thesis notes
+
+## Downstream protocol
+
+- DREAMER excludes ECG. Its lead layout is not supported by the selected ECG foundation model.
+- Fine-tuning uses three stages:
+  1. Explore candidate settings.
+  2. Train candidates for 15 epochs and retain the three best seeds.
+  3. Fully train the four best runs and evaluate the strongest one on the test set.

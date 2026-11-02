@@ -1,31 +1,23 @@
-# Candidate Configurations
+# Selected model
 
-The ones we brought to full training 50 max epochs (Full data exposure)
+Three candidates reached full training. The first configuration achieved the strongest validation MRR.
 
-| lr   | B  | beta | xattn | mrr_peak | iteration |
-|------|----|------|-------|----------|-----------|
-| 3e-4 | 32 | 0.5  | 6     | 0.74     | 45        |
-| 1e-3 | 64 | 1.0  | 4     | 0.64     | 46        |
-| 3e-4 | 64 | 0.5  | 4     | 0.63     | 19        |
+| Learning rate | Batch | KD weight | Cross-attention layers | Peak MRR | Iteration |
+|---:|---:|---:|---:|---:|---:|
+| `3e-4` | 32 | 0.5 | 6 | **0.74** | 45 |
+| `1e-3` | 64 | 1.0 | 4 | 0.64 | 46 |
+| `3e-4` | 64 | 0.5 | 4 | 0.63 | 19 |
 
-So config #1 wins. Test reports:
+## Test retrieval metrics
 
-| Test metric                    | DataLoader 0        |
-|--------------------------------|---------------------|
-| test/fused/margin_aud          | 0.1719716340303421  |
-| test/fused/margin_ecg          | 0.11465346068143845 |
-| test/fused/margin_eeg          | 0.2538067102432251  |
-| test/fused/margin_txt          | 0.09273050725460052 |
-| test/fused/margin_vid          | 0.15966464579105377 |
-| test/fused/meanR@1-3-5-10_aud  | 0.9700745344161987  |
-| test/fused/meanR@1-3-5-10_ecg  | 0.8472769260406494  |
-| test/fused/meanR@1-3-5-10_eeg  | 0.9971122741699219  |
-| test/fused/meanR@1-3-5-10_mean | 0.7831621766090393  |
-| test/fused/meanR@1-3-5-10_txt  | 0.38103562593460083 |
-| test/fused/meanR@1-3-5-10_vid  | 0.7203114032745361  |
-| test/fused/mrr_aud             | 0.9510008692741394  |
-| test/fused/mrr_ecg             | 0.7826257348060608  |
-| test/fused/mrr_eeg             | 0.995612621307373   |
-| test/fused/mrr_mean            | 0.7286531329154968  |
-| test/fused/mrr_txt             | 0.30234649777412415 |
-| test/fused/mrr_vid             | 0.6116798520088196  |
+| Modality | Margin | Mean R@1/3/5/10 | MRR |
+|---|---:|---:|---:|
+| Audio | 0.1720 | 0.9701 | 0.9510 |
+| ECG | 0.1147 | 0.8473 | 0.7826 |
+| EEG | 0.2538 | 0.9971 | 0.9956 |
+| Text | 0.0927 | 0.3810 | 0.3023 |
+| Video | 0.1597 | 0.7203 | 0.6117 |
+| Mean | — | 0.7832 | 0.7287 |
+
+Values are rounded to four decimal places. \
+The original experiment artifacts are retained for exact values and reproducibility.
