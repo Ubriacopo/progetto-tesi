@@ -22,7 +22,7 @@ class SubclipMneRaw(nn.Module):
         tmin = min(max(tmin, 0), duration)
         tmax = min(max(tmax, 0), duration)
         x.fs = x.data.info["sfreq"]
-        x.data = x.data.crop(tmin=tmin, tmax=tmax)
+        x.data = x.data.copy().crop(tmin=tmin, tmax=tmax)
 
         return x
 

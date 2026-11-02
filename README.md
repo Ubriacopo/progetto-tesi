@@ -30,6 +30,7 @@ It is an active research repository. Dataset access and pretrained weights are n
 - [`report/tesi/`](report/tesi/) contains the thesis sources.
 - [`notes/`](notes/) contains working research notes.
 - [`notes/future-work.md`](notes/future-work.md) discusses limitations and possible improvements.
+- [`notes/code-review.md`](notes/code-review.md) records code fixes, validation, and their impact on existing experiments.
 - [`results/best/`](results/best/) records the selected pretraining configuration.
 
 ## Setup

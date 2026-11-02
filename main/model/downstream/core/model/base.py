@@ -39,6 +39,12 @@ class EegAviBaseModel(BaseModel, ABC):
             raise NotImplementedError("Can only accept cbra backbone")
         return self.encoder.pivot.adapter
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.encoder_frozen:
+            self.encoder.eval()
+        return self
+
     def forward(self, x: TensorDict):
         b, b_inner = x.shape[:2]
         # Collapse the batch size
@@ -69,12 +75,19 @@ class CBraModBaseModel(BaseModel, ABC):
         if self.encoder_frozen:
             self.encoder.eval()
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.encoder_frozen:
+            self.encoder.eval()
+        return self
+
     def forward(self, td: TensorDict):
         x, mask = td["eeg", "data"], td["eeg", "mask"]
         b, b_inner = x.shape[:2]
         # Collapse the batch
         x = x.flatten(0, 1)
-        mask_flat = ~mask.flatten(0, 1).bool()
+        x = x.transpose(1, 2)
+        mask_flat = ~mask.flatten(0, 1).transpose(1, 2).bool()
 
         if self.encoder_frozen:
             with torch.no_grad():

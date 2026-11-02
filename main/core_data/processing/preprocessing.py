@@ -41,7 +41,7 @@ class Preprocessor(ABC, Generic[T]):
         try:
             # Read an existing spec if it was computed.
             existing_df: Optional[pd.DataFrame] = None
-            existing_path = self.output_path + SPEC_FILE_NAME
+            existing_path = Path(self.output_path) / SPEC_FILE_NAME
             Path(self.output_path).mkdir(parents=True, exist_ok=True)
             if Path(existing_path).exists():
                 existing_df = pd.read_csv(existing_path)
@@ -60,7 +60,7 @@ class Preprocessor(ABC, Generic[T]):
                 if existing_df is not None:
                     df = pd.concat([df, existing_df], ignore_index=True)
 
-                df.to_csv(self.output_path + "spec.csv", index=False)
+                df.to_csv(existing_path, index=False)
                 existing_df = df
                 counter += 1
                 self.logger.info(f"Processed {counter}/{total}")
@@ -115,7 +115,7 @@ class TorchExportsSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]):
             self.logger.info(f"About to process the element {idx + 1}/{total_elements} for {x.eid}")
             x_segments.append(self.preprocess_segment(x, (segment["start"], segment["stop"])))
 
-        output_path: str = self.output_path + f'{x.eid}'
+        output_path: str = str(Path(self.output_path) / str(x.eid))
         self.export(x_segments, output_path)
 
         # Return file specification
@@ -181,11 +181,11 @@ class TorchExportsKdSegmentsReadyPreprocessor(Preprocessor[FlexibleDatasetPoint]
     @timed()
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
         segments = pd.read_csv(self.extraction_data_folder + str(x.eid) + "-segments.csv").to_dict(orient="records")
-        student_x, teacher_x = x, x
+        student_x, teacher_x = x.clone(x.eid), x.clone(x.eid)
         if self.student_shared_pipeline is not None:
-            student_x = self.student_shared_pipeline.call(x, keep_type=True)
+            student_x = self.student_shared_pipeline.call(student_x, keep_type=True)
         if self.teacher_shared_pipeline is not None:
-            teacher_x = self.teacher_shared_pipeline.call(x, keep_type=True)
+            teacher_x = self.teacher_shared_pipeline.call(teacher_x, keep_type=True)
 
         student_x_segments = []
         teacher_x_segments = []
@@ -268,14 +268,12 @@ class ExperimentPreprocessor(Preprocessor[FlexibleDatasetPoint]):
         self.pipeline: FlexibleDatasetTransformWrapper = pipeline
 
     def preprocess(self, x: FlexibleDatasetPoint) -> dict | list[dict]:
-        output_path: str = self.output_path + f'{x.eid}'
+        output_path: str = str(Path(self.output_path) / str(x.eid))
 
         y = self.pipeline.call(x, keep_type=True)
         self.export(y, output_path)
 
-        base_object = {"index": 0}
-        # Return file specification
-        base_object = {x.get_identifier(): x.eid}
+        base_object = {"index": 0, x.get_identifier(): x.eid}
         if hasattr(y, Metadata.modality_code()):
             # We have metaobject to pass to the csv. Better have it redundant than not enough.
             base_object |= {key: value for key, value in y.meta.data.items()}

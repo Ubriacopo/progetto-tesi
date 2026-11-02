@@ -63,7 +63,9 @@ class EegCbraModAdapter(nn.Module):
         x = x.float()
         if mask is not None:
             mask = mask.bool()
-        z = self.encoder(x=x, mask=~mask)
+        # Stored raw EEG is [B,T,C,D]; CBraMod expects [B,C,T,D].
+        encoder_mask = ~mask.transpose(1, 2) if mask is not None else None
+        z = self.encoder(x=x.transpose(1, 2), mask=encoder_mask).transpose(1, 2)
         z = self.adapter(x=z, mask=mask)
         return z
 

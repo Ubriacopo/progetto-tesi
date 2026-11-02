@@ -100,10 +100,8 @@ class SiglipLoss(nn.Module):
             assert ignore_mask.shape == (B, B) and ignore_mask.dtype == torch.bool
             loss_mat[:, :B] = loss_mat[:, :B].masked_fill(ignore_mask, 0.0)
 
-            valid_per_query = M - ignore_mask.sum(dim=1)  # [B]
-            per_query_loss = loss_mat.sum(dim=1) / valid_per_query.clamp_min(1)
-
-            return per_query_loss.mean()
+            # Preserve the same per-query sum as the unmasked SigLIP objective.
+            return loss_mat.sum(dim=-1).mean()
 
         return loss_mat.sum(dim=-1).mean()
 

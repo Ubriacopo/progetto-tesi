@@ -18,8 +18,11 @@ class FacedDataModule(BaseDatamodule):
     def train_collate_fn(batch: list[TensorDict]) -> TensorDict:
         return_object = []
         for td in batch:
-            # Video indexes are scaled from [1-28], labels from [0-27]
-            label = LabelMap.num_labels[td["meta", "trial"][0].item() - 1]
+            # FacedPointsLoader stores zero-based trial indices.
+            trial = int(td["meta", "trial"][0].item())
+            if not 0 <= trial < len(LabelMap.num_labels):
+                raise ValueError(f"Invalid FACED trial index: {trial}")
+            label = LabelMap.num_labels[trial]
             td["assessment", "score"] = torch.full(td.batch_size, label, dtype=torch.long)
             td = td.exclude("meta", ("assessment", "scales"), ("assessment", "labels"), )
             return_object.append(td)

@@ -12,7 +12,8 @@ class ClaireClassificationTrainer(AbstractEegAviClassificationTrainer):
         self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_weights)
 
     def extract_target(self, batch):
-        return (batch["assessment", "scores"].float() >= 5.).long()
+        # Assumes one score per example, shaped [B] or [B, 1]; loss expects [B].
+        return (batch["assessment", "scores"].float() >= 5.).long().reshape(-1)
 
 
 class CBraModClareClassificationTrainer(AbstractCBraClassificationTrainer):
@@ -22,4 +23,5 @@ class CBraModClareClassificationTrainer(AbstractCBraClassificationTrainer):
         self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_weights)
 
     def extract_target(self, batch):
-        return (batch["assessment", "scores"].float() >= 5.).long()
+        # Assumes one score per example, shaped [B] or [B, 1]; loss expects [B].
+        return (batch["assessment", "scores"].float() >= 5.).long().reshape(-1)

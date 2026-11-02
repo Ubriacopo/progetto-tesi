@@ -30,7 +30,7 @@ class MaskedAttnPool(nn.Module):
 
         a = w.softmax(dim=dim)  # [..., N]
         a = a * m  # zero-out invalids
-        denom = a.sum(dim=dim, keepdim=True).clamp_min(1e-12)
+        denom = a.sum(dim=dim, keepdim=True).clamp_min(torch.finfo(a.dtype).tiny)
         a = (a / denom).unsqueeze(-1)  # [..., N, 1]
         return (z * a).sum(dim=dim)
 

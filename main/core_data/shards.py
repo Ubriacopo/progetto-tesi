@@ -133,24 +133,37 @@ class KdDataSharder:
         return h5, output_path, shard_id + 1, meta, 0
 
     def extract_rows_by_eid(self) -> tuple[defaultdict[Any, list], defaultdict[Any, list], defaultdict[Any, list]]:
-        # THis extracts the rows based on persons for test/val (We build based on unseen people)
-        missing_val, missing_test = self.val_participants, self.test_participants
+        # Every window and trial of a participant must stay in a single split.
+        df = self.student_df
+        if "person_id" not in df.columns:
+            if self.val_participants or self.test_participants:
+                raise ValueError("Participant splits require a person_id column in the student spec")
+            return self._group_training_rows(), defaultdict(list), defaultdict(list)
+
+        persons = df["person_id"].unique().tolist()
+        if min(self.val_participants, self.test_participants) < 0 or self.val_participants + self.test_participants > len(persons):
+            raise ValueError("Invalid participant split sizes")
+
+        random.Random(42).shuffle(persons)
+        val_persons = set(persons[:self.val_participants])
+        test_persons = set(persons[self.val_participants:self.val_participants + self.test_participants])
         train_eid, val_eid, test_eid = defaultdict(list), defaultdict(list), defaultdict(list)
 
         for record in self.student_df.itertuples(index=False):
-            # todo check person id not eid. Posso usare uid stored? No perche non ha eid quindi useless
-            #       in preprocessing dovrei estrarre anche persona su csv metadata. A questo punto posso anche shufflare quali prendere.
-            # EID is combination of person + experiment
-            if missing_val > 0:
+            if record.person_id in val_persons:
                 val_eid[str(record.eid)].append(record)
-                missing_val -= 1
-            elif missing_test > 0:
+            elif record.person_id in test_persons:
                 test_eid[str(record.eid)].append(record)
-                missing_test -= 1
             else:
                 train_eid[str(record.eid)].append(record)
 
         return train_eid, val_eid, test_eid
+
+    def _group_training_rows(self):
+        rows = defaultdict(list)
+        for record in self.student_df.itertuples(index=False):
+            rows[str(record.eid)].append(record)
+        return rows
 
     @staticmethod
     def _close_danling_shard(h5: Optional[h5py.File], i: int):
@@ -220,7 +233,7 @@ class KdDataSharder:
                     last_read_filesize = 0
                     logging.info(f"Creating new shard #{shard_id}")
                     h5, current_path, shard_id, meta_ds_collection, i_in_shard = self.open_new_shard(
-                        h5=h5, shard_id=shard_id, shard_size=i_in_shard, shard_name="train"
+                        h5=h5, shard_id=shard_id, shard_size=i_in_shard, shard_name=modality
                     )
 
         self._close_danling_shard(h5, i_in_shard)
@@ -379,6 +392,7 @@ class FusedDataSharder:
 
     def open_new_shard(self, h5: Optional[h5py.File], shard_id: int, shard_size: int, shard_name: str):
         self.close_dandling_shard(h5, shard_size)
+        self.capacity_by_path.clear()
         shard_name = f"{shard_name}_{shard_id:03d}.h5"
         output_path = self.output_path / shard_name
         # Returns the h5, path, new shard_id and i_in_shard
@@ -388,7 +402,7 @@ class FusedDataSharder:
         # Considers train/test/val for eid partitioning
         persons = self.df["person_id"].unique().tolist()
 
-        if self.val_participants + self.test_participants > len(persons):
+        if min(self.val_participants, self.test_participants) < 0 or self.val_participants + self.test_participants > len(persons):
             raise ValueError("val_participants + test_participants > number of unique persons")
 
         rng = random.Random(42)

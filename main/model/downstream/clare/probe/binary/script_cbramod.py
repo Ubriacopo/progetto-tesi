@@ -59,9 +59,9 @@ def main(cfg: ClareConfig):
         logger=TensorBoardLogger("tb_logs", name=model_name),
         callbacks=[
             RichProgressBar(),
-            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=15, mode="min", verbose=True),
+            EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=15, mode="max", verbose=True),
             ModelCheckpoint(dirpath="checkpoints", filename=f"best-cbra-{cfg.seed}", every_n_epochs=1, save_top_k=1,
-                            save_last=True, monitor=monitor_key, mode="min"),
+                            save_last=True, monitor=monitor_key, mode="max"),
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",

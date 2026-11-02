@@ -40,7 +40,7 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
         self.ff_gate = nn.Parameter(torch.tensor([1.]))
 
         self.q_norm = nn.LayerNorm(dim)
-        self.kv_norm = nn.LayerNorm(dim)
+        self.kv_norm = nn.LayerNorm(dim_latent)
         self.ff_norm = nn.LayerNorm(dim)
 
         self.self_attn: Optional[nn.MultiheadAttention] = None
@@ -51,7 +51,7 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
             self.self_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=2, batch_first=True)
             self.self_attn_gate = nn.Parameter(torch.tensor([1.]))
 
-    def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None):
+    def forward(self, q, kv, attn_mask=None, q_mask=None, kv_mask=None, self_attn_mask=None):
         # Pre-LN + Cross modality attention
         norm_q = self.q_norm(q)
         norm_kv = self.kv_norm(kv)
@@ -62,7 +62,12 @@ class GatedXAttentionBlock(AbstractAttentionBlock):
             # Similar to how Flamingo works just that this self attn is not frozen but learnt.
             # Also respect the convention of torch of passing mask with True where ignore.
             norm_q = self.self_attn_norm(q)
-            out, _ = self.self_attn(norm_q, norm_q, norm_q, key_padding_mask=~q_mask, need_weights=False)
+            out, _ = self.self_attn(
+                norm_q, norm_q, norm_q,
+                key_padding_mask=~q_mask if q_mask is not None else None,
+                attn_mask=self_attn_mask,
+                need_weights=False,
+            )
             q = q + self.self_attn_gate.tanh() * out
 
         norm_q = self.ff_norm(q)
@@ -107,7 +112,7 @@ class MaskedCrossAttention(nn.Module):
         q = self.q(qo)
         k, v = self.kv(kvo).chunk(2, dim=-1)
         q, k, v = rearrange_many((q, k, v), "b n (h d) -> b h n d", h=self.heads)
-        q *= self.scale
+        # scaled_dot_product_attention applies 1/sqrt(dim_head) itself.
 
         full_mask = None
         # Build combined mask (True = attend)
@@ -151,7 +156,7 @@ class GatedXAttentionFactory:
 
     def build(self, layers: int | list[GatedXAttentionCustomArgs]) \
             -> list[GatedXAttentionBlock]:
-        if isinstance(layers, list) and len(layers) > 1 and isinstance(layers[0], GatedXAttentionCustomArgs):
+        if isinstance(layers, list) and layers and all(isinstance(c, GatedXAttentionCustomArgs) for c in layers):
             return [GatedXAttentionBlock(self.dim, self.latent_dim, **asdict(c)) for c in layers]
         if isinstance(layers, int):
             config = asdict(self.default_configuration)

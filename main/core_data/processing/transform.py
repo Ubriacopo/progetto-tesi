@@ -59,8 +59,8 @@ class SequenceResampler(nn.Module, ABC):
 class Branch(nn.Module):
     def __init__(self, *modules: tuple[str, nn.Module], as_dict: bool = True):
         super().__init__()
-        self.branches = nn.ModuleList(modules[:][1])
-        self.keys = modules[:][0]
+        self.keys = [key for key, _ in modules]
+        self.branches = nn.ModuleList(module for _, module in modules)
         # Output a dictionary or a tuple.
         self.as_dict = as_dict
 
@@ -122,9 +122,12 @@ class ProcessSegments(nn.Module):
     def forward(self, x: FlexibleDatasetPoint, segments: list[tuple[int, int]]):
         res = []
         for interval in segments:
-            x.interval = interval
-            res.append(self.net(x))
-        return self.net(x)
+            segment = x.clone(x.eid)
+            for value in segment.__dict__.values():
+                if hasattr(value, "interval"):
+                    value.interval = interval
+            res.append(self.net(segment))
+        return res
 
 
 class ToSimpleMaskedObject(nn.Module):
@@ -173,7 +176,7 @@ class EmptyObjectTransform(nn.Module):
 
             return MaskedValue(data=data, mask=mask)
 
-        return torch.zeros(data)
+        return data
 
 
 class EmptyQuantizedObjectTransform(EmptyObjectTransform):

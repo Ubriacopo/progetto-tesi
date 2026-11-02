@@ -42,7 +42,11 @@ class RescaleAssessmentValue(nn.Module):
         start_x = x.data[idx]
         new_x = c + ((start_x - a) * (d - c)) / (b - a)
         if type(c) is int and type(d) is int:
-            x.data[idx] = np.rint(new_x).astype(x.data.dtype)
+            new_x = np.rint(new_x)
+        # Integer source arrays must also preserve fractional target values.
+        if not np.issubdtype(x.data.dtype, np.floating):
+            x.data = x.data.astype(float)
+        x.data[idx] = new_x
 
         return x
 

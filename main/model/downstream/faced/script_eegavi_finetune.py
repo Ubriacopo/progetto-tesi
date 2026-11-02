@@ -4,7 +4,7 @@ import hydra
 import lightning
 import torchinfo
 from hydra.core.config_store import ConfigStore
-from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import OmegaConf
 
@@ -79,6 +79,7 @@ def main(cfg: SeedConfig):
         callbacks=[
             RichProgressBar(),
             EarlyStopping(monitor=monitor_key, min_delta=0.0001, patience=10, mode="min", verbose=True),
+            ModelCheckpoint(monitor=monitor_key, mode="min", save_top_k=1),
         ],
         num_sanity_val_steps=0,
         precision="16-mixed",
@@ -88,7 +89,7 @@ def main(cfg: SeedConfig):
     trainer.fit(module, datamodule=datamodule)
     logger.info("Finished training")
     # Test now
-    res = trainer.test(module, datamodule=datamodule)
+    res = trainer.test(module, datamodule=datamodule, ckpt_path="best")
     logger.info(res)
     logger.info("Finished testing")
 

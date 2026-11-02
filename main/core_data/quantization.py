@@ -25,10 +25,12 @@ class Float16ToInt8Quantizer:
             Float16ToInt8Quantizer.to_warn_on_fp32 = False
             x = x.half()
 
-        scales = x.abs().amax(dim=-1, keepdim=True) / float(self.scale_range[1])
-        scales = scales.clamp_min(self.eps).to(torch.float16)
+        # Compute in float32: 1e-8 rounds to zero in float16, including padded rows.
+        min_scale = max(self.eps, torch.finfo(torch.float16).tiny * torch.finfo(torch.float16).eps)
+        scales = x.float().abs().amax(dim=-1, keepdim=True) / float(self.scale_range[1])
+        scales = scales.clamp_min(min_scale).to(torch.float16)
 
-        quantized = (x / scales).round().clamp(self.scale_range[0], self.scale_range[1]).to(torch.int8)
+        quantized = (x.float() / scales.float()).round().clamp(self.scale_range[0], self.scale_range[1]).to(torch.int8)
         return quantized, scales
 
     def dequantize(self, t: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:

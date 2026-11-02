@@ -9,6 +9,20 @@ from main.model.neegavi.adapters import EegCbraModAdapter
 from main.model.neegavi.model import EegInterAviModel
 
 
+def trial_mean(z: torch.Tensor, x: TensorDict):
+    """Average real windows only; padded windows can have nonzero CLS tokens."""
+    valid = x["eeg", "mask"].reshape(z.shape[0], z.shape[1], -1).bool().any(dim=-1)
+    weights = valid.unsqueeze(-1).to(z.dtype)
+    return (z * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1)
+
+
+class FrozenBackboneProbe(nn.Module):
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.backbone.eval()
+        return self
+
+
 class SimpleCbraLinearProbe(nn.Module):
     def __init__(self, in_dim: int, out_dim: int):
         super(SimpleCbraLinearProbe, self).__init__()
@@ -32,7 +46,7 @@ class SimpleCbraLinearProbe(nn.Module):
         return self.project(pooled)  # [B, out_dim]
 
 
-class Simple1DLinearProbe(nn.Module):
+class Simple1DLinearProbe(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
         super(Simple1DLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
@@ -59,7 +73,7 @@ class Simple1DLinearProbe(nn.Module):
         return logits
 
 
-class Simple1ZFF(nn.Module):
+class Simple1ZFF(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
         super(Simple1ZFF, self).__init__()
         self.backbone: EegInterAviModel = backbone
@@ -96,7 +110,7 @@ class Simple1ZFF(nn.Module):
         return logits
 
 
-class SimpleLinearProbe(nn.Module):
+class SimpleLinearProbe(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
         super(SimpleLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
@@ -119,12 +133,12 @@ class SimpleLinearProbe(nn.Module):
         # Restore previous batch
         z = y.cls.unflatten(0, (b, b_inner))
         # z = z.flatten(-2, -1)
-        z = z.mean(dim=1)
+        z = trial_mean(z, x)
         logits = self.project(z)
         return logits
 
 
-class SimplePoolingProbe(nn.Module):
+class SimplePoolingProbe(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
         super(SimplePoolingProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
@@ -151,11 +165,11 @@ class SimplePoolingProbe(nn.Module):
 
         # Restore previous batch
         z = y.cls.unflatten(0, (b, b_inner))
-        logits = self.project(z)
+        logits = self.project(trial_mean(z, x).unsqueeze(1))
         return logits
 
 
-class SimpleExpandedProbe(nn.Module):
+class SimpleExpandedProbe(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, k: int = 3):
         super(SimpleExpandedProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
@@ -184,7 +198,7 @@ class SimpleExpandedProbe(nn.Module):
         return logits
 
 
-class PooledLinearProbe(nn.Module):
+class PooledLinearProbe(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int):
         super(PooledLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
@@ -218,8 +232,10 @@ class PooledLinearProbe(nn.Module):
         tok_max = z.masked_fill(~mask.unsqueeze(-1), neg_inf).max(dim=2).values
 
         # chunk-level mean/max -> [B, D]
-        sample_mean = tok_mean.mean(dim=1)
+        valid_chunks = mask.any(dim=-1)
+        sample_mean = trial_mean(tok_mean, x)
         sample_max = tok_max.max(dim=1).values
+        sample_max = sample_max.masked_fill(~valid_chunks.any(dim=1, keepdim=True), 0.)
 
         sample_emb = torch.cat([sample_mean, sample_max], dim=-1)  # [B, 2D]
         # AVG over N timesteps of a sample
@@ -228,12 +244,14 @@ class PooledLinearProbe(nn.Module):
         return logits
 
 
-class SimpleNonLinearProbe(nn.Module):
+class SimpleNonLinearProbe(FrozenBackboneProbe):
     def __init__(self, backbone: EegInterAviModel, in_dim: int, out_dim: int, hidden_dim: int = 128):
         super(SimpleNonLinearProbe, self).__init__()
         self.backbone: EegInterAviModel = backbone
         self.hidden = nn.Sequential(nn.Linear(in_dim * 2, hidden_dim), nn.GELU(), nn.Dropout(0.1), )
         self.project = nn.Linear(hidden_dim, out_dim)
+        self.backbone.requires_grad_(False)
+        self.backbone.eval()
 
     def forward(self, x: TensorDict) -> torch.Tensor:
         # Data inputs are of the shape [B, B', T, P, D]
@@ -259,8 +277,10 @@ class SimpleNonLinearProbe(nn.Module):
         tok_max = z.masked_fill(~mask.unsqueeze(-1), neg_inf).max(dim=2).values
 
         # chunk-level mean/max -> [B, D]
-        sample_mean = tok_mean.mean(dim=1)
+        valid_chunks = mask.any(dim=-1)
+        sample_mean = trial_mean(tok_mean, x)
         sample_max = tok_max.max(dim=1).values
+        sample_max = sample_max.masked_fill(~valid_chunks.any(dim=1, keepdim=True), 0.)
 
         sample_emb = torch.cat([sample_mean, sample_max], dim=-1)  # [B, 2D]
         # AVG over N timesteps of a sample
@@ -331,14 +351,15 @@ class SimpleCbraFineTune(nn.Module):
         b, b_inner = x.shape[:2]
         # Flatten outer batch dims for encoder
         x_flat = x.flatten(0, 1)
-        mask_flat = ~mask.flatten(0, 1).bool()
+        x_flat = x_flat.transpose(1, 2)
+        mask_flat = ~mask.flatten(0, 1).transpose(1, 2).bool()
 
         # Encoder output keeps token structure, only batch is flattened
         y = self.encoder(x_flat.float(), mask_flat)
 
         # Restore outer batch dims
         y = y.unflatten(0, (b, b_inner))
-        mask = mask_flat.unflatten(0, (b, b_inner))
+        mask = (~mask_flat).unflatten(0, (b, b_inner))
         y = rearrange(y, 'b ... d -> b (...) d')
         mask = rearrange(mask, 'b ... -> b (...)').bool()
 

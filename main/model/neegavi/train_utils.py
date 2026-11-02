@@ -42,7 +42,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
         ... todo
         """
         super().__init__()
-        self.logger = make_logger(self.__class__.name)
+        self.logger = make_logger(self.__class__.__name__)
         self.shards_path: list[CacheableDatasetDescriptor] = dataset_paths
 
         self.train_dataset: Optional[IterableDataset] = None
@@ -102,6 +102,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 block_size=32,
                 buffer_size=self.batch_size * factor,
                 batch_size=self.batch_size,
+                seed=self.seed,
                 iterator_id=it_id,
                 limit_data=self.train_fraction,
                 take_keys=self.take_keys
@@ -119,6 +120,7 @@ class KdTrainDataModule(lightning.LightningDataModule):
                 buffer_size=96,
                 batch_size=self.batch_size,
                 shuffle=False,
+                seed=self.seed,
                 limit_data=self.valid_fraction,
                 take_keys=self.take_keys
             )
@@ -136,6 +138,8 @@ class KdTrainDataModule(lightning.LightningDataModule):
                     block_size=32,
                     buffer_size=96,
                     batch_size=self.batch_size,
+                    seed=self.seed,
+                    shuffle=False,
                     limit_data=self.test_fraction,
                     take_keys=self.take_keys
                 )

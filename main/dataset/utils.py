@@ -51,11 +51,15 @@ class DatasetUidStore:
         # Where to store the data
         self.path = file_path
         if Path(file_path).exists():
-            self.df = pd.read_csv(file_path, index_col=None, dtype={"user_id": "string"})
+            self.df = pd.read_csv(
+                file_path, index_col=None,
+                dtype={"user_id": "string", "experiment_id": "string", "dataset_name": "string"}
+            )
 
         self.next_id = (self.df["id"].max() + 1) if len(self.df) else 0
 
     def uid(self, user_id: str, experiment_id: str, dataset_name: str, auto_store: bool = True) -> int:
+        user_id, experiment_id, dataset_name = str(user_id), str(experiment_id), str(dataset_name)
         next_id = self.next_id
 
         exists = self.df[(self.df["user_id"] == user_id)
@@ -79,4 +83,5 @@ class DatasetUidStore:
         return row.iloc[0].to_dict() if len(row) else None
 
     def store_dictionary(self):
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self.df.to_csv(self.path, index=False)

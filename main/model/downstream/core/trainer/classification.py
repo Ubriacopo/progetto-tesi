@@ -18,7 +18,13 @@ class ClassificationTrainer(lightning.LightningModule):
         self.save_hyperparameters(ignore=["model"])
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        return torch.optim.AdamW([{"params": self.model.project.parameters(), "lr": self.hparams.lr}, ])
+        head = [p for p in self.model.project.parameters() if p.requires_grad]
+        head_ids = {id(p) for p in head}
+        backbone = [p for p in self.model.parameters() if p.requires_grad and id(p) not in head_ids]
+        groups = [{"params": head, "lr": self.hparams.lr}]
+        if backbone:
+            groups.append({"params": backbone, "lr": self.hparams.backbone_lr})
+        return torch.optim.AdamW(groups)
 
     def training_step(self, batch):
         # Labels
@@ -56,5 +62,5 @@ class ClassificationTrainer(lightning.LightningModule):
         self.log("log(baseline)", 1.945, prog_bar=True)
 
         acc = (pred.argmax(dim=-1) == y).float().mean()
-        self.log("valid_acc", acc, prog_bar=True)
+        self.log("test_acc", acc, prog_bar=True)
         return loss

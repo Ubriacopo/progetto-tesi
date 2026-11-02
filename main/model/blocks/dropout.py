@@ -41,7 +41,7 @@ class BernoulliSupportsModalityDropout(ModalityDropout):
         keep = torch.bernoulli(torch.full((b, self.supports_length), 1 - self.drop_p, device=device)).bool()
         dead = ~keep.any(1)
 
-        if self.ensure_one and dead:
+        if self.ensure_one and dead.any():
             # If wanted we can restore at least one branch for training so that a supporting modalities is always available.
             summed_dead = int(dead.sum().item())
             keep[dead, torch.randint(0, self.supports_length, (summed_dead,), device=device)] = True

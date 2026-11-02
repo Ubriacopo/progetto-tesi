@@ -18,11 +18,11 @@ class ModalityStream(nn.Module):
         self.code: str = code
         self.adapter: nn.Module = adapter
 
+        self.use_kd: bool = kd_head is not None
         self.post_kd_adapter: Optional[nn.Module] = post_kd_adapter
         if self.post_kd_adapter is not None and not self.use_kd:
             raise ValueError("You have to use KD to use the post_kd_adapter")
 
-        self.use_kd: bool = kd_head is not None
         self.kd_head: Optional[KDHead] = kd_head
         self.timestep_seconds: int = timestep_seconds
 
@@ -35,7 +35,7 @@ class ModalityStream(nn.Module):
         if use_kd and self.use_kd:
             output["kd"] = self.kd_head(y["data"], mask=y["mask"])
         if self.post_kd_adapter is not None:
-            y |= self.post_kd_adapter()
+            y |= self.post_kd_adapter(y["data"], mask=y["mask"])
         return output | y
 
     def get_code(self):

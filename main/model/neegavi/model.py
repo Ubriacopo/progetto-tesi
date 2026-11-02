@@ -202,13 +202,12 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         tk = t_kv.unsqueeze(1) * dt  # [B, 1, Tk]
 
         if self.modality.mode == "window":
-            lb, la = self.modality.lookback, self.modality.lookahead
-            # Window size compels us to explode the sun.
-            # It's written like this to avoid symmetry
-            return (tq >= (tk - lb * dt)) & (tq < (tk + dt + la * dt))
+            lb, la = self.modality.lookback or 0, self.modality.lookahead
+            # Window bounds are expressed in supporting-modality time steps.
+            return (tk >= tq - lb * dt) & (tk <= tq + la * dt)
 
         if self.modality.mode == "causal":
-            return tq < tk + dt
+            return tk <= tq
 
         if self.modality.mode == "bidirectional":
             return torch.ones(tq.shape[0], tq.shape[1], tk.shape[-1], device=tq.device, dtype=torch.bool)
@@ -220,7 +219,9 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         data, mask = x["data"], x.get("mask", None)
         b, t = data.shape[0:2]
 
-        if mask is not None:
+        if mask is None:
+            mask = torch.ones(b, t, dtype=torch.bool, device=data.device)
+        else:
             mask = mask.bool()
 
         y: MaskedValue | KdMaskedValue = modality(data[keep_idx], mask[keep_idx], use_kd=use_kd)
@@ -229,7 +230,9 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
             out.kd_outs[modality.get_code()] = self.pad_to_batch(kd_out["data"], kd_out["mask"], keep_idx, b)
 
         y: MaskedValue
-        z, _ = y["data"], y["mask"]
+        z, mask = y["data"], y["mask"]
+        if mask is None:
+            mask = torch.ones(z.shape[:2], dtype=torch.bool, device=z.device)
 
         if self.modality_encoder is not None:
             z = self.modality_encoder(z, modality=modality.get_code())
@@ -239,10 +242,9 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         time = torch.arange(t, device=data.device)
         time = repeat(time, "t -> b (t m)", b=b, m=m)
 
-        if mask is not None:
-            mask = repeat(mask, "b t -> b (t m)", m=m)
+        mask = repeat(mask, "b t -> b (t m)", m=m)
 
-        z = self.pad_to_batch(z, mask[keep_idx], keep_idx, b)
+        z = self.pad_to_batch(z, mask, keep_idx, b)
         out.multimodal_outs[modality.get_code()] = z
         return z["data"], z["mask"], time
 
@@ -289,6 +291,12 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         """
         return True
 
+    def set_attention_modality(self, modality: TimeMaskSwitchableProperties) -> None:
+        super().set_attention_modality(modality)
+        for module in self.modules():
+            if module is not self and isinstance(module, TimeMaskSwitchable):
+                module.set_attention_modality(modality)
+
     def fusion_keys(self):
         support: ModalityStream  # We know those are modality streams by construction
         return [support.code for support in self.supports if self.modality_is_fused(support.code)] + [self.pivot.code]
@@ -311,6 +319,9 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
 
         # Add CLS token and adapt masks
         q, q_mask = pivot_out, pivot_mask
+        if q_mask is None:
+            q_mask = torch.ones(q.shape[:2], device=q.device, dtype=torch.bool)
+        pivot_mask = q_mask
         q = torch.cat([q, self.cls_token.expand(q.shape[0], -1, -1)], dim=1)
         cls_mask = torch.ones(pivot_mask.shape[0], 1, device=q.device, dtype=q_mask.dtype)
         if not self.use_cls:
@@ -325,11 +336,17 @@ class EegInterAviModel(nn.Module, TimeMaskSwitchable):
         # but it can change at runtime thus the build allowance maks can change during training.
         allow = self.build_allow_mask(pivot_time, support_time)
         allow[:, -1, :] = True
+        self_attn_mask = self._get_attn_mask(q.size(1), q.device)
+        if self_attn_mask is not None:
+            self_attn_mask = self_attn_mask.clone()
+            self_attn_mask[-1, :] = False  # CLS summarizes the full sequence.
+            self_attn_mask[:-1, -1] = True  # Tokens cannot read a global summary.
 
         for xattn in self.gatedXAttn_layers:
             # This was a fast way to test EEGAVI no fusion
             # q = xattn(q, support_out, attn_mask=allow, q_mask=q_mask.bool(), kv_mask=None)
-            q = xattn(q, support_out, attn_mask=allow, q_mask=q_mask.bool(), kv_mask=support_mask)
+            q = xattn(q, support_out, attn_mask=allow, q_mask=q_mask.bool(), kv_mask=support_mask,
+                      self_attn_mask=self_attn_mask)
 
         out.embeddings = MaskedValue(data=q, mask=q_mask)
         out.cls = self.pooling(q, q_mask)

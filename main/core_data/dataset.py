@@ -76,7 +76,9 @@ class H5KdDataset(IterableDataset):
         self.shard_lengths: list[int] = list(self.load_lengths())
         # If we want we can use a subset of data, it is handled by expliciting the % of desired data
         if limit_data is not None:
-            target_samples = sum(self.shard_lengths) * limit_data
+            if not 0 < limit_data <= 1:
+                raise ValueError("limit_data must be in (0, 1]")
+            target_samples = int(np.ceil(sum(self.shard_lengths) * limit_data))
             shard_pairs = list(zip(self.shard_files, self.shard_lengths))
 
             # Shuffle for better mixin
@@ -87,10 +89,13 @@ class H5KdDataset(IterableDataset):
             collected = 0
 
             for shard_file, shard_length in shard_pairs:
+                if collected >= target_samples:
+                    break
+                take = min(shard_length, target_samples - collected)
                 selected_files.append(shard_file)
-                selected_lengths.append(shard_length)
+                selected_lengths.append(take)
                 # Increase by collected shards
-                collected += shard_length
+                collected += take
 
                 if collected >= target_samples:
                     break
@@ -123,7 +128,7 @@ class H5KdDataset(IterableDataset):
             def visit(name: str, obj: h5py.Dataset):
                 if isinstance(obj, h5py.Dataset) and not any(name.startswith(p) for p in ignore_prefixes):
                     # todo roba simile. check se va come prima
-                    if self.take_keys == () or any(key in name for key in self.take_keys):
+                    if not self.take_keys or any(key in name for key in self.take_keys):
                         self.paths.append(name)
 
             h5.visititems(visit)
@@ -180,7 +185,7 @@ class H5KdDataset(IterableDataset):
         # Make a shuffled index order for this block if shuffling is enabled
         perm = None
         if rng is not None:
-            perm = torch.randperm(block_len)  # CPU tensor
+            perm = torch.tensor(rng.sample(range(block_len), block_len), dtype=torch.long)
 
         block_buffer.append([block, perm, 0])
         return buffered_samples + block_len
@@ -361,7 +366,7 @@ class H5KdDataset(IterableDataset):
             yield sample
 
     def __len__(self):
-        return int(sum(self.shard_lengths) / self.batch_size)  # We return batches stuff so it is smaller.
+        return (sum(self.shard_lengths) + self.batch_size - 1) // self.batch_size
 
 
 class FlexibleEmbeddingsSpecMediaDatasetSlow(torch.utils.data.Dataset):

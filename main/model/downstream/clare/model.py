@@ -26,7 +26,8 @@ class DefaultClareCBraFineTune(CBraFineTune):
     def forward(self, td: TensorDict):
         x, mask = td["eeg", "data"], td["eeg", "mask"]
         # Collapse the batch
-        mask_flat = ~mask.bool()
+        x = x.transpose(1, 2)
+        mask_flat = ~mask.transpose(1, 2).bool()
 
         if self.encoder_frozen:
             with torch.no_grad():
@@ -55,7 +56,8 @@ class DefaultClareBraModLinearProbe(CBraModProbe):
     def forward(self, td: TensorDict):
         x, mask = td["eeg", "data"], td["eeg", "mask"]
         # Collapse the batch
-        mask_flat = ~mask.bool()
+        x = x.transpose(1, 2)
+        mask_flat = ~mask.transpose(1, 2).bool()
 
         if self.encoder_frozen:
             with torch.no_grad():

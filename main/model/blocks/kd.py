@@ -41,7 +41,9 @@ class KDHead(nn.Module):
         den = m.sum(dim=dim)
 
         valid = (den > 0)[..., :1]
-        pooled = num / den.clamp_min(eps)
+        # Counts are either zero or >= 1. Tiny epsilons underflow in float16
+        # and torch.where cannot undo NaNs created in the backward pass.
+        pooled = num / den.clamp_min(1)
         pooled = torch.where(valid, pooled, torch.zeros_like(pooled))
 
         return pooled, valid

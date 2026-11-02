@@ -15,6 +15,8 @@ class MaskedFeedForward(nn.Module):
     def forward(self, x: torch.Tensor, mask):
         # x [b, T, p, D]
         # m [b, T]
+        if mask is None:
+            mask = torch.ones(x.shape[:2], dtype=torch.bool, device=x.device)
         m = mask[:, :, None, None].to(x.dtype)
         xm = x * m
         y = xm + self.dropout(self.net(xm))

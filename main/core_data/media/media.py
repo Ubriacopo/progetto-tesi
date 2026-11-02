@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from copy import deepcopy
 from abc import abstractmethod, ABC
 from typing import Any, Optional
 
@@ -37,6 +38,14 @@ class Media(ABC):
 
         if isinstance(self.data, torch.Tensor):
             new_object.data = self.data.detach().clone()
+        elif hasattr(self.data, "copy"):
+            new_object.data = self.data.copy()
+
+        # Assessment labels, scales, and metadata must not change other segments.
+        for field in dataclasses.fields(self):
+            value = getattr(new_object, field.name)
+            if isinstance(value, (list, dict, set)):
+                setattr(new_object, field.name, deepcopy(value))
 
         return new_object
 

@@ -114,6 +114,8 @@ class AbstractEegAviClassificationTrainer(AbstractClassificationTrainer, ABC):
         self.model: EegAviFineTune = model
 
     def configure_optimizers(self):
+        if not hasattr(self.model, "get_pivot_adapter"):
+            return super().configure_optimizers()
         project_parameters = [p for p in self.model.project.parameters() if p.requires_grad]
         project_ids = {id(p) for p in project_parameters}
 
@@ -146,6 +148,8 @@ class AbstractCBraClassificationTrainer(AbstractClassificationTrainer, ABC):
         self.model: CBraFineTune = model
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
+        if not hasattr(self.model, "encoder"):
+            return super().configure_optimizers()
         project_parameters = [p for p in self.model.project.parameters() if p.requires_grad]
         project_ids = {id(p) for p in project_parameters}
 

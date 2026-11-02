@@ -66,6 +66,9 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
 
         self.student: EegInterAviModel = student
         self.teacher: Optional[MaskedContrastiveModel] = teacher
+        if self.teacher is not None:
+            self.teacher.requires_grad_(False)
+            self.teacher.eval()
 
         self._validation_pairs = {}
         self.momentum_student: EegInterAviModel | None = None
@@ -137,6 +140,16 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
     def on_validation_epoch_start(self):
         self._validation_pairs = {}
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.teacher is not None:
+            self.teacher.eval()
+
+        if self.momentum_student is not None:
+            self.momentum_student.eval()
+
+        return self
+
     def on_train_start(self) -> None:
         # Generation of the time mask switching. It is just a training trick.
         self.time_mask_switch_generator = torch.Generator(device=self.device)
@@ -166,6 +179,9 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         return self.compute_step_metrics(stud_out, teacher_out, "train", batch_idx)["loss"]
 
     def validation_step(self, batch, batch_idx):
+        return self._evaluation_step(batch, batch_idx, "val")
+
+    def _evaluation_step(self, batch, batch_idx, step_type):
         mode: Literal['causal', 'bidirectional']
         batch = dequantize(self.datamodule.dequantize_keys(), unflatten(batch), torch.float16)
 
@@ -178,7 +194,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         # We only evaluate on bidirectional from now on. It is just a learning trick in the architecture now.
         self.student.set_attention_modality(TimeMaskSwitchableProperties(mode="bidirectional"))
         stud_out: WeaklySupervisedEegBaseModelOutputs = self.student(batch["student"], use_kd=self.use_kd)
-        loss_object = self.compute_step_metrics(stud_out, teacher_out, 'val', batch_idx)
+        loss_object = self.compute_step_metrics(stud_out, teacher_out, step_type, batch_idx)
 
         valid_p = stud_out.multimodal_outs[self.student.pivot.code]["mask"].sum(dim=1) > 0
         for k, mv in stud_out.multimodal_outs.items():
@@ -282,12 +298,14 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         if mean_r_items:
             mean_r_mean = torch.stack(mean_r_items).mean()
             self.log(f"{step_type}/fused/meanR@{combined}_mean", mean_r_mean, on_epoch=True)
+        if prefusion_mean_r_items:
             prefusion_mean_r_mean = torch.stack(prefusion_mean_r_items).mean()
             self.log(f"{step_type}/prefusion/meanR@{combined}_mean", prefusion_mean_r_mean, on_epoch=True)
 
         if mrr_items:
             mrr_items_mean = torch.stack(mrr_items).mean()
             self.log(f"{step_type}/fused/mrr_mean", mrr_items_mean, on_epoch=True)
+        if prefusion_mrr_items:
             mrr_items_mean = torch.stack(prefusion_mrr_items).mean()
             self.log(f"{step_type}/prefusion/mrr_mean", mrr_items_mean, on_epoch=True)
 
@@ -297,7 +315,7 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         self.compute_batch_metrics("val")
 
     def test_step(self, batch, batch_idx):
-        return self.validation_step(batch, batch_idx)
+        return self._evaluation_step(batch, batch_idx, "test")
 
     def on_test_epoch_start(self) -> None:
         self._validation_pairs = {}
@@ -450,7 +468,10 @@ class EasyEegAviKdVateMaskedModule(MoCoAble):
         :param floor_bidirectional: Flooring to avoid one modality domination
         :return: The probability of being causal
         """
-        t = min(self.trainer.global_step / self.trainer.max_steps, 1.0)
+        total_steps = self.trainer.max_steps
+        if total_steps <= 0:
+            total_steps = self.trainer.estimated_stepping_batches
+        t = min(max(self.trainer.global_step / max(total_steps, 1), 0.0), 1.0)
         # Cosine ramp
         p = start + 0.5 * (end - start) * (1 - math.cos(math.pi * t))
         return min(p, 1.0 - floor_bidirectional)  # At most p=0.9

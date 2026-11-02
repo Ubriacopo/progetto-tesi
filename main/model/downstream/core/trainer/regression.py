@@ -40,7 +40,8 @@ class RegressionTrainer(lightning.LightningModule, ABC):
         self.out_dim: int = out_dim
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
-        return torch.optim.AdamW([{"params": self.model.project.parameters(), "lr": self.hparams.lr}, ])
+        return torch.optim.AdamW([{"params": [p for p in self.model.parameters() if p.requires_grad],
+                                  "lr": self.hparams.lr}])
 
     @abstractmethod
     def extract_target(self, batch):
@@ -48,9 +49,9 @@ class RegressionTrainer(lightning.LightningModule, ABC):
 
     def training_step(self, batch):
         # Labels
-        y = self.extract_target(batch)
+        y = self.extract_target(batch).reshape(-1, self.out_dim)
         x = dequantize(batch, self.default_dequantize_keys)
-        pred = self.model(x).squeeze()
+        pred = self.model(x).reshape_as(y)
 
         loss = F.mse_loss(pred, y)
         self.train_rmse.update(pred, y)
@@ -59,9 +60,9 @@ class RegressionTrainer(lightning.LightningModule, ABC):
         return loss
 
     def validation_step(self, batch):
-        y = self.extract_target(batch)
+        y = self.extract_target(batch).reshape(-1, self.out_dim)
         x = dequantize(batch, self.default_dequantize_keys)
-        pred: torch.Tensor = self.model(x).squeeze()
+        pred: torch.Tensor = self.model(x).reshape_as(y)
 
         loss = F.mse_loss(pred, y)
         self.val_rmse.update(pred, y)
@@ -82,9 +83,9 @@ class RegressionTrainer(lightning.LightningModule, ABC):
         return loss
 
     def test_step(self, batch):
-        y = self.extract_target(batch)
+        y = self.extract_target(batch).reshape(-1, self.out_dim)
         x = dequantize(batch, self.default_dequantize_keys)
-        pred = self.model(x).squeeze()
+        pred = self.model(x).reshape_as(y)
 
         loss = F.mse_loss(pred, y)
         self.test_rmse.update(pred, y)

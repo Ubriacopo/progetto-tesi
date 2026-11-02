@@ -8,7 +8,7 @@ from main.model.neegavi.hp_tuning.tuning import objective, TuningSearchSpace, re
 from main.model.script.hydra_beans import TuningKdConfig
 
 
-@hydra.main(config_path="../../../conf", config_name="hp_tuning")
+@hydra.main(config_path="../../../conf", config_name="tuning")
 def main(cfg: TuningKdConfig):
     search_space = TuningSearchSpace.from_choices(**cfg.search_space)
     study = optuna.create_study(
